@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Coven — Kiro fleet telemetry</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #12151a;
+    --panel-2: #171b22;
+    --line: #232a34;
+    --text: #e7ebf1;
+    --muted: #8b95a5;
+    --mint: #74f0c0;
+    --amber: #f3c46a;
+    --red: #ff7373;
+    --blue: #82a7ff;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  code, .mono { font-family: var(--mono); }
+
+  header {
+    display: flex; align-items: center; gap: 18px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #10141a, #0b0d10);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand b { font-size: 18px; letter-spacing: 0.22em; font-weight: 600; }
+  .brand span { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
+  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 12px var(--mint); align-self: center; }
+  .spacer { flex: 1; }
+  .pill {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); white-space: nowrap;
+  }
+  .pill.live { color: var(--mint); border-color: #1f4a3b; background: #0f211b; }
+  .pill.off { color: var(--red); border-color: #4a2323; background: #211010; }
+
+  main { padding: 18px 22px 40px; max-width: 1500px; margin: 0 auto; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat .label { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; }
+  .stat .value { font-family: var(--mono); font-size: 22px; line-height: 1.2; }
+  .stat .foot { font-size: 11px; color: var(--muted); }
+
+  h2 { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+
+  .fleets { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .fleet {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .fleet .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .fleet .name { font-family: var(--mono); font-size: 13px; }
+  .fleet .meta { display: flex; gap: 14px; font-size: 11px; color: var(--muted); }
+  .fleet .meta b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+
+  .columns { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 980px) { .columns { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .panel-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .panel-head h2 { margin: 0; }
+
+  .runs { max-height: calc(100vh - 360px); overflow: auto; }
+  .run {
+    width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line);
+    color: inherit; padding: 11px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px;
+    font-family: var(--sans);
+  }
+  .run:hover { background: var(--panel-2); }
+  .run.active { background: #141d1b; box-shadow: inset 2px 0 0 var(--mint); }
+  .run .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .run .who { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .run .what { font-size: 13px; }
+  .run .sub { font-size: 11px; color: var(--muted); font-family: var(--mono); display: flex; gap: 10px; }
+  .run:last-child { border-bottom: 0; }
+
+  .badge {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  }
+  .badge.live { color: var(--mint); border-color: #1f4a3b; background: #0f211b; }
+  .badge.stale { color: var(--amber); border-color: #4a3b1f; background: #211c10; }
+  .badge.disconnected, .badge.failed { color: var(--red); border-color: #4a2323; background: #211010; }
+  .badge.finished { color: var(--blue); border-color: #233250; background: #101726; }
+
+  .detail { min-height: 420px; }
+  .detail-head { padding: 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; }
+  .detail-title { display: flex; flex-direction: column; gap: 6px; }
+  .detail-title .id { font-family: var(--mono); font-size: 15px; }
+  .detail-title .project { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .detail-facts { display: flex; gap: 22px; flex-wrap: wrap; }
+  .fact { display: flex; flex-direction: column; gap: 3px; }
+  .fact .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .fact .v { font-family: var(--mono); font-size: 13px; }
+
+  .timeline { padding: 6px 0 12px; max-height: calc(100vh - 300px); overflow: auto; }
+  .event { display: grid; grid-template-columns: 74px 112px minmax(0, 1fr) auto; gap: 12px; padding: 9px 16px; border-bottom: 1px solid #191f27; align-items: baseline; }
+  .event:last-child { border-bottom: 0; }
+  .event .t { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .event .type { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--blue); }
+  .event .type.tool_call { color: var(--mint); }
+  .event .type.spec_deviation, .event .type.warning { color: var(--amber); }
+  .event .type.run_failed, .event .type.token_usage { color: var(--amber); }
+  .event .body { font-size: 12.5px; min-width: 0; overflow-wrap: anywhere; }
+  .event .body .path { font-family: var(--mono); color: var(--text); }
+  .event .body .note { color: var(--muted); }
+  .event .right { display: flex; align-items: center; gap: 8px; }
+  .event .credit { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .event.deviation { background: #1a170e; }
+  .event.dismissed { opacity: 0.45; }
+  .event.dismissed .body { text-decoration: line-through; }
+
+  button.action {
+    background: #1c2129; color: var(--text); border: 1px solid var(--line);
+    padding: 4px 9px; border-radius: 5px; font-size: 11px; font-family: var(--mono); cursor: pointer;
+  }
+  button.action:hover { border-color: #35404e; }
+  button.action:disabled { opacity: 0.4; cursor: default; }
+
+  .empty { padding: 34px 18px; text-align: center; color: var(--muted); font-size: 13px; }
+  .empty code { color: var(--text); }
+
+  .login {
+    position: fixed; inset: 0; background: rgba(6, 8, 11, 0.82); backdrop-filter: blur(4px);
+    display: none; place-items: center; z-index: 50;
+  }
+  .login.show { display: grid; }
+  .login form { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: min(420px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+  .login h1 { margin: 0; font-size: 15px; letter-spacing: 0.18em; }
+  .login p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .login input { background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 9px 10px; border-radius: 6px; font-family: var(--mono); font-size: 13px; }
+  .login button { background: var(--mint); color: #04211a; border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+
+  .toast { position: fixed; bottom: 18px; right: 18px; background: #211010; border: 1px solid #4a2323; color: var(--red); padding: 9px 12px; border-radius: 7px; font-size: 12px; display: none; z-index: 60; }
+  .toast.show { display: block; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span><b>COVEN</b><span>Kiro fleet telemetry</span></div>
+  <div class="spacer"></div>
+  <span id="stream-pill" class="pill">CONNECTING</span>
+  <span class="pill" id="org-pill">MONITORING ONLY</span>
+</header>
+
+<main>
+  <div class="stats">
+    <div class="stat"><span class="label">Projects</span><span class="value" id="s-projects">0</span><span class="foot">linked repos</span></div>
+    <div class="stat"><span class="label">Live runs</span><span class="value" id="s-live">0</span><span class="foot">heartbeat under 15s</span></div>
+    <div class="stat"><span class="label">Credits burned</span><span class="value" id="s-credits">0.00</span><span class="foot">reported by Kiro</span></div>
+    <div class="stat"><span class="label">Events ingested</span><span class="value" id="s-events">0</span><span class="foot">all time, this process</span></div>
+  </div>
+
+  <h2>Fleet</h2>
+  <section class="fleets" id="fleets">
+    <div class="empty">No projects yet. Link one with <code>coven project link &lt;id&gt;</code>.</div>
+  </section>
+
+  <div class="columns">
+    <section class="panel">
+      <div class="panel-head"><h2>Runs</h2><span class="pill" id="run-count">0</span></div>
+      <div class="runs" id="runs">
+        <div class="empty">Waiting for a run.</div>
+      </div>
+    </section>
+
+    <section class="panel detail" id="detail">
+      <div class="empty">Select a run to see its event timeline.</div>
+    </section>
+  </div>
+</main>
+
+<div class="login" id="login">
+  <form id="login-form">
+    <h1>COVEN</h1>
+    <p>Read token for this Coven Cloud. The development server accepts <code>dev</code>.</p>
+    <input id="token-input" type="password" autocomplete="off" placeholder="token" aria-label="Access token" />
+    <button type="submit">Connect</button>
+    <p>Tokens are kept in this browser only and sent as a bearer header. The demo stream URL also carries it once.</p>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const state = {
+    token: "",
+    projects: [],
+    runs: [],
+    selected: null,
+    events: [],
+    source: null,
+    refreshTimer: null,
+    lastRefresh: 0,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const short = (id, n = 10) => (id || "").length > n ? id.slice(0, n) : (id || "");
+  const num = (value, digits = 2) => Number(value || 0).toFixed(digits);
+
+  function toast(message) {
+    const el = $("toast");
+    el.textContent = message;
+    el.classList.add("show");
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove("show"), 4200);
+  }
+
+  function tokenFromUrl() {
+    const params = new URLSearchParams(location.search);
+    const fromQuery = params.get("token");
+    const fromHash = location.hash.startsWith("#token=") ? decodeURIComponent(location.hash.slice(7)) : "";
+    if (fromHash) history.replaceState(null, "", location.pathname + location.search);
+    return fromQuery || fromHash || localStorage.getItem("coven_token") || "";
+  }
+
+  async function api(path, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      headers: {
+        "Authorization": `Bearer ${state.token}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+    if (response.status === 401) {
+      $("login").classList.add("show");
+      throw new Error("unauthorised");
+    }
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.json();
+  }
+
+  async function load() {
+    if (!state.token) return;
+    try {
+      const [projects, runs] = await Promise.all([
+        api("/v1/projects"),
+        api("/v1/runs"),
+      ]);
+      state.projects = projects.projects || [];
+      state.runs = runs.runs || [];
+      state.lastRefresh = Date.now();
+      renderStats();
+      renderFleets();
+      renderRuns();
+      if (state.selected) {
+        const fresh = state.runs.find((run) => run.run_id === state.selected);
+        if (fresh) renderDetailHead(fresh);
+      } else if (state.runs.length) {
+        select(state.runs[0].run_id);
+      }
+    } catch (error) {
+      if (error.message !== "unauthorised") toast(`refresh failed: ${error.message}`);
+    }
+  }
+
+  function renderStats() {
+    const live = state.runs.filter((run) => run.health === "LIVE").length;
+    const credits = state.runs.reduce((sum, run) => sum + Number(run.credits || 0), 0);
+    const events = state.runs.reduce((sum, run) => sum + Number(run.events || 0), 0);
+    $("s-projects").textContent = state.projects.length;
+    $("s-live").textContent = live;
+    $("s-credits").textContent = num(credits, 2);
+    $("s-events").textContent = events;
+    $("run-count").textContent = state.runs.length;
+  }
+
+  function renderFleets() {
+    const host = $("fleets");
+    if (!state.projects.length) {
+      host.innerHTML = '<div class="empty">No projects yet. Link one with <code>coven project link &lt;id&gt;</code>.</div>';
+      return;
+    }
+    host.innerHTML = state.projects.map((project) => {
+      const runs = project.runs_detail || [];
+      const live = runs.filter((run) => run.health === "LIVE").length;
+      const last = runs.length ? describeWhen(runs[0]) : "no runs yet";
+      return `<article class="fleet">
+        <div class="top">
+          <span class="name">${esc(project.project_id)}</span>
+          <span class="badge ${live ? "live" : "finished"}">${live ? "LIVE" : "IDLE"}</span>
+        </div>
+        <div class="meta">
+          <span><b>${project.runs || 0}</b> runs</span>
+          <span><b>${num(project.credits, 2)}</b> credits</span>
+        </div>
+        <div class="meta"><span>${esc(last)}</span></div>
+      </article>`;
+    }).join("");
+  }
+
+  function describeWhen(run) {
+    if (!run) return "no runs yet";
+    if (run.health === "LIVE") return `active in ${esc(run.stage || "run")}`;
+    const age = run.age_seconds;
+    if (age == null) return run.health.toLowerCase();
+    if (age < 60) return `${Math.round(age)}s ago`;
+    if (age < 3600) return `${Math.round(age / 60)}m ago`;
+    return `${Math.round(age / 3600)}h ago`;
+  }
+
+  function renderRuns() {
+    const host = $("runs");
+    if (!state.runs.length) {
+      host.innerHTML = '<div class="empty">Waiting for a run. Start Kiro with <code>coven run -- kiro-cli chat …</code>.</div>';
+      return;
+    }
+    host.innerHTML = state.runs.map((run) => {
+      const active = run.run_id === state.selected ? " active" : "";
+      const health = String(run.health || "unknown").toLowerCase();
+      return `<button class="run${active}" data-run="${esc(run.run_id)}">
+        <div class="row">
+          <span class="who">${esc(run.project_id)}</span>
+          <span class="badge ${esc(health)}">${esc(run.health || "UNKNOWN")}</span>
+        </div>
+        <div class="what mono">${esc(short(run.run_id, 18))}…</div>
+        <div class="sub">
+          <span>${esc(run.stage || "—")}</span>
+          <span>${esc(run.task_id || "no task")}</span>
+          <span>${num(run.credits, 2)} cr</span>
+          <span>${run.events || 0} ev</span>
+        </div>
+      </button>`;
+    }).join("");
+    host.querySelectorAll("[data-run]").forEach((button) => {
+      button.addEventListener("click", () => select(button.dataset.run));
+    });
+  }
+
+  async function select(runId) {
+    if (!runId) return;
+    state.selected = runId;
+    renderRuns();
+    try {
+      const payload = await api(`/v1/runs/${encodeURIComponent(runId)}`);
+      state.events = payload.events || [];
+      renderDetail(payload.run);
+    } catch (error) {
+      if (error.message !== "unauthorised") toast(`run load failed: ${error.message}`);
+    }
+  }
+
+  function renderDetailHead(run) {
+    if (!state.selected || run.run_id !== state.selected) return;
+    const head = document.querySelector(".detail-head");
+    if (!head) { renderDetail(run); return; }
+    head.outerHTML = detailHead(run);
+    bindDismiss();
+  }
+
+  function detailHead(run) {
+    const usage = run.usage_source ? `<div class="fact"><span class="k">Usage source</span><span class="v">${esc(run.usage_source)}</span></div>` : "";
+    return `<div class="detail-head">
+      <div class="detail-title">
+        <span class="id">${esc(run.run_id)}</span>
+        <span class="project">${esc(run.project_id)} · started ${esc(run.started_at || "—")}</span>
+      </div>
+      <div class="detail-facts">
+        <div class="fact"><span class="k">State</span><span class="v"><span class="badge ${esc(String(run.health).toLowerCase())}">${esc(run.health)}</span></span></div>
+        <div class="fact"><span class="k">Stage</span><span class="v">${esc(run.stage || "—")}</span></div>
+        <div class="fact"><span class="k">Task</span><span class="v">${esc(run.task_id || "—")}</span></div>
+        <div class="fact"><span class="k">Credits</span><span class="v">${num(run.credits, 2)}</span></div>
+        <div class="fact"><span class="k">Tokens</span><span class="v">${run.tokens_in || run.tokens_out ? `${run.tokens_in || 0} in / ${run.tokens_out || 0} out` : "not reported"}</span></div>
+        ${usage}
+      </div>
+    </div>`;
+  }
+
+  function renderDetail(run) {
+    const host = $("detail");
+    host.innerHTML = `${detailHead(run)}<div class="timeline" id="timeline">${timeline(state.events)}</div>`;
+    bindDismiss();
+  }
+
+  function timeline(events) {
+    if (!events.length) return '<div class="empty">No events yet. The hook may be waiting for the first tool call.</div>';
+    return events.map((event) => {
+      const payload = event.payload || {};
+      const type = String(event.type || "event");
+      const deviation = type === "spec_deviation";
+      const dismissed = Boolean(event.dismissed);
+      const credit = event.usage && event.usage.credits ? `<span class="credit">${num(event.usage.credits, 3)} cr</span>` : "";
+      const dismiss = deviation && !dismissed
+        ? `<button class="action" data-dismiss="${esc(event.event_id)}">dismiss</button>`
+        : "";
+      return `<div class="event ${deviation ? "deviation" : ""} ${dismissed ? "dismissed" : ""}">
+        <span class="t">${esc(clock(event.ts))}</span>
+        <span class="type ${esc(type)}">${esc(type.replace(/_/g, " "))}</span>
+        <span class="body">${summary(type, payload)}</span>
+        <span class="right">${credit}${dismiss}</span>
+      </div>`;
+    }).join("");
+  }
+
+  function summary(type, payload) {
+    const tool = payload.tool ? `<span class="path">${esc(payload.tool)}</span>` : "";
+    const path = payload.path ? ` <span class="path">${esc(payload.path)}</span>` : "";
+    const bytes = payload.bytes ? ` <span class="note">· ${Number(payload.bytes)} B</span>` : "";
+    switch (type) {
+      case "tool_call": return `${tool}${path}${bytes}`;
+      case "task_started": return `task started ${payload.task_id ? `<span class="path">${esc(payload.task_id)}</span>` : ""}`;
+      case "task_finished": return `task finished ${payload.task_id ? `<span class="path">${esc(payload.task_id)}</span>` : ""}`;
+      case "file_changed": return `${esc(payload.change || "changed")} <span class="path">${esc(payload.path || "")}</span>`;
+      case "spec_deviation": {
+        const expected = Array.isArray(payload.expected) ? payload.expected.join(", ") : (payload.expected || "");
+        return `<span class="note">possible deviation:</span> <span class="path">${esc(payload.observed || "")}</span> outside ${esc(expected)}`;
+      }
+      case "warning": return `<span class="note">${esc(payload.reason || payload.raw_type || payload.raw_trigger || "warning")}</span>`;
+      case "token_usage": return `<span class="note">usage reported</span>`;
+      case "run_started": return `<span class="note">session started${payload.cwd ? ` in ${esc(payload.cwd)}` : ""}</span>`;
+      case "run_finished": return `<span class="note">session finished cleanly</span>`;
+      case "run_failed": return `<span class="note">session failed${payload.exit_code != null ? ` (exit ${esc(payload.exit_code)})` : ""}</span>`;
+      case "turn_finished": return `<span class="note">turn finished</span>`;
+      default: return `<span class="note">${esc(JSON.stringify(payload).slice(0, 240))}</span>`;
+    }
+  }
+
+  function clock(stamp) {
+    if (!stamp) return "--:--:--";
+    const date = new Date(stamp);
+    if (Number.isNaN(date.getTime())) return String(stamp).slice(11, 19);
+    return date.toLocaleTimeString([], { hour12: false });
+  }
+
+  function bindDismiss() {
+    document.querySelectorAll("[data-dismiss]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          await api(`/v1/events/${encodeURIComponent(button.dataset.dismiss)}/dismiss`, { method: "POST" });
+          const event = state.events.find((item) => item.event_id === button.dataset.dismiss);
+          if (event) event.dismissed = true;
+          const host = $("timeline");
+          if (host) host.innerHTML = timeline(state.events);
+          bindDismiss();
+        } catch (error) {
+          if (error.message !== "unauthorised") toast(`dismiss failed: ${error.message}`);
+          button.disabled = false;
+        }
+      });
+    });
+  }
+
+  function connectStream() {
+    if (state.source) state.source.close();
+    const url = `/v1/stream?token=${encodeURIComponent(state.token)}`;
+    const source = new EventSource(url);
+    state.source = source;
+    const pill = $("stream-pill");
+
+    source.onopen = () => { pill.textContent = "LIVE STREAM"; pill.className = "pill live"; };
+    source.onerror = () => { pill.textContent = "RECONNECTING"; pill.className = "pill off"; };
+
+    const onMessage = (message) => {
+      let payload;
+      try { payload = JSON.parse(message.data); } catch { return; }
+      if (payload.kind === "event" && payload.event) {
+        const event = payload.event;
+        if (event.run_id === state.selected && !state.events.some((item) => item.event_id === event.event_id)) {
+          state.events.push(event);
+          const host = $("timeline");
+          if (host) { host.innerHTML = timeline(state.events); bindDismiss(); }
+        }
+      }
+      if (payload.kind === "dismiss" && payload.event_id) {
+        const event = state.events.find((item) => item.event_id === payload.event_id);
+        if (event) event.dismissed = true;
+      }
+      scheduleRefresh();
+    };
+
+    source.addEventListener("event", onMessage);
+    source.addEventListener("heartbeat", onMessage);
+    source.addEventListener("dismiss", onMessage);
+  }
+
+  function scheduleRefresh() {
+    clearTimeout(state.refreshTimer);
+    state.refreshTimer = setTimeout(load, 400);
+  }
+
+  function start() {
+    state.token = tokenFromUrl();
+    if (!state.token) {
+      $("login").classList.add("show");
+      $("token-input").focus();
+      return;
+    }
+    localStorage.setItem("coven_token", state.token);
+    $("login").classList.remove("show");
+    load();
+    connectStream();
+    setInterval(load, 10000);
+  }
+
+  $("login-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = $("token-input").value.trim();
+    if (!value) return;
+    state.token = value;
+    start();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.token) load();
+  });
+
+  start();
+})();
+</script>
+</body>
+</html>

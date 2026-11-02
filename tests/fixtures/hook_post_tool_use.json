@@ -1,0 +1,14 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "sess_demo_01",
+  "cwd": "/home/dev/project",
+  "tool_name": "fs_write",
+  "tool_input": {
+    "path": "/home/dev/project/src/coven/events.py",
+    "content": "def normalise(payload):\n    return payload\n",
+    "bytes": 4210
+  },
+  "metering_usage": [
+    { "unit": "credit", "value": 0.42 }
+  ]
+}

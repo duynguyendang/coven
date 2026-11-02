@@ -1,0 +1,41 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "coven-session-start",
+      "description": "Register the run with the local Coven relay.",
+      "trigger": "SessionStart",
+      "action": { "type": "command", "command": "coven emit" },
+      "timeout": 5
+    },
+    {
+      "name": "coven-tool-use",
+      "description": "Record every completed tool call (path and size only, never contents).",
+      "trigger": "PostToolUse",
+      "matcher": "*",
+      "action": { "type": "command", "command": "coven emit" },
+      "timeout": 5
+    },
+    {
+      "name": "coven-task-start",
+      "description": "Mark the current spec task so the dashboard can flag off-spec work.",
+      "trigger": "PreTaskExec",
+      "action": { "type": "command", "command": "coven emit" },
+      "timeout": 5
+    },
+    {
+      "name": "coven-task-end",
+      "description": "Close the current spec task.",
+      "trigger": "PostTaskExec",
+      "action": { "type": "command", "command": "coven emit" },
+      "timeout": 5
+    },
+    {
+      "name": "coven-session-end",
+      "description": "Seal the run when the Kiro session ends.",
+      "trigger": "SessionEnd",
+      "action": { "type": "command", "command": "coven emit" },
+      "timeout": 5
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Compile
+        run: python -m compileall -q src scripts
+      - name: Test
+        run: pytest
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the cloud image
+        run: docker build -t coven:ci .
+      - name: Ingest smoke test
+        run: |
+          docker run -d --name coven -e COVEN_TOKENS=ci -p 8080:8080 coven:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz; then break; fi
+            sleep 2
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:8080/healthz
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/v1/projects)
+          test "$code" = "401"

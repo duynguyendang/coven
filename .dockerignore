@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+.coven
+.pytest_cache
+__pycache__
+*.pyc
+tests
+scripts
+infra
+.kiro
+.env
+dist
+build
+*.egg-info
+.DS_Store
