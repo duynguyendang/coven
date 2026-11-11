@@ -1,0 +1,10 @@
+{
+  "cursor": null,
+  "config": {
+    "pollIntervalSec": 10,
+    "commandTimeoutSec": 30,
+    "flow_dir": "/tmp/cov-probe/.coven/flows/flw_probe"
+  },
+  "workspacePath": "/tmp/cov-probe",
+  "additionalDirectories": []
+}

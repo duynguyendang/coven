@@ -1,0 +1,261 @@
+{
+  "waiting_after_event": 47,
+  "waiting": {
+    "flow_id": "flw_eaa7c5ffd1e542ffbc9a",
+    "project_id": "shop",
+    "spec": "shop",
+    "task_id": "1",
+    "title": "Checkout button",
+    "recipe": "coven-task-flow",
+    "status": "running",
+    "step": "decide",
+    "waiting_for": "decide",
+    "rounds": 1,
+    "reworks": 0,
+    "verdict": "accept",
+    "decision": null,
+    "outcome": null,
+    "started_at": "2026-11-11T09:35:29.810Z",
+    "ended_at": null,
+    "warnings": [],
+    "steps": [
+      {
+        "step_id": "ready",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0001-4000-8000-000000000001",
+        "started_at": "2026-11-11T09:35:29.818Z",
+        "ended_at": "2026-11-11T09:35:29.820Z",
+        "runs": 1,
+        "gate": true
+      },
+      {
+        "step_id": "implement",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0002-4000-8000-000000000002",
+        "started_at": "2026-11-11T09:35:29.823Z",
+        "ended_at": "2026-11-11T09:35:29.827Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "verify",
+        "state": "done",
+        "run_id": null,
+        "started_at": "2026-11-11T09:35:29.827Z",
+        "ended_at": "2026-11-11T09:35:29.831Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "checkpoint",
+        "state": "pending",
+        "run_id": null,
+        "started_at": null,
+        "ended_at": null,
+        "runs": 0,
+        "gate": false
+      },
+      {
+        "step_id": "review-tester",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0003-4000-8000-000000000003",
+        "started_at": "2026-11-11T09:35:29.833Z",
+        "ended_at": "2026-11-11T09:35:29.836Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "review-redteam",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0004-4000-8000-000000000004",
+        "started_at": "2026-11-11T09:35:29.839Z",
+        "ended_at": "2026-11-11T09:35:29.841Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "review-brainstorm",
+        "state": "pending",
+        "run_id": null,
+        "started_at": null,
+        "ended_at": null,
+        "runs": 0,
+        "gate": false
+      },
+      {
+        "step_id": "chair",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0005-4000-8000-000000000005",
+        "started_at": "2026-11-11T09:35:29.844Z",
+        "ended_at": "2026-11-11T09:35:29.846Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "guard",
+        "state": "done",
+        "run_id": null,
+        "started_at": "2026-11-11T09:35:29.846Z",
+        "ended_at": "2026-11-11T09:35:29.852Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "decide",
+        "state": "waiting for you",
+        "run_id": "sess_1a2b3c4d-0006-4000-8000-000000000006",
+        "started_at": "2026-11-11T09:35:29.855Z",
+        "ended_at": null,
+        "runs": 1,
+        "gate": true
+      },
+      {
+        "step_id": "deliver",
+        "state": "pending",
+        "run_id": null,
+        "started_at": null,
+        "ended_at": null,
+        "runs": 0,
+        "gate": false
+      },
+      {
+        "step_id": "close",
+        "state": "pending",
+        "run_id": null,
+        "started_at": null,
+        "ended_at": null,
+        "runs": 0,
+        "gate": false
+      }
+    ]
+  },
+  "done": {
+    "flow_id": "flw_eaa7c5ffd1e542ffbc9a",
+    "project_id": "shop",
+    "spec": "shop",
+    "task_id": "1",
+    "title": "Checkout button",
+    "recipe": "coven-task-flow",
+    "status": "finished",
+    "step": null,
+    "waiting_for": null,
+    "rounds": 1,
+    "reworks": 0,
+    "verdict": "accept",
+    "decision": "accept",
+    "outcome": "delivered",
+    "started_at": "2026-11-11T09:35:29.810Z",
+    "ended_at": "2026-11-11T09:35:29.860Z",
+    "warnings": [],
+    "steps": [
+      {
+        "step_id": "ready",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0001-4000-8000-000000000001",
+        "started_at": "2026-11-11T09:35:29.818Z",
+        "ended_at": "2026-11-11T09:35:29.820Z",
+        "runs": 1,
+        "gate": true
+      },
+      {
+        "step_id": "implement",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0002-4000-8000-000000000002",
+        "started_at": "2026-11-11T09:35:29.823Z",
+        "ended_at": "2026-11-11T09:35:29.827Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "verify",
+        "state": "done",
+        "run_id": null,
+        "started_at": "2026-11-11T09:35:29.827Z",
+        "ended_at": "2026-11-11T09:35:29.831Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "checkpoint",
+        "state": "pending",
+        "run_id": null,
+        "started_at": null,
+        "ended_at": null,
+        "runs": 0,
+        "gate": false
+      },
+      {
+        "step_id": "review-tester",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0003-4000-8000-000000000003",
+        "started_at": "2026-11-11T09:35:29.833Z",
+        "ended_at": "2026-11-11T09:35:29.836Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "review-redteam",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0004-4000-8000-000000000004",
+        "started_at": "2026-11-11T09:35:29.839Z",
+        "ended_at": "2026-11-11T09:35:29.841Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "review-brainstorm",
+        "state": "pending",
+        "run_id": null,
+        "started_at": null,
+        "ended_at": null,
+        "runs": 0,
+        "gate": false
+      },
+      {
+        "step_id": "chair",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0005-4000-8000-000000000005",
+        "started_at": "2026-11-11T09:35:29.844Z",
+        "ended_at": "2026-11-11T09:35:29.846Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "guard",
+        "state": "done",
+        "run_id": null,
+        "started_at": "2026-11-11T09:35:29.846Z",
+        "ended_at": "2026-11-11T09:35:29.852Z",
+        "runs": 1,
+        "gate": false
+      },
+      {
+        "step_id": "decide",
+        "state": "done",
+        "run_id": "sess_1a2b3c4d-0006-4000-8000-000000000006",
+        "started_at": "2026-11-11T09:35:29.855Z",
+        "ended_at": "2026-11-11T09:35:29.858Z",
+        "runs": 1,
+        "gate": true
+      },
+      {
+        "step_id": "deliver",
+        "state": "pending",
+        "run_id": null,
+        "started_at": null,
+        "ended_at": null,
+        "runs": 0,
+        "gate": false
+      },
+      {
+        "step_id": "close",
+        "state": "done",
+        "run_id": null,
+        "started_at": "2026-11-11T09:35:29.859Z",
+        "ended_at": "2026-11-11T09:35:29.861Z",
+        "runs": 1,
+        "gate": false
+      }
+    ]
+  }
+}

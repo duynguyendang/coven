@@ -7,9 +7,13 @@ deviation.
 
 ```text
 Kiro CLI  ->  .kiro/hooks  ->  Coven Relay  ->  Coven Cloud  ->  dashboard
-                                (local,       (FastAPI +       (fleet, run,
-                                 buffered)     DynamoDB)        timeline)
+                                (Python,      (Node.js +       (fleet, run,
+                                 buffered)     DynamoDB)        council replay)
 ```
+
+The relay and CLI are Python and run on the developer machine. Coven Cloud is
+Node.js (22.18 or newer, TypeScript run natively, no build step, no runtime
+dependencies for the in-memory store) and serves the dashboard too.
 
 **v1 is monitoring-only.** It does not block tool calls, enforce policy, approve
 merges or produce an audit-grade ledger. Kiro's `PreToolUse` hooks *can* block
@@ -17,28 +21,105 @@ merges or produce an audit-grade ledger. Kiro's `PreToolUse` hooks *can* block
 
 ## Quick start (local)
 
+Needs Python 3.12+, Node.js 22.18+ and Kiro CLI 3.x (hooks need the V3 engine).
+
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
+make install        # pip install -e ".[dev]" and cd server && npm ci
 
-# terminal 1: cloud
+# terminal 1: cloud (http://127.0.0.1:8787)
 make cloud
 
-# terminal 2: relay
-make relay
+# terminal 2: one relay for every repo on this machine (keep the venv active)
+coven relay up --machine --foreground    # or `make relay` for a single-repo relay
 
-# terminal 3: bind this repo to a project and run Kiro
+# terminal 3: same venv. Bind this repo to a project, check, then run Kiro
 coven login --cloud-url http://127.0.0.1:8787 --token dev
 coven project link coven-demo
+coven doctor        # relay running, token present, health: 200
+
+kiro-cli chat       # interactive: .kiro/hooks/telemetry.json emits events
+# or headless, with stream-json captured:
 coven run -- kiro-cli chat --no-interactive --output-format stream-json "summarise this repo"
 ```
 
 Open <http://127.0.0.1:8787/#token=dev>. The fragment keeps the token out of
 the request line; the stream connection sends it as a query parameter once.
 
-No Kiro CLI at hand? `make seed` posts a demo fleet (three runs, one possible
-spec deviation). `make seed-watch` keeps the live run heartbeating for five
-minutes so it does not turn `STALE` while you look at the screen.
+Things that will bite:
+
+- **No logs when Kiro runs? Run `coven hooks check`.** Kiro runs each hook with `/bin/sh -c` in its
+  own environment and ignores a failing hook silently. If `coven` is not on that PATH the hook
+  exits 127 and nothing is ever logged. `coven hooks check` runs your hooks the same way and says
+  which fail and why; `coven hooks install` rewrites them to an absolute command
+  (`PYTHONPATH=… /usr/bin/python3 -m coven.cli emit`) that needs neither PATH nor an activated venv.
+  That command contains paths from your machine, so don't commit it; `coven hooks install
+  --portable` puts the plain `coven emit` back. `coven doctor` also shows `last hook received`.
+- **Kiro reads `.kiro/hooks` only when a session starts.** After `coven hooks install` (or any edit to
+  the hook file), exit the running `kiro-cli` and start a new session, or the old commands keep running.
+- Logging works **without the relay or the cloud**: with the relay down, `coven emit` still writes
+  the capture and the local event log, so `coven logs hooks` shows activity straight away.
+- **`httpx` must be installed** (`make install` does it). Without it the relay cannot push and
+  events pile up unpushed in the local log; `coven doctor` shows `health: unreachable (No module named 'httpx')`.
+- **Repo on a Windows drive under WSL (`/mnt/c`, `/mnt/e`)?** Unix sockets cannot live there. The
+  relay detects this, binds a private socket under `$XDG_RUNTIME_DIR` (or `/tmp/coven-<uid>/`) and
+  records it in `.coven/socket_path`; set `COVEN_SOCKET` to choose the path yourself. Working from
+  the Linux filesystem (`~/code/coven`) is faster and avoids the whole class of problem.
+- **Each `coven emit` takes about 0.2 s** (mostly Python start-up), well inside the 5 s hook timeout.
+- A dashboard run only turns `FINISHED` if Kiro fires `SessionEnd` (documented for CLI V3, not yet
+  observed here); otherwise it goes `STALE`, then `DISCONNECTED`.
+
+No Kiro CLI at hand? `make seed` posts a demo fleet: three runs, one possible spec deviation and
+one seeded council review, all marked `source: "seed"`. `make seed-watch` keeps the live run
+heartbeating for five minutes so it does not turn `STALE` while you look at the screen.
+
+## Where the data lives
+
+There is no local database. Each event is one line of JSON in a daily file under `.coven/data/`, and
+the cloud is the only long-term store. The local files are a readable copy plus the backlog of
+events not pushed yet; a tiny `cursor.json` remembers how far the relay got. Delivery is
+at-least-once and the cloud ignores an `event_id` it has already seen, so a crash costs a duplicate
+request, never a duplicate event. Files older than 14 days (`COVEN_RETENTION_DAYS`) are deleted once
+they have been pushed; unpushed history is never deleted.
+
+## Reading what Coven captured
+
+Everything stays on your machine, in the repo: `.coven/data/` (git-ignored with `.coven/`), or
+`COVEN_DATA_DIR` if you set it. Files are made owner-only (0700 / 0600) where the filesystem allows
+it. A Windows drive under WSL (`/mnt/c`, `/mnt/e`) ignores permissions, so there the logs are
+readable by anyone who can read the repo itself; `coven doctor` says so. That is acceptable because
+the logs are redacted. The one exception is `COVEN_CAPTURE=raw`: an unredacted hook log
+(`hooks-raw-…`) never lands on such a drive and goes to `~/.local/state/coven/<repo>-<id>/data/`
+instead. `coven logs` reads everything, wherever it is:
+
+```bash
+coven logs path                 # where the files are
+coven logs hooks                # what Kiro actually sent to each hook (last 20)
+coven logs events               # what Coven turned that into (the normalised events)
+coven logs hooks -f             # follow live while you use Kiro
+coven logs hooks --type tooluse -n 50
+coven logs events --run sess_ab # filter by session / run id
+coven logs hooks --json | jq .  # raw JSON lines instead of the one-line summary
+```
+
+| File | Contents |
+| :--- | :--- |
+| `.coven/data/hooks-YYYY-MM-DD.jsonl` | one line per hook call: `{received_at, capture, payload}` |
+| `.coven/data/events-YYYY-MM-DD.jsonl` | one line per normalised event: the local log, and the backlog the relay pushes to the cloud |
+| `.coven/data/rejected-YYYY-MM-DD.jsonl` | events the cloud refused, with the reason (`coven logs rejected`) |
+| `.coven/state/cursor.json` | how far the relay has pushed (file and byte offset) |
+
+Each tool call becomes one event with the safe facts only: the tool, the file path, the exit code
+and `success` (read from Kiro's response, which is then dropped), the program names a shell
+command ran (`["pytest", "tail"]`, never their arguments; here-document bodies are ignored),
+Kiro's one-line description of the intent (redacted, at most 160 characters) and the output size.
+
+`COVEN_CAPTURE` controls the hook log: unset (default) stores the payload **after the same
+redaction the event log uses** (no file contents, prompts or secrets, home directory shown as `~`);
+`raw` stores exactly what Kiro sent, which can contain file contents and secrets, so use it only to
+debug locally (`coven doctor` warns while it is on); `off` records nothing. A day's file stops
+growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven logs events` as a
+`warning` with `raw_trigger=…`, which is how you notice a new Kiro hook.
 
 ## Commands
 
@@ -46,10 +127,114 @@ minutes so it does not turn `STALE` while you look at the screen.
 | :--- | :--- |
 | `coven login --cloud-url URL --token TOKEN` | Store the cloud endpoint and token (`.coven/credentials.json`, mode 0600) |
 | `coven project link <id> [--cloud-url URL] [--token TOKEN]` | Bind this repo to a cloud project (`.coven/config.json`, mode 0600) |
-| `coven relay up` / `down` / `status` | Manage the local relay daemon |
+| `coven relay up` / `down` / `status` `[--machine]` | Manage the relay. `--machine`: one relay for every repo on this machine, instead of one per repo |
 | `coven emit` | Read one hook event from stdin and queue it. Silent on success |
 | `coven run -- <cmd>` | Mint a run id, export `COVEN_RUN_ID`, stream and normalise `stream-json` |
-| `coven doctor` | Check config, relay, socket and cloud reachability |
+| `coven logs [hooks\|events\|path]` | Read the local capture: raw hook payloads, normalised events, file locations |
+| `coven hooks check` / `install [--portable]` | Run the Kiro hooks like Kiro does and say what fails; write PATH-independent hook commands |
+| `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
+| `coven member join <name>` | Name this working copy on the coven board (one per `kiro-cli`); publishes its task list |
+| `coven board read \| ready \| next \| claim \| review \| release \| post \| sync` | The coven board: who holds what, take or give back a task, join a review, post a note |
+| `coven verify <spec>#<task>` | Run the task's `_Verify:_` command and record only its outcome (exit 0 pass, 1 fail, 3 no command) |
+| `coven flow new <spec>#<task> \| --next` | Claim the task on the board and mint a flow (`--no-claim` to work alone) |
+| `coven flow status [flow_id]` | Where each flow is: steps, the gate waiting for you, rounds, guard verdict |
+| `coven flow lint` | Check `.kiro/agents/*.json` and the flow recipe (calls `kiro-cli agent validate` when installed) |
+| `coven flow run-step <verify\|guard\|close>` | A model-free flow step; Kiro runs it from the recipe, reading stdin |
+
+## Several projects
+
+A project is a repository: `coven project link <name>` names it, and every repo
+sends to the same cloud (`coven login` is per machine, once).
+
+```bash
+coven relay up --machine                  # once per machine; serves every repo below
+cd ~/code/atlas-api
+coven project link atlas-api              # name the repo
+coven hooks install                       # adds the six Coven hooks if the repo has none
+coven doctor                              # then start a new Kiro session in this repo
+```
+
+The machine relay writes each repo's events to that repo's own `.coven/data`
+and pushes them with that repo's project name and credentials. Only the
+process and the socket (`$XDG_RUNTIME_DIR/coven/relay.sock`) are shared. It
+serves only folders that already have `.coven/` or `.kiro/`, never `~` itself.
+A repo that has its own `coven relay up` keeps working; the hook tries the
+repo's relay first, then the machine's, then writes the local log.
+
+The dashboard has a sidebar: views (all, live, needs attention, deviations, councils) and every project, with its specs under it. `#/p/<project>` lists one
+project's sessions and shows how far each of its specs is: required leaf tasks
+done out of total, read from `tasks.md` when Kiro starts or finishes a task
+(counts only, no task text). Optional tasks (`[ ]*`) are listed apart.
+
+## Development flows (agents that coordinate a task)
+
+A flow carries one spec task from *ready* to *delivered*. **Kiro runs it**: its
+workflow engine starts each step as its own session with its own agent. Coven
+ships the agents and the recipe, records every step, and checks the result
+with no model. Design: CSD v1.3 §3.5 and §4.10.
+
+| Step | Agent | What it does |
+| :--- | :--- | :--- |
+| `ready` (gate) | Scribe | checks `_Paths:_`, `_Verify:_`, dependencies; you approve |
+| `implement` | Green Witch | does the task inside its declared paths |
+| `verify` | *none* | `coven flow run-step verify` runs the task's own check |
+| `checkpoint` | Raven | notes from the recorded events: on track, looping, off-spec |
+| `review-*`, `chair` | White Hat, Black Hat, Elf, Grey Witch | claim files; the Chair proposes |
+| `guard` | *none* | verify + scope + reproducing tests, measured; the verdict |
+| `decide` (gate) | Weaver | shows you the verdict; you choose accept, rework (≤ 2) or stop |
+| `deliver` | Herald | hand-off and pull-request text (opening the PR is yours) |
+| `close` | *none* | records the outcome |
+
+Setup, once per repository:
+
+```bash
+kiro-cli settings chat.enableWorkflows true   # off by default; a global Kiro setting
+coven hooks install                           # also points the recipe's steps at a working Python
+coven flow lint                               # agents and recipe, checked as Kiro will read them
+```
+
+Then in a new Kiro session: `kiro-cli chat --agent weaver` and ask for a flow
+on a task (for example *"start a flow on coven-relay#9"*). Answer the two
+gates in that session. Watch it with `coven flow status`, or on the dashboard
+under **Flows**. Step files stay in `.coven/flows/<flow_id>/` on your machine;
+only ids, outcomes and short claim text reach the cloud.
+
+Limits, stated: a gate answered by a human has not been tested end to end yet
+(the hook behaviour and the recipe were tested on a real Kiro run); an agent
+can end a gate by failing it, which stops the flow; Kiro asks before each
+`write` or `shell` call unless you trust the tools.
+
+## The coven board: many kiro-cli, one project
+
+Several `kiro-cli` sessions, in terminals or on machines, each run agents and
+contribute to the whole project. Each is a **member**; members **take tasks
+themselves**; the cloud refuses only collisions (a task someone holds, or
+declared paths that overlap someone's task). The web board is the shared
+whiteboard. Design: CSD v1.3 §4.11.
+
+Each member, in its **own working copy** (a clone or a `git worktree`):
+
+```bash
+coven login --cloud-url https://your-coven --token <ingest token>   # once per machine
+coven project link shop          # the same project name for every member
+coven member join ana            # this working copy's name; publishes the task list
+coven relay up --machine         # renews your claims and sends everything to the cloud
+kiro-cli chat --agent weaver     # "take work": claims the next ready task and runs its flow
+```
+
+- `coven board read` shows members, who holds what, and the whiteboard.
+- `coven board next` / `claim <spec>#<task>` take work; `release` gives it back
+  (a flow's last step does that for you; a member that goes silent loses its
+  claims after 15 minutes).
+- **Cross-review is brainstorming:** a flow asks the coven for a look; any other
+  member runs `kiro-cli chat --agent imp` to read the board and post ideas,
+  questions or reviews on that task. The author's Chair weighs them; the guard
+  never reads them, so a review can stop a task but never pass one.
+- On the web, **Coven board** shows members, the tasks as Ready, Claimed,
+  In review and Done, and the notes as a wall. You can post there too.
+
+Every task ends as a pull request a human merges. Board notes are untrusted
+text: every agent is told to read them as data, never as instructions.
 
 ## Why a local relay
 
@@ -58,8 +243,9 @@ the network can stall the agent, lose events when Wi-Fi drops, or leak a token
 into every project. So:
 
 - `coven emit` never opens a network connection: it writes to a unix socket and
-  returns in milliseconds.
-- If the relay is down, it appends straight to the SQLite outbox.
+  returns quickly (about 0.2 s measured, mostly interpreter start-up).
+- If the relay is down, it appends straight to today's `events-….jsonl`; the relay pushes the backlog
+  when it next runs.
 - The relay owns the cloud token, batches events, retries every second while the
   cloud is unreachable and sends heartbeats.
 
@@ -77,6 +263,24 @@ Run identity is **minted**, never scraped: Kiro headless mode does not emit a
 machine-readable session id, and `--list-sessions` races when two runs start in
 the same directory.
 
+## Spec tasks (`tasks.md`)
+
+Coven reads `.kiro/specs/<spec>/tasks.md` in Kiro's own format, so a spec Kiro
+writes works as-is. To get deviation warnings, declare each task's paths with a
+`_Paths:_` bullet (a sub-task without one uses its parent's):
+
+```markdown
+- [ ] 2. Implement core functionality
+  - [ ] 2.1 Implement payment client
+    - _Paths: `src/checkout/client.ts`, `src/checkout/**`_
+    - _Verify: `npm test -- client`_
+    - _Requirements: 1.2_
+```
+
+A task is identified by its spec folder and number (`coven-relay · 9`). A task
+without `_Paths:_` never raises a deviation. File names mentioned in a task's
+text are not treated as declared paths. Details: data contract §3.2.2.
+
 ## Usage is credits, not tokens
 
 Kiro reports consumption primarily in **credits** (`meteringUsage`), and per-turn
@@ -93,8 +297,12 @@ tokenizer name). The dashboard never converts credits into tokens behind your ba
 
 `COVEN_TOKENS` accepts a comma-separated list. For separate scopes set
 `COVEN_INGEST_TOKEN` (relay only) and `COVEN_READ_TOKEN` (dashboard only). With
-neither set the app uses `dev` and prints a warning at start-up. There is no user
-model and no per-project permission: one token sees the whole fleet.
+neither set the app uses `dev` and prints a warning at start-up; a persistent
+store (`COVEN_STORE=dynamo`) refuses to start with the development token. Tokens
+are compared in constant time. The bearer header is accepted everywhere; the
+`?token=` query parameter is accepted only on `/v1/stream`, because a browser
+cannot set headers on an event stream. There is no user model and no per-project
+permission: one token sees the whole fleet.
 
 ## Deploy
 
@@ -106,19 +314,29 @@ is served by the same container, so the hosted URL needs no separate static site
 ```text
 .kiro/hooks/telemetry.json   hooks that emit telemetry
 .kiro/specs/coven-relay/     requirements, design, tasks (also used for spec mapping)
-src/coven/                   relay: config, events, redaction, outbox, socket, runner
-src/coven/cloud/             FastAPI ingest, SSE, store (memory or DynamoDB)
-web/                         single-file dashboard
-scripts/seed_demo.py         demo fleet for reviewing the dashboard
+src/coven/                   relay + CLI (Python): config, events, redaction, event log, socket, runner
+server/                      Coven Cloud (Node.js, TypeScript run natively): ingest, SSE, stores, seed
+server/src/                  app (HTTP), store (memory / DynamoDB), redact, events, auth, seed
+server/test/                 node:test suites, including the jsdom dashboard test
+web/                         single-file dashboard (fleet, run room, council replay)
+docs/design/                 CSD, UX design, telemetry design & data contract
 infra/                       AWS deploy notes (ECR + App Runner + DynamoDB)
-tests/                       event mapping, redaction, outbox, ingest idempotency
+tests/                       relay: event mapping, redaction, event log, relay push logic, redaction parity
 ```
 
 ## Tests
 
 ```bash
-make test
+make test          # relay (pytest) and cloud (node --test)
+make test-relay    # Python only
+make test-cloud    # Node only: API, council, DynamoDB store (fake table), entrypoint, dashboard in jsdom
+make check         # tsc --noEmit on the server
 ```
+
+Redaction exists in both languages (the relay redacts first, the cloud again as defence in
+depth). `tests/fixtures/redaction_parity.json` is generated from the Python implementation and
+run by both suites, so the two cannot drift apart silently. The DynamoDB adapter itself is not
+tested against real AWS.
 
 The suite uses fixture hook payloads modelled on Kiro's documented hook shape. The
 `stream-json` mapping is intentionally tolerant: unknown records become a

@@ -48,11 +48,11 @@ def test_session_lifecycle():
 
 
 def test_task_triggers_carry_the_task_id():
-    payload = {"hook_event_name": "PreTaskExec", "task": {"id": "T-09"}}
+    payload = {"hook_event_name": "PreTaskExec", "task": {"id": "9"}}
     event = events.normalize_hook(payload, project_id="p", run_id="r")[0]
 
     assert event["type"] == "task_started"
-    assert event["task_id"] == "T-09"
+    assert event["task_id"] == "9"
     assert event["stage"] == "IMPLEMENT"
 
 

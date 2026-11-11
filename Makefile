@@ -1,22 +1,32 @@
-.PHONY: install test relay cloud seed seed-watch doctor
+.PHONY: install test test-relay test-cloud check relay cloud seed seed-watch doctor
 
+# Relay + CLI run on the developer machine (Python). Coven Cloud is Node.js (server/).
 install:
 	pip install -e ".[dev]"
+	cd server && npm ci
 
-test:
+test: test-relay test-cloud
+
+test-relay:
 	PYTHONPATH=src python3 -m pytest
+
+test-cloud:
+	cd server && npm test
+
+check:
+	cd server && npm run check
 
 relay:
 	PYTHONPATH=src python3 -m coven.cli relay up --foreground
 
 cloud:
-	PYTHONPATH=src COVEN_STORE=memory uvicorn coven.cloud.app:app --port 8787 --reload
+	cd server && COVEN_STORE=memory PORT=8787 node --watch src/main.ts
 
 seed:
-	PYTHONPATH=src python3 scripts/seed_demo.py --url http://127.0.0.1:8787 --token dev
+	cd server && node src/seed.ts --url http://127.0.0.1:8787 --token dev
 
 seed-watch:
-	PYTHONPATH=src python3 scripts/seed_demo.py --url http://127.0.0.1:8787 --token dev --keep-alive 300
+	cd server && node src/seed.ts --url http://127.0.0.1:8787 --token dev --keep-alive 300
 
 doctor:
 	PYTHONPATH=src python3 -m coven.cli doctor

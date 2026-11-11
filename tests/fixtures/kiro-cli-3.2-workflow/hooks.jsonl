@@ -1,0 +1,34 @@
+{"session_id": "sess_probe_1", "hook_event_name": "SessionStart", "cwd": "/tmp/cov-probe"}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "run_workflow", "tool_input": {"workflowPath": "/tmp/cov-probe/.kiro/workflows/probe.workflow.json", "workflowPrompt": null, "inputs": {"flow_dir": "/tmp/cov-probe/.coven/flows/flw_probe"}, "runLabel": null, "modelId": null, "effortLevel": null}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "run_workflow", "tool_input": {"workflowPath": "/tmp/cov-probe/.kiro/workflows/probe.workflow.json", "workflowPrompt": null, "inputs": {"flow_dir": "/tmp/cov-probe/.coven/flows/flw_probe"}, "runLabel": null, "modelId": null, "effortLevel": null}}
+{"session_id": "sess_probe_2", "hook_event_name": "SessionStart", "cwd": "/tmp/cov-probe"}
+{"session_id": "sess_probe_2", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "fs_write", "tool_input": {"path": "/tmp/cov-probe/.coven/flows/flw_probe/one.md"}}
+{"session_id": "sess_probe_2", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "fs_write", "tool_input": {"path": "/tmp/cov-probe/.coven/flows/flw_probe/one.md"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_2", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "send_message", "tool_input": {"sessionId": "parent", "sessionIds": null, "message": "Created /tmp/cov-probe/.coven/flows/flw_probe/one.md containing \"step one\".", "severity": "success"}}
+{"session_id": "sess_probe_2", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "send_message", "tool_input": {"sessionId": "parent", "sessionIds": null, "message": "Created /tmp/cov-probe/.coven/flows/flw_probe/one.md containing \"step one\".", "severity": "success"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_2", "hook_event_name": "Stop", "cwd": "/tmp/cov-probe"}
+{"session_id": "sess_probe_2", "hook_event_name": "SessionEnd", "cwd": "/tmp/cov-probe", "reason": "other"}
+{"session_id": "sess_probe_3", "hook_event_name": "SessionStart", "cwd": "/tmp/cov-probe"}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_3", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "read_file", "tool_input": {"path": "/tmp/cov-probe/.coven/flows/flw_probe/one.md", "offset": null, "limit": null}}
+{"session_id": "sess_probe_3", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "read_file", "tool_input": {"path": "/tmp/cov-probe/.coven/flows/flw_probe/one.md", "offset": null, "limit": null}}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_3", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "fs_write", "tool_input": {"path": "/tmp/cov-probe/.coven/flows/flw_probe/two.md"}}
+{"session_id": "sess_probe_3", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "fs_write", "tool_input": {"path": "/tmp/cov-probe/.coven/flows/flw_probe/two.md"}}
+{"session_id": "sess_probe_3", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "send_message", "tool_input": {"sessionId": "parent", "sessionIds": null, "message": "Read one.md and wrote 'step two' to two.md.", "severity": "success"}}
+{"session_id": "sess_probe_3", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "send_message", "tool_input": {"sessionId": "parent", "sessionIds": null, "message": "Read one.md and wrote 'step two' to two.md.", "severity": "success"}}
+{"session_id": "sess_probe_3", "hook_event_name": "Stop", "cwd": "/tmp/cov-probe"}
+{"session_id": "sess_probe_3", "hook_event_name": "SessionEnd", "cwd": "/tmp/cov-probe", "reason": "other"}
+{"session_id": "sess_probe_1", "hook_event_name": "PreToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "PostToolUse", "cwd": "/tmp/cov-probe", "tool_name": "inspect_workflow", "tool_input": {"workflowId": "wf_817291d34fd543b7"}}
+{"session_id": "sess_probe_1", "hook_event_name": "Stop", "cwd": "/tmp/cov-probe"}

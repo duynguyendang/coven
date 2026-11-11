@@ -3,535 +3,1544 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Coven — Kiro fleet telemetry</title>
+<title>Coven — Kiro sessions</title>
 <style>
+  /* UX design v2. Colour means state only: green ok, yellow attention/stale, red failure, grey unknown. */
   :root {
-    --bg: #0b0d10;
-    --panel: #12151a;
-    --panel-2: #171b22;
-    --line: #232a34;
-    --text: #e7ebf1;
-    --muted: #8b95a5;
-    --mint: #74f0c0;
-    --amber: #f3c46a;
-    --red: #ff7373;
-    --blue: #82a7ff;
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1c212b; --line: #262b36;
+    --text: #e6e9ef; --muted: #a3acbb; --faint: #8b94a3;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149; --grey: #8b949e; --blue: #79a8ff;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 14px;
-    -webkit-font-smoothing: antialiased;
-  }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
   a { color: var(--blue); text-decoration: none; }
-  code, .mono { font-family: var(--mono); }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+  .mono { font-family: var(--mono); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .hint { color: var(--muted); font-size: 12.5px; }
 
-  header {
-    display: flex; align-items: center; gap: 18px;
-    padding: 14px 22px;
-    border-bottom: 1px solid var(--line);
-    background: linear-gradient(180deg, #10141a, #0b0d10);
-    position: sticky; top: 0; z-index: 20;
-  }
-  .brand { display: flex; align-items: baseline; gap: 10px; }
-  .brand b { font-size: 18px; letter-spacing: 0.22em; font-weight: 600; }
-  .brand span { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
-  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 12px var(--mint); align-self: center; }
+  /* app shell: sidebar + workspace (UX v3) */
+  .skip { position: absolute; left: 8px; top: -40px; background: var(--panel); color: var(--text); border: 1px solid var(--blue); border-radius: 6px; padding: 6px 12px; z-index: 100; }
+  .skip:focus { top: 8px; text-decoration: none; }
+  .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+  .app.nav-closed { grid-template-columns: minmax(0, 1fr); }
+  .app.nav-closed .sidebar { display: none; }
+  .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: #12151b; border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 14px 10px; z-index: 30; }
+  .col { min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
+  .topbar { display: flex; align-items: center; gap: 12px; padding: 9px 22px; border-bottom: 1px solid var(--line); background: #12151b; position: sticky; top: 0; z-index: 20; }
+  .brand { display: flex; align-items: baseline; gap: 10px; color: var(--text); padding: 2px 8px 12px; }
+  .brand:hover { text-decoration: none; }
+  .brand b { font-size: 17px; letter-spacing: 0.22em; font-weight: 600; }
+  .brand span { color: var(--muted); font-size: 12px; }
+  .brand.mini { display: none; padding: 0; }
+  .app.nav-closed .brand.mini { display: flex; }
   .spacer { flex: 1; }
-  .pill {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
-    padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line);
-    color: var(--muted); white-space: nowrap;
+  .icon { font: inherit; font-size: 16px; line-height: 1; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+  .icon:hover { color: var(--text); border-color: #3a4252; }
+  .pill { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.ok { color: var(--green); border-color: #1d4a2a; background: #0e2015; }
+  .pill.bad { color: var(--red); border-color: #55211f; background: #231112; }
+
+  .nav-h { margin: 16px 8px 6px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  .nav-list { list-style: none; margin: 0; padding: 0; }
+  .nav-item { display: flex; align-items: center; gap: 8px; color: var(--muted); border-radius: 7px; padding: 6px 8px; font-size: 13.5px; border-left: 2px solid transparent; }
+  .nav-item:hover { background: #181c24; color: var(--text); text-decoration: none; }
+  .nav-item[aria-current="page"] { background: #141c2b; color: var(--text); border-left-color: var(--blue); }
+  .nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .count { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .count.warn { color: var(--yellow); } .count.bad { color: var(--red); }
+  .nav-row { display: flex; align-items: center; }
+  .nav-row .nav-item { flex: 1; min-width: 0; }
+  .caret-btn { font: inherit; color: var(--muted); background: transparent; border: 0; width: 22px; height: 26px; cursor: pointer; border-radius: 5px; flex: none; }
+  .caret-btn:hover { color: var(--text); background: #181c24; }
+  .caret-btn[hidden], .caret-btn.none { visibility: hidden; }
+  .nav-sub { margin: 0 0 4px 22px; padding: 0 0 0 6px; list-style: none; border-left: 1px solid var(--line); }
+  .nav-sub .nav-item { font-size: 12.5px; padding: 4px 8px; }
+  .nav-sub .nav-item .label { font-family: var(--mono); font-size: 12px; }
+  .dot.mini { width: 7px; height: 7px; }
+  .side-foot { margin-top: auto; padding-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); }
+  .side-foot .act { flex: 1; }
+  .scrim { display: none; }
+  @media (max-width: 900px) {
+    .app, .app.nav-closed { grid-template-columns: minmax(0, 1fr); }
+    .sidebar, .app.nav-closed .sidebar { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: min(280px, 86vw); transform: translateX(-102%); transition: transform 0.16s ease; box-shadow: 12px 0 30px rgba(0,0,0,0.45); }
+    .app.nav-open .sidebar { transform: none; }
+    .app.nav-open .scrim { display: block; position: fixed; inset: 0; background: rgba(8, 10, 13, 0.6); z-index: 25; }
+    .brand.mini, .app.nav-closed .brand.mini { display: flex; }
+    .topbar { padding: 9px 14px; }
   }
-  .pill.live { color: var(--mint); border-color: #1f4a3b; background: #0f211b; }
-  .pill.off { color: var(--red); border-color: #4a2323; background: #211010; }
+  @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 
-  main { padding: 18px 22px 40px; max-width: 1500px; margin: 0 auto; }
+  main { width: 100%; max-width: 1180px; margin: 0 auto; padding: 18px 24px 24px; flex: 1; }
+  footer { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px 32px; color: var(--muted); font-size: 12px; }
+  @media (max-width: 640px) { main { padding: 14px 14px 20px; } footer { padding: 0 14px 28px; } }
 
-  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
-  .stat {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
-  }
-  .stat .label { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; }
-  .stat .value { font-family: var(--mono); font-size: 22px; line-height: 1.2; }
-  .stat .foot { font-size: 11px; color: var(--muted); }
+  /* page header */
+  .page-h { margin-bottom: 14px; }
+  .crumbs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  .crumbs .sep { color: var(--faint); }
+  .page-h h1 { margin: 0; font-size: 21px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .page-h .lede { margin: 3px 0 0; color: var(--muted); font-size: 13.5px; }
 
-  h2 { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  /* toolbar */
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 12px; }
+  .toolbar input[type="search"], .toolbar select { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
+  .toolbar input[type="search"] { flex: 1 1 220px; min-width: 160px; max-width: 420px; }
+  .toolbar input::placeholder { color: var(--faint); }
+  .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+  .seg { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg .filter { border: 0; border-radius: 0; border-right: 1px solid var(--line); padding: 5px 12px; }
+  .seg .filter:last-child { border-right: 0; }
+  .result-n { color: var(--muted); font-size: 12.5px; margin-left: auto; }
 
-  .fleets { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 22px; }
-  .fleet {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
-  }
-  .fleet .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .fleet .name { font-family: var(--mono); font-size: 13px; }
-  .fleet .meta { display: flex; gap: 14px; font-size: 11px; color: var(--muted); }
-  .fleet .meta b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+  h2 { margin: 18px 0 8px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  h3 { margin: 0; font-size: 14px; font-weight: 600; }
 
-  .columns { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
-  @media (max-width: 980px) { .columns { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } }
+  .banner { border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
+  .banner.demo, .banner.replay { border-color: #55421a; background: #211b0d; color: var(--yellow); }
+  .banner.replay { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; }
+  .note { color: var(--muted); font-size: 12.5px; margin: 8px 0 12px; }
 
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  .panel-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .panel-head h2 { margin: 0; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .stat .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .stat .v { font-family: var(--mono); font-size: 22px; line-height: 1.25; }
+  .stat .v.warn { color: var(--yellow); } .stat .v.bad { color: var(--red); }
+  .stat .f { font-size: 11px; color: var(--muted); }
 
-  .runs { max-height: calc(100vh - 360px); overflow: auto; }
-  .run {
-    width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line);
-    color: inherit; padding: 11px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px;
-    font-family: var(--sans);
-  }
-  .run:hover { background: var(--panel-2); }
-  .run.active { background: #141d1b; box-shadow: inset 2px 0 0 var(--mint); }
-  .run .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .run .who { font-size: 12px; color: var(--muted); font-family: var(--mono); }
-  .run .what { font-size: 13px; }
-  .run .sub { font-size: 11px; color: var(--muted); font-family: var(--mono); display: flex; gap: 10px; }
-  .run:last-child { border-bottom: 0; }
+  .filters { display: flex; gap: 6px; margin: 4px 0 10px; flex-wrap: wrap; }
+  .filter { font: inherit; font-size: 12.5px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
+  .filter[aria-pressed="true"] { color: var(--text); border-color: var(--blue); background: #141c2b; }
 
-  .badge {
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
-    padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
-  }
-  .badge.live { color: var(--mint); border-color: #1f4a3b; background: #0f211b; }
-  .badge.stale { color: var(--amber); border-color: #4a3b1f; background: #211c10; }
-  .badge.disconnected, .badge.failed { color: var(--red); border-color: #4a2323; background: #211010; }
-  .badge.finished { color: var(--blue); border-color: #233250; background: #101726; }
+  /* project and spec cards */
+  .proj { padding: 12px 16px; margin-bottom: 14px; }
+  .proj .top { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .specs { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .specs li { display: grid; grid-template-columns: minmax(110px, 200px) minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 12.5px; }
+  @media (max-width: 640px) { .specs li { grid-template-columns: 1fr; gap: 4px; } }
+  progress { width: 100%; height: 8px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 4px; background: #232936; overflow: hidden; }
+  progress::-webkit-progress-bar { background: #232936; border-radius: 4px; }
+  progress::-webkit-progress-value { background: var(--green); border-radius: 4px; }
+  progress::-moz-progress-bar { background: var(--green); }
+  h2 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 8px; }
 
-  .detail { min-height: 420px; }
-  .detail-head { padding: 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; }
-  .detail-title { display: flex; flex-direction: column; gap: 6px; }
-  .detail-title .id { font-family: var(--mono); font-size: 15px; }
-  .detail-title .project { color: var(--muted); font-size: 12px; font-family: var(--mono); }
-  .detail-facts { display: flex; gap: 22px; flex-wrap: wrap; }
-  .fact { display: flex; flex-direction: column; gap: 3px; }
-  .fact .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-  .fact .v { font-family: var(--mono); font-size: 13px; }
+  /* session cards */
+  .sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .scard { display: block; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+  .scard:hover { text-decoration: none; border-color: #3a4252; background: var(--panel-2); }
+  .scard.attn { border-left: 3px solid var(--yellow); }
+  .scard.attn.red { border-left-color: var(--red); }
+  .scard .l1 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .scard .l2 { margin-top: 6px; font-size: 14.5px; }
+  .scard .l3, .scard .l4 { margin-top: 4px; font-size: 12.5px; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .health { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--grey); flex: none; }
+  .dot.live { background: var(--green); } .dot.stale { background: var(--yellow); } .dot.disconnected, .dot.failed { background: var(--red); }
+  .chip { font-family: var(--mono); font-size: 10.5px; padding: 1px 7px; border-radius: 4px; border: 1px solid #55421a; color: var(--yellow); background: #211b0d; }
+  .chip.red { border-color: #55211f; color: var(--red); background: #231112; }
 
-  .timeline { padding: 6px 0 12px; max-height: calc(100vh - 300px); overflow: auto; }
-  .event { display: grid; grid-template-columns: 74px 112px minmax(0, 1fr) auto; gap: 12px; padding: 9px 16px; border-bottom: 1px solid #191f27; align-items: baseline; }
-  .event:last-child { border-bottom: 0; }
-  .event .t { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-  .event .type { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--blue); }
-  .event .type.tool_call { color: var(--mint); }
-  .event .type.spec_deviation, .event .type.warning { color: var(--amber); }
-  .event .type.run_failed, .event .type.token_usage { color: var(--amber); }
-  .event .body { font-size: 12.5px; min-width: 0; overflow-wrap: anywhere; }
-  .event .body .path { font-family: var(--mono); color: var(--text); }
-  .event .body .note { color: var(--muted); }
-  .event .right { display: flex; align-items: center; gap: 8px; }
-  .event .credit { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-  .event.deviation { background: #1a170e; }
-  .event.dismissed { opacity: 0.45; }
-  .event.dismissed .body { text-decoration: line-through; }
+  .badge { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .badge.live, .badge.pass, .badge.accept { color: var(--green); border-color: #1d4a2a; background: #0e2015; }
+  .badge.stale, .badge.unknown, .badge.warn, .badge.no-consensus { color: var(--yellow); border-color: #55421a; background: #211b0d; }
+  .badge.disconnected, .badge.failed, .badge.fail, .badge.reject { color: var(--red); border-color: #55211f; background: #231112; }
+  .badge.finished, .badge.grey { color: var(--grey); }
+  .ok { color: var(--green); } .bad { color: var(--red); }
 
-  button.action {
-    background: #1c2129; color: var(--text); border: 1px solid var(--line);
-    padding: 4px 9px; border-radius: 5px; font-size: 11px; font-family: var(--mono); cursor: pointer;
-  }
-  button.action:hover { border-color: #35404e; }
-  button.action:disabled { opacity: 0.4; cursor: default; }
+  .deviation { border: 1px solid #66302d; border-left: 4px solid var(--red); background: #1f1213; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
+  .deviation .dev-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .deviation .label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); }
+  .deviation ul { margin: 10px 0 0; padding: 0; list-style: none; border-top: 1px solid #3a2022; }
+  .deviation li { padding: 6px 0; border-bottom: 1px solid #2c1a1c; font-size: 12.5px; display: flex; gap: 10px; flex-wrap: wrap; }
 
-  .empty { padding: 34px 18px; text-align: center; color: var(--muted); font-size: 13px; }
-  .empty code { color: var(--text); }
+  .devlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .devlist > .card { margin: 0; }
+  .dev-card { border-left: 3px solid var(--red); }
+  .council-card { border-left: 3px solid var(--blue); }
+  .devlist .row1 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .devlist .actions { display: flex; gap: 14px; align-items: center; margin-top: 10px; }
+  .flow-card { border-left: 3px solid var(--grey); }
+  .flow-card.waiting { border-left-color: var(--yellow); }
+  .flow-card.done { border-left-color: var(--green); }
+  .stepper { list-style: none; margin: 0; padding: 0; }
+  .stepper li { display: grid; grid-template-columns: 26px minmax(130px, 200px) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 16px; border-bottom: 1px solid #1d222b; }
+  .stepper li:last-child { border-bottom: 0; }
+  .stepper .m { font-family: var(--mono); text-align: center; }
+  .stepper .waiting { background: #1f1a10; }
+  .stepper .pending { color: var(--muted); }
+  @media (max-width: 640px) { .stepper li { grid-template-columns: 22px minmax(0, 1fr); } .stepper li > :nth-child(n+3) { grid-column: 2; } }
+  /* the coven board: members, task columns, whiteboard */
+  .members { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .member { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 170px; }
+  .member .name { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+  .member .what { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  @media (max-width: 980px) { .columns { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .columns { grid-template-columns: 1fr; } }
+  .column { background: #13161c; border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-height: 80px; }
+  .column h3 { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; display: flex; justify-content: space-between; }
+  .tcard { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
+  .tcard .id { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .tcard .who { font-size: 12px; margin-top: 4px; color: var(--muted); }
+  .tcard.mine { border-color: var(--blue); }
+  .tcard.waiting { opacity: 0.6; border-style: dashed; }
+  [data-board-project] { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
+  .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .sticky { border-radius: 4px 4px 4px 14px; padding: 10px 12px; font-size: 13.5px; line-height: 1.4; box-shadow: 0 3px 10px rgba(0,0,0,0.35); color: #1a1a1a; overflow-wrap: anywhere; }
+  .sticky .meta { font-size: 11px; opacity: 0.75; margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .sticky .kind { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
+  .sticky.idea { background: #f6e58d; } .sticky.question { background: #9fd8f4; } .sticky.answer { background: #b8f2c4; }
+  .sticky.review { background: #f5b7b1; } .sticky.note { background: #e5e7eb; } .sticky.review-wanted { background: #d7bde2; }
+  .sticky a { color: #12355b; }
+  .compose { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 8px; margin-bottom: 14px; align-items: center; }
+  @media (max-width: 760px) { .compose { grid-template-columns: 1fr 1fr; } .compose textarea { grid-column: 1 / -1; } }
+  .compose textarea, .compose select, .compose input { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; }
+  .compose textarea { min-height: 40px; resize: vertical; }
+  .gate { border: 1px solid #55421a; background: #211b0d; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; }
+  .card > .body { padding: 14px 16px; }
+  .card > .head { padding: 11px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .empty { padding: 26px 16px; color: var(--muted); font-size: 13px; }
+  .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
+  .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 12.5px; background: #12151b; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 
-  .login {
-    position: fixed; inset: 0; background: rgba(6, 8, 11, 0.82); backdrop-filter: blur(4px);
-    display: none; place-items: center; z-index: 50;
-  }
+  button.act { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--text); background: #1f2530; border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
+  button.act:hover { border-color: #3c4658; }
+  button.act:disabled { opacity: 0.45; cursor: default; }
+  button.link { font: inherit; color: var(--blue); background: none; border: 0; padding: 0; cursor: pointer; }
+
+  /* session view */
+  .summary { font-size: 16px; margin: 0 0 6px; }
+  .facts { display: flex; gap: 8px 22px; flex-wrap: wrap; color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  .facts b { color: var(--text); font-weight: 500; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tab { font: inherit; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 9px 14px; cursor: pointer; }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--blue); }
+
+  .turns { list-style: none; margin: 0; padding: 0; }
+  .turn { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+  .turn.failed { border-left: 3px solid var(--red); }
+  .turn-head { width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; border: 0; padding: 10px 16px; cursor: pointer; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .turn-head:hover { background: var(--panel-2); }
+  .turn-head .t { font-weight: 600; }
+  .turn-head .meta { color: var(--muted); font-size: 12.5px; }
+  .turn-head .title { color: var(--muted); font-size: 12.5px; flex-basis: 100%; }
+  .turn-head .caret { margin-left: auto; color: var(--muted); }
+  .rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .row { display: grid; grid-template-columns: 66px 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 7px 16px; border-bottom: 1px solid #1d222b; width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; border-left: 0; border-right: 0; border-top: 0; cursor: pointer; }
+  .rows li:last-child .row { border-bottom: 0; }
+  .rows > li { position: relative; }
+  .row-act { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
+  .row:hover { background: var(--panel-2); }
+  .row .time { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .row .mark { font-family: var(--mono); text-align: center; }
+  .row .what { min-width: 0; overflow-wrap: anywhere; }
+  .row .what .sub { display: block; font-size: 12px; color: var(--muted); }
+  .row .side { display: flex; gap: 8px; align-items: baseline; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .row.fail { background: #1d1213; }
+  .row.dev { background: #1f1a10; }
+  .row.fresh { animation: fresh 1.6s ease-out; }
+  @keyframes fresh { from { background: #1d2c40; } to { background: transparent; } }
+  @media (prefers-reduced-motion: reduce) { .row.fresh { animation: none; } }
+  @media (max-width: 640px) { .row { grid-template-columns: 56px 18px minmax(0, 1fr); } .row .side { grid-column: 3; } }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 12px; border-bottom: 1px solid #1d222b; font-size: 13px; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); text-align: right; }
+
+  /* council (kept from v1.1) */
+  .round { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .claim { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 6px 16px; padding: 12px 16px; border-bottom: 1px solid #1d222b; }
+  .claim:last-child { border-bottom: 0; }
+  @media (max-width: 760px) { .claim { grid-template-columns: 1fr; } }
+  .claim.uncounted { opacity: 0.65; }
+  .claim .who { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+  .persona { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line); background: #1d222b; }
+  .persona.sa { border-color: #4a3f66; color: #c8b8f5; } .persona.dev { border-color: #2f4864; color: #a7c7f5; }
+  .persona.tester { border-color: #2c5a3a; color: #9ae0ae; } .persona.red-team { border-color: #66302d; color: #f5a8a3; }
+  .persona.brainstorm { border-color: #66511f; color: #f0cd8a; } .persona.chair { border-color: #4a505c; }
+  .evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .ev-link { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--blue); background: #131820; border: 1px solid #243044; border-radius: 4px; padding: 2px 7px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+  .note-uncounted { font-family: var(--mono); font-size: 11px; color: var(--grey); margin-top: 4px; }
+  .decision { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; }
+  .dissent { border-left: 3px solid var(--red); background: #1b1213; border-radius: 4px; padding: 8px 12px; margin-top: 10px; font-size: 13px; }
+  .dissent .who { font-size: 11px; font-family: var(--mono); color: var(--red); margin-bottom: 3px; }
+  .checks { list-style: none; margin: 8px 0; padding: 0; }
+  .checks li { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; font-size: 13px; }
+  .checks .pass .m { color: var(--green); } .checks .fail .m { color: var(--red); } .checks .unknown .m { color: var(--yellow); }
+  .disagree { border: 1px solid #66302d; background: #1f1213; border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
+
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: #12151b; border-left: 1px solid var(--line); z-index: 40; display: none; flex-direction: column; box-shadow: -12px 0 30px rgba(0,0,0,0.4); }
+  .drawer.open { display: flex; }
+  .drawer .dh { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .drawer .dn { padding: 8px 16px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .drawer pre { margin: 0; padding: 14px 16px; overflow: auto; flex: 1; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .login { position: fixed; inset: 0; background: rgba(8, 10, 13, 0.85); display: none; place-items: center; z-index: 60; }
   .login.show { display: grid; }
   .login form { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: min(420px, 92vw); display: flex; flex-direction: column; gap: 10px; }
   .login h1 { margin: 0; font-size: 15px; letter-spacing: 0.18em; }
-  .login p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .login p { margin: 0; color: var(--muted); font-size: 12.5px; }
   .login input { background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 9px 10px; border-radius: 6px; font-family: var(--mono); font-size: 13px; }
-  .login button { background: var(--mint); color: #04211a; border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-
-  .toast { position: fixed; bottom: 18px; right: 18px; background: #211010; border: 1px solid #4a2323; color: var(--red); padding: 9px 12px; border-radius: 7px; font-size: 12px; display: none; z-index: 60; }
+  .login button { background: var(--green); color: #06210d; border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  .login .error { color: var(--red); font-size: 12.5px; }
+  .toast { position: fixed; bottom: 16px; right: 16px; background: #231112; border: 1px solid #55211f; color: var(--red); padding: 9px 12px; border-radius: 7px; font-size: 12.5px; display: none; z-index: 70; }
   .toast.show { display: block; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
 <body>
-<header>
-  <div class="brand"><span class="dot"></span><b>COVEN</b><span>Kiro fleet telemetry</span></div>
-  <div class="spacer"></div>
-  <span id="stream-pill" class="pill">CONNECTING</span>
-  <span class="pill" id="org-pill">MONITORING ONLY</span>
-</header>
-
-<main>
-  <div class="stats">
-    <div class="stat"><span class="label">Projects</span><span class="value" id="s-projects">0</span><span class="foot">linked repos</span></div>
-    <div class="stat"><span class="label">Live runs</span><span class="value" id="s-live">0</span><span class="foot">heartbeat under 15s</span></div>
-    <div class="stat"><span class="label">Credits burned</span><span class="value" id="s-credits">0.00</span><span class="foot">reported by Kiro</span></div>
-    <div class="stat"><span class="label">Events ingested</span><span class="value" id="s-events">0</span><span class="foot">all time, this process</span></div>
+<a class="skip" href="#main">Skip to content</a>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="Sidebar">
+    <a class="brand" href="#/" aria-label="Coven, all sessions"><b>COVEN</b><span>Kiro sessions</span></a>
+    <nav id="nav" aria-label="Main"></nav>
+    <div class="side-foot">
+      <button class="act" id="nav-hide" type="button">Hide sidebar</button>
+      <button class="act" id="sign-out" type="button">Sign out</button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <div class="col">
+    <header class="topbar">
+      <button class="icon" id="menu" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Show or hide the sidebar">☰</button>
+      <a class="brand mini" href="#/" aria-label="Coven, all sessions"><b>COVEN</b></a>
+      <div class="spacer"></div>
+      <span id="stream-pill" class="pill" role="status">CONNECTING</span>
+    </header>
+    <main id="main" tabindex="-1"><div class="empty">Loading…</div></main>
+    <footer>
+      Coven records tool calls after they happen: intent, programs, exit codes, file paths and sizes. Never output, file contents or command arguments. It never edits the repo.
+    </footer>
   </div>
+</div>
 
-  <h2>Fleet</h2>
-  <section class="fleets" id="fleets">
-    <div class="empty">No projects yet. Link one with <code>coven project link &lt;id&gt;</code>.</div>
-  </section>
-
-  <div class="columns">
-    <section class="panel">
-      <div class="panel-head"><h2>Runs</h2><span class="pill" id="run-count">0</span></div>
-      <div class="runs" id="runs">
-        <div class="empty">Waiting for a run.</div>
-      </div>
-    </section>
-
-    <section class="panel detail" id="detail">
-      <div class="empty">Select a run to see its event timeline.</div>
-    </section>
-  </div>
-</main>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title" tabindex="-1">
+  <div class="dh"><h3 id="drawer-title">Detail</h3><button class="act" id="drawer-close" type="button">close (esc)</button></div>
+  <div class="dn">The stored, redacted record. Output, file contents and command arguments are never recorded.</div>
+  <pre id="drawer-body"></pre>
+</aside>
 
 <div class="login" id="login">
   <form id="login-form">
     <h1>COVEN</h1>
-    <p>Read token for this Coven Cloud. The development server accepts <code>dev</code>.</p>
-    <input id="token-input" type="password" autocomplete="off" placeholder="token" aria-label="Access token" />
+    <p>Read token for this Coven Cloud. A development server accepts <code>dev</code>.</p>
+    <p class="error" id="login-error" hidden>Token rejected.</p>
+    <label class="sr" for="token-input">Access token</label>
+    <input id="token-input" type="password" autocomplete="off" placeholder="token" />
     <button type="submit">Connect</button>
-    <p>Tokens are kept in this browser only and sent as a bearer header. The demo stream URL also carries it once.</p>
+    <p>The token stays in this browser and is sent as a bearer header. The live stream carries it once as a query parameter, because a browser cannot set headers on an event stream.</p>
   </form>
 </div>
-
-<div class="toast" id="toast" role="status"></div>
+<div class="toast" id="toast" role="alert"></div>
 
 <script>
 (() => {
   "use strict";
 
+  const UI_KEY = "coven_ui";
+  const UI_DEFAULT = { sort: "attention", group: true, nav: true, open: [] };
+  function loadUi() {
+    try { return { ...UI_DEFAULT, ...JSON.parse(localStorage.getItem(UI_KEY) || "{}") }; } catch { return { ...UI_DEFAULT }; }
+  }
+  const saveUi = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(state.ui)); } catch { /* private mode: keep it for this tab only */ } };
+
   const state = {
     token: "",
-    projects: [],
     runs: [],
-    selected: null,
+    projects: [],          // from /v1/projects?runs=0: spec progress per project
+    lastList: "#/",        // the list route you came from, so "back" returns to exactly it
+    lastListRoute: null,
+    query: "",             // search text on list pages (not persisted)
+    ui: loadUi(),          // sort, grouping, sidebar state: remembered in this browser
+    deviations: [],
+    councils: [],
+    flows: [],             // derived flows (contract §9.5); the Flows place appears only when there are some
+    board: null,           // GET /v1/board for the project on screen
+    boardProject: null,
+    route: { view: "sessions", runId: null, tab: "turns", councilId: null, project: null, spec: null, filter: "all" },
+    run: null,
     events: [],
-    source: null,
+    council: null,
+    expanded: new Map(),   // "<runId>:<turn index>" -> boolean, set by the user
+    seen: new Set(),       // event ids already rendered, to highlight new ones
+    items: [],             // events behind clickable rows (drawer)
+    evidence: [],          // evidence items behind council links
+    expandDeviations: false,
     refreshTimer: null,
-    lastRefresh: 0,
+    source: null,
   };
 
+  const WRITE_TOOL = /(write|edit|append|replace|delete|create)/i;
+  const PERSONAS = { "elder-witch": "Elder Witch", "green-witch": "Green Witch", "white-hat": "White Hat Witch", "black-hat": "Black Hat Witch", "elf": "Elf", "grey-witch": "Grey Witch" };
+  const ROLE = { sa: "SA", dev: "Dev", tester: "Tester", "red-team": "Red Team", brainstorm: "Brainstorm", chair: "Senior Kiro · Chair" };
+  const COUNCIL_TYPES = new Set(["council_opened", "claim_proposed", "claim_challenged", "test_result", "verify_result", "chair_summary", "chair_proposal", "guard_verdict", "council_closed"]);
+
+  /* ---------------------------------------------------------------- helpers */
   const $ = (id) => document.getElementById(id);
-  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const short = (id, n = 10) => (id || "").length > n ? id.slice(0, n) : (id || "");
-  const num = (value, digits = 2) => Number(value || 0).toFixed(digits);
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const cls = (v) => String(v || "unknown").toLowerCase().replace(/[^a-z-]/g, "");
+  const short = (id, n = 14) => (String(id || "").length > n ? String(id).slice(0, n) + "…" : String(id || ""));
+  const num = (v, d = 2) => Number(v || 0).toFixed(d);
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const byTime = (a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : (a.seq || 0) - (b.seq || 0));
 
   function toast(message) {
     const el = $("toast");
     el.textContent = message;
     el.classList.add("show");
-    clearTimeout(el._timer);
-    el._timer = setTimeout(() => el.classList.remove("show"), 4200);
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove("show"), 4500);
   }
+  function clock(ts) {
+    const d = new Date(ts || "");
+    return Number.isNaN(d.getTime()) ? "--:--:--" : d.toLocaleTimeString([], { hour12: false });
+  }
+  function secondsSince(ts) {
+    const t = Date.parse(ts || "");
+    return Number.isNaN(t) ? null : Math.max(0, (Date.now() - t) / 1000);
+  }
+  function ago(seconds) {
+    if (seconds == null) return "never";
+    if (seconds < 60) return `${Math.round(seconds)} s ago`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+    if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`;
+    return `${Math.round(seconds / 86400)} d ago`;
+  }
+  function span(seconds) {
+    if (seconds == null || seconds < 0) return "";
+    if (seconds < 60) return `${Math.round(seconds)} s`;
+    if (seconds < 3600) { const m = Math.floor(seconds / 60), s = Math.round(seconds % 60); return s ? `${m} min ${s} s` : `${m} min`; }
+    const h = Math.floor(seconds / 3600), m = Math.round((seconds % 3600) / 60);
+    return m ? `${h} h ${m} min` : `${h} h`;
+  }
+  function size(bytes) {
+    if (bytes == null) return "";
+    const b = Number(bytes);
+    return b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
+  }
+  // A ticking "x s ago" label, refreshed every second without a request.
+  const agoTag = (ts) => (ts ? `<time data-ago="${esc(ts)}" datetime="${esc(ts)}">${esc(ago(secondsSince(ts)))}</time>` : "never");
 
   function tokenFromUrl() {
-    const params = new URLSearchParams(location.search);
-    const fromQuery = params.get("token");
-    const fromHash = location.hash.startsWith("#token=") ? decodeURIComponent(location.hash.slice(7)) : "";
-    if (fromHash) history.replaceState(null, "", location.pathname + location.search);
-    return fromQuery || fromHash || localStorage.getItem("coven_token") || "";
+    const hash = location.hash.startsWith("#token=") ? decodeURIComponent(location.hash.slice(7)) : "";
+    if (hash) history.replaceState(null, "", location.pathname + location.search);
+    return hash || new URLSearchParams(location.search).get("token") || localStorage.getItem("coven_token") || "";
   }
-
   async function api(path, options = {}) {
-    const response = await fetch(path, {
-      ...options,
-      headers: {
-        "Authorization": `Bearer ${state.token}`,
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
-    });
+    const response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${state.token}`, "Content-Type": "application/json", ...(options.headers || {}) } });
     if (response.status === 401) {
+      $("login-error").hidden = !state.token;
       $("login").classList.add("show");
       throw new Error("unauthorised");
     }
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return response.json();
   }
+  const quiet = (error) => { if (error.message !== "unauthorised") toast(`request failed: ${error.message}`); };
 
-  async function load() {
+  /* ---------------------------------------------------------------- routing */
+  const FILTERS = ["all", "live", "attention", "finished"];
+  function parseRoute() {
+    const [path, query = ""] = location.hash.replace(/^#\/?/, "").split("?");
+    const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
+    const f = new URLSearchParams(query).get("f");
+    const base = { runId: null, tab: "turns", councilId: null, project: null, spec: null, filter: FILTERS.includes(f) ? f : "all" };
+    if (parts[0] === "run" && parts[1]) {
+      const tab = ["turns", "files", "council"].includes(parts[2]) ? parts[2] : "turns";
+      return { ...base, view: "session", runId: parts[1], tab, councilId: tab === "council" ? parts[3] || null : null, filter: "all" };
+    }
+    if (parts[0] === "deviations") return { ...base, view: "deviations", filter: "all" };
+    if (parts[0] === "flows") return { ...base, view: "flows", filter: "all" };
+    if (parts[0] === "board") return { ...base, view: "board", project: parts[1] || null, filter: "all" };
+    if (parts[0] === "flow" && parts[1]) return { ...base, view: "flow", flowId: parts[1], filter: "all" };
+    if (parts[0] === "councils") return { ...base, view: "councils", filter: "all" };
+    if (parts[0] === "p" && parts[1]) {
+      return { ...base, view: "sessions", project: parts[1], spec: parts[2] === "s" && parts[3] ? parts[3] : null };
+    }
+    return { ...base, view: "sessions" };
+  }
+  const go = (hash) => { location.hash = hash; };
+  /** The hash of a list page. The filter lives in the URL so it survives reload and Back. */
+  function listHash({ project = null, spec = null, filter = "all" } = {}) {
+    const path = project ? `#/p/${encodeURIComponent(project)}${spec ? `/s/${encodeURIComponent(spec)}` : ""}` : "#/";
+    return filter && filter !== "all" ? `${path}?f=${filter}` : path;
+  }
+  // Where "back" goes: the exact list you came from (project, spec, filter and all).
+  const sessionsHash = () => state.lastList || "#/";
+  function listLabel(route) {
+    if (!route) return "Sessions";
+    if (route.view === "deviations") return "Deviations";
+    if (route.view === "councils") return "Councils";
+    if (route.view === "flows") return "Flows";
+    if (route.view === "board") return "Coven board";
+    if (route.view === "flow") return "Flow";
+    return route.spec ? route.spec : route.project ? projectName(route.project) : "Sessions";
+  }
+
+  async function onRoute() {
+    const next = parseRoute();
+    const prev = state.route;
+    const changed = next.runId !== prev.runId || next.view !== prev.view || next.project !== prev.project || next.spec !== prev.spec || next.flowId !== prev.flowId;
+    state.route = next;
+    if (next.project && !state.ui.open.includes(next.project)) { state.ui.open = [...state.ui.open, next.project]; saveUi(); }
+    if (next.view !== "session") {
+      state.lastList = location.hash && location.hash !== "#" ? location.hash : "#/";
+      state.lastListRoute = next;
+    }
+    closeNav();
+    if (next.view === "board") { if (changed) state.board = null; await loadBoard(); }
+    if (next.view === "session") {
+      if (changed) { state.run = null; state.events = []; state.council = null; state.seen = new Set(); render(); }
+      await loadSession();
+    }
+    render({ keepScroll: !changed });
+    if (changed) {
+      if (window.scrollY > 0) window.scrollTo(0, 0);
+      $("main").focus({ preventScroll: true });
+    }
+  }
+
+  /* ------------------------------------------------------------------ data */
+  async function loadFleet() {
     if (!state.token) return;
     try {
-      const [projects, runs] = await Promise.all([
-        api("/v1/projects"),
-        api("/v1/runs"),
+      const [runs, deviations, councils, projects, flows] = await Promise.all([
+        api("/v1/runs"), api("/v1/deviations"), api("/v1/councils"), api("/v1/projects?runs=0"), api("/v1/flows"),
       ]);
-      state.projects = projects.projects || [];
+      state.flows = flows.flows || [];
       state.runs = runs.runs || [];
-      state.lastRefresh = Date.now();
-      renderStats();
-      renderFleets();
-      renderRuns();
-      if (state.selected) {
-        const fresh = state.runs.find((run) => run.run_id === state.selected);
-        if (fresh) renderDetailHead(fresh);
-      } else if (state.runs.length) {
-        select(state.runs[0].run_id);
+      state.projects = projects.projects || [];
+      state.deviations = deviations.deviations || [];
+      state.councils = councils.councils || [];
+      if (state.route.view === "session" && state.run) {
+        const fresh = state.runs.find((r) => r.run_id === state.run.run_id);
+        if (fresh) state.run = fresh;
       }
+      render({ keepScroll: true });
+    } catch (error) { quiet(error); }
+  }
+
+  function defaultBoardProject() {
+    if (state.route.view === "board" && state.route.project) return state.route.project;
+    if (state.boardProject) return state.boardProject;
+    const named = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
+    return named[0] || null;
+  }
+  async function loadBoard() {
+    const project = defaultBoardProject();
+    if (!project) { state.board = null; return; }
+    try {
+      state.board = await api(`/v1/board?project_id=${encodeURIComponent(project)}`);
+      state.boardProject = project;
+    } catch (error) { quiet(error); }
+  }
+
+  async function loadSession() {
+    try {
+      const payload = await api(`/v1/runs/${encodeURIComponent(state.route.runId)}`);
+      state.run = payload.run;
+      state.events = (payload.events || []).slice().sort(byTime);
     } catch (error) {
-      if (error.message !== "unauthorised") toast(`refresh failed: ${error.message}`);
-    }
-  }
-
-  function renderStats() {
-    const live = state.runs.filter((run) => run.health === "LIVE").length;
-    const credits = state.runs.reduce((sum, run) => sum + Number(run.credits || 0), 0);
-    const events = state.runs.reduce((sum, run) => sum + Number(run.events || 0), 0);
-    $("s-projects").textContent = state.projects.length;
-    $("s-live").textContent = live;
-    $("s-credits").textContent = num(credits, 2);
-    $("s-events").textContent = events;
-    $("run-count").textContent = state.runs.length;
-  }
-
-  function renderFleets() {
-    const host = $("fleets");
-    if (!state.projects.length) {
-      host.innerHTML = '<div class="empty">No projects yet. Link one with <code>coven project link &lt;id&gt;</code>.</div>';
+      if (String(error.message).startsWith("404")) { toast("That session does not exist."); go(sessionsHash()); return; }
+      quiet(error);
       return;
     }
-    host.innerHTML = state.projects.map((project) => {
-      const runs = project.runs_detail || [];
-      const live = runs.filter((run) => run.health === "LIVE").length;
-      const last = runs.length ? describeWhen(runs[0]) : "no runs yet";
-      return `<article class="fleet">
-        <div class="top">
-          <span class="name">${esc(project.project_id)}</span>
-          <span class="badge ${live ? "live" : "finished"}">${live ? "LIVE" : "IDLE"}</span>
-        </div>
-        <div class="meta">
-          <span><b>${project.runs || 0}</b> runs</span>
-          <span><b>${num(project.credits, 2)}</b> credits</span>
-        </div>
-        <div class="meta"><span>${esc(last)}</span></div>
-      </article>`;
-    }).join("");
+    await loadCouncil();
   }
 
-  function describeWhen(run) {
-    if (!run) return "no runs yet";
-    if (run.health === "LIVE") return `active in ${esc(run.stage || "run")}`;
-    const age = run.age_seconds;
-    if (age == null) return run.health.toLowerCase();
-    if (age < 60) return `${Math.round(age)}s ago`;
-    if (age < 3600) return `${Math.round(age / 60)}m ago`;
-    return `${Math.round(age / 3600)}h ago`;
+  const councilsFor = (run) => state.councils.filter((c) => run && c.project_id === run.project_id);
+
+  async function loadCouncil() {
+    const list = councilsFor(state.run);
+    let id = state.route.councilId;
+    if (!id || !list.some((c) => c.council_id === id)) id = list.length ? list[0].council_id : null;
+    if (!id) { state.council = null; return; }
+    try { state.council = await api(`/v1/councils/${encodeURIComponent(id)}`); } catch (error) { quiet(error); }
   }
 
-  function renderRuns() {
-    const host = $("runs");
-    if (!state.runs.length) {
-      host.innerHTML = '<div class="empty">Waiting for a run. Start Kiro with <code>coven run -- kiro-cli chat …</code>.</div>';
-      return;
+  /* ---------------------------------------------------------------- render */
+  function viewHtml() {
+    switch (state.route.view) {
+      case "session": return sessionView();
+      case "deviations": return deviationsView();
+      case "councils": return councilsView();
+      case "flows": return flowsView();
+      case "board": return boardView();
+      case "flow": return flowView();
+      default: return sessionsView();
     }
-    host.innerHTML = state.runs.map((run) => {
-      const active = run.run_id === state.selected ? " active" : "";
-      const health = String(run.health || "unknown").toLowerCase();
-      return `<button class="run${active}" data-run="${esc(run.run_id)}">
-        <div class="row">
-          <span class="who">${esc(run.project_id)}</span>
-          <span class="badge ${esc(health)}">${esc(run.health || "UNKNOWN")}</span>
-        </div>
-        <div class="what mono">${esc(short(run.run_id, 18))}…</div>
-        <div class="sub">
-          <span>${esc(run.stage || "—")}</span>
-          <span>${esc(run.task_id || "no task")}</span>
-          <span>${num(run.credits, 2)} cr</span>
-          <span>${run.events || 0} ev</span>
-        </div>
-      </button>`;
-    }).join("");
-    host.querySelectorAll("[data-run]").forEach((button) => {
-      button.addEventListener("click", () => select(button.dataset.run));
+  }
+  function render({ keepScroll = false } = {}) {
+    const main = $("main"), nav = $("nav"), side = $("sidebar");
+    const scroll = window.scrollY, sideScroll = side.scrollTop;
+    const active = document.activeElement;
+    const focus = active && active.dataset && active.dataset.key
+      ? { key: active.dataset.key, start: active.selectionStart, end: active.selectionEnd } : null;
+    state.items = [];
+    state.evidence = [];
+    nav.innerHTML = sidebarHtml();
+    main.innerHTML = viewHtml();
+    wire(nav);
+    wire(main);
+    side.scrollTop = sideScroll;
+    if (keepScroll && window.scrollY !== scroll) window.scrollTo(0, scroll);
+    if (focus) {
+      const quoted = window.CSS && CSS.escape ? CSS.escape(focus.key) : focus.key.replace(/["\\]/g, "\\$&");
+      const again = document.querySelector(`[data-key="${quoted}"]`);
+      if (again) {
+        again.focus({ preventScroll: true });
+        if (focus.start != null && typeof again.setSelectionRange === "function") {
+          try { again.setSelectionRange(focus.start, focus.end); } catch { /* not a text control */ }
+        }
+      }
+    }
+  }
+
+  const isSeeded = () => state.councils.some((c) => c.mode === "seeded") || state.deviations.some((d) => d.source === "seed")
+    || (state.route.view === "session" && state.events.some((e) => e.source === "seed"));
+  const demoBanner = () => (isSeeded()
+    ? '<div class="banner demo">DEMO DATA — some sessions below are seeded examples, not real Kiro runs (they carry <code>source: "seed"</code>).</div>' : "");
+
+  /* -------------------------------------------------------- screen 1: sessions */
+  const isFailure = (run) => run.attention && (run.attention.includes("failing") || run.attention.includes("repeat failure"));
+  function rank(run) { // attention first, then live, then most recent
+    return [run.attention && run.attention.length ? 0 : 1, run.health === "LIVE" ? 0 : 1];
+  }
+  function sortedRuns(runs) {
+    return runs.slice().sort((a, b) => {
+      const ra = rank(a), rb = rank(b);
+      if (ra[0] !== rb[0]) return ra[0] - rb[0];
+      if (ra[1] !== rb[1]) return ra[1] - rb[1];
+      const ta = a.last_event_at || "", tb = b.last_event_at || "";
+      return ta < tb ? 1 : ta > tb ? -1 : 0;
     });
   }
 
-  async function select(runId) {
-    if (!runId) return;
-    state.selected = runId;
-    renderRuns();
-    try {
-      const payload = await api(`/v1/runs/${encodeURIComponent(runId)}`);
-      state.events = payload.events || [];
-      renderDetail(payload.run);
-    } catch (error) {
-      if (error.message !== "unauthorised") toast(`run load failed: ${error.message}`);
+  /* ------------------------------------------------------- projects and specs */
+  const specsOf = (projectId) => ((state.projects.find((p) => p.project_id === projectId) || {}).specs) || [];
+  function specSummary(s) {
+    const n = (v) => Math.max(0, Math.trunc(Number(v) || 0));
+    return [`${n(s.done)}/${n(s.total)} tasks done`, n(s.in_progress) ? `${n(s.in_progress)} in progress` : "",
+      n(s.queued) ? `${n(s.queued)} queued` : "", n(s.optional) ? `${n(s.optional)} optional` : ""].filter(Boolean).join(" · ");
+  }
+  const specHash = (project, spec) => listHash({ project, spec });
+  function specList(specs, project) {
+    if (!specs.length) return "";
+    return `<ul class="specs">${specs.map((s) => `<li><a class="mono" href="${specHash(project, s.spec)}" data-key="spec-${esc(s.spec)}">${esc(s.spec)}</a>
+      <progress max="${Math.max(1, Number(s.total) || 0)}" value="${Math.max(0, Number(s.done) || 0)}" aria-label="${esc(s.spec)}: ${esc(specSummary(s))}"></progress>
+      <span class="hint">${esc(specSummary(s))}</span></li>`).join("")}</ul>`;
+  }
+  const projectName = (id) => (id === "unlinked" ? "unlinked" : id);
+  const hasAttention = (r) => Boolean(r.attention && r.attention.length);
+  function projectStats(projectId) {
+    const runs = state.runs.filter((r) => r.project_id === projectId);
+    const last = runs.map((r) => r.last_event_at || "").sort().pop() || null;
+    return { sessions: runs.length, live: runs.filter((r) => r.health === "LIVE").length, attention: runs.filter(hasAttention).length, last };
+  }
+  function projectOverview(projectId) {
+    const specs = specsOf(projectId);
+    return `<section class="card proj" aria-label="Specs of ${esc(projectName(projectId))}">
+      <div class="top"><h3>Specs</h3><span class="hint">read from <span class="mono">tasks.md</span> when Kiro starts or finishes a task</span></div>
+      ${specs.length ? specList(specs, projectId)
+        : '<p class="hint" style="margin:8px 0 0">No spec progress yet. It appears when Kiro starts or finishes a task of a spec in this project.</p>'}
+    </section>`;
+  }
+  function specCard(projectId, name) {
+    const s = specsOf(projectId).find((x) => x.spec === name);
+    if (!s) {
+      return `<section class="card proj"><p class="hint" style="margin:0">No progress reported for <span class="mono">${esc(name)}</span> yet. It appears when Kiro starts or finishes one of its tasks.</p></section>`;
     }
+    return `<section class="card proj" aria-label="Spec ${esc(name)}">
+      <progress class="big" max="${Math.max(1, Number(s.total) || 0)}" value="${Math.max(0, Number(s.done) || 0)}" aria-label="${esc(name)}: ${esc(specSummary(s))}"></progress>
+      <div class="top" style="margin-top:8px"><b>${esc(specSummary(s))}</b><span class="hint">updated ${agoTag(s.updated_at)}</span></div>
+      <p class="hint" style="margin:6px 0 0">Required leaf tasks only; optional tasks are counted apart. The sessions below are the ones whose latest task belongs to this spec.</p>
+    </section>`;
   }
 
-  function renderDetailHead(run) {
-    if (!state.selected || run.run_id !== state.selected) return;
-    const head = document.querySelector(".detail-head");
-    if (!head) { renderDetail(run); return; }
-    head.outerHTML = detailHead(run);
-    bindDismiss();
-  }
+  /* ----------------------------------------------------------------- sidebar */
+  function sidebarHtml() {
+    const r = state.route, runs = state.runs;
+    const live = runs.filter((x) => x.health === "LIVE").length;
+    const attention = runs.filter(hasAttention).length;
+    const onList = r.view === "sessions" && !r.project;
+    const boardProject = defaultBoardProject();
+    const item = (href, key, label, n, tone, current) => `<li><a class="nav-item" href="${href}" data-key="nav-${esc(key)}"${current ? ' aria-current="page"' : ""}>
+      <span class="label">${esc(label)}</span> ${n == null ? "" : `<span class="count ${n && tone ? tone : ""}">${n}</span>`}</a></li>`;
+    const views = [
+      boardProject ? item(`#/board/${encodeURIComponent(boardProject)}`, "board", "Coven board", null, "", r.view === "board") : "",
+      item("#/", "all", "All sessions", runs.length, "", onList && r.filter === "all"),
+      item("#/?f=live", "live", "Live", live, "", onList && r.filter === "live"),
+      item("#/?f=attention", "attention", "Needs attention", attention, "warn", onList && r.filter === "attention"),
+      item("#/deviations", "deviations", "Deviations", state.deviations.length, "warn", r.view === "deviations"),
+      state.councils.length ? item("#/councils", "councils", "Councils", state.councils.length, "", r.view === "councils") : "",
+      state.flows.length ? item("#/flows", "flows", "Flows", state.flows.filter((f) => f.waiting_for).length || state.flows.length,
+        state.flows.some((f) => f.waiting_for) ? "warn" : "", r.view === "flows" || r.view === "flow") : "",
+    ].join("");
 
-  function detailHead(run) {
-    const usage = run.usage_source ? `<div class="fact"><span class="k">Usage source</span><span class="v">${esc(run.usage_source)}</span></div>` : "";
-    return `<div class="detail-head">
-      <div class="detail-title">
-        <span class="id">${esc(run.run_id)}</span>
-        <span class="project">${esc(run.project_id)} · started ${esc(run.started_at || "—")}</span>
-      </div>
-      <div class="detail-facts">
-        <div class="fact"><span class="k">State</span><span class="v"><span class="badge ${esc(String(run.health).toLowerCase())}">${esc(run.health)}</span></span></div>
-        <div class="fact"><span class="k">Stage</span><span class="v">${esc(run.stage || "—")}</span></div>
-        <div class="fact"><span class="k">Task</span><span class="v">${esc(run.task_id || "—")}</span></div>
-        <div class="fact"><span class="k">Credits</span><span class="v">${num(run.credits, 2)}</span></div>
-        <div class="fact"><span class="k">Tokens</span><span class="v">${run.tokens_in || run.tokens_out ? `${run.tokens_in || 0} in / ${run.tokens_out || 0} out` : "not reported"}</span></div>
-        ${usage}
-      </div>
-    </div>`;
-  }
-
-  function renderDetail(run) {
-    const host = $("detail");
-    host.innerHTML = `${detailHead(run)}<div class="timeline" id="timeline">${timeline(state.events)}</div>`;
-    bindDismiss();
-  }
-
-  function timeline(events) {
-    if (!events.length) return '<div class="empty">No events yet. The hook may be waiting for the first tool call.</div>';
-    return events.map((event) => {
-      const payload = event.payload || {};
-      const type = String(event.type || "event");
-      const deviation = type === "spec_deviation";
-      const dismissed = Boolean(event.dismissed);
-      const credit = event.usage && event.usage.credits ? `<span class="credit">${num(event.usage.credits, 3)} cr</span>` : "";
-      const dismiss = deviation && !dismissed
-        ? `<button class="action" data-dismiss="${esc(event.event_id)}">dismiss</button>`
-        : "";
-      return `<div class="event ${deviation ? "deviation" : ""} ${dismissed ? "dismissed" : ""}">
-        <span class="t">${esc(clock(event.ts))}</span>
-        <span class="type ${esc(type)}">${esc(type.replace(/_/g, " "))}</span>
-        <span class="body">${summary(type, payload)}</span>
-        <span class="right">${credit}${dismiss}</span>
-      </div>`;
+    const ids = [...new Set(runs.map((x) => x.project_id))].sort();
+    const open = new Set(state.ui.open);
+    const projects = ids.map((id) => {
+      const stats = projectStats(id), specs = specsOf(id);
+      const here = r.project === id;
+      const expanded = open.has(id) && specs.length > 0;
+      const subs = expanded ? `<ul class="nav-sub" aria-label="Specs of ${esc(id)}">${specs.map((sp) => `<li>
+        <a class="nav-item" href="${specHash(id, sp.spec)}" data-key="nav-s-${esc(id)}-${esc(sp.spec)}"${here && r.spec === sp.spec ? ' aria-current="page"' : ""}>
+        <span class="label">${esc(sp.spec)}</span> <span class="count">${Number(sp.done) || 0}/${Number(sp.total) || 0}</span></a></li>`).join("")}</ul>` : "";
+      return `<li><div class="nav-row">
+        <button class="caret-btn ${specs.length ? "" : "none"}" type="button" data-caret="${esc(id)}" aria-expanded="${expanded}" aria-label="Specs of ${esc(id)}" ${specs.length ? "" : 'tabindex="-1" aria-hidden="true"'}>${expanded ? "▾" : "▸"}</button>
+        <a class="nav-item" href="${listHash({ project: id })}" data-key="nav-p-${esc(id)}"${here && !r.spec ? ' aria-current="page"' : ""}>
+          <span class="dot mini ${stats.live ? "live" : ""}" aria-hidden="true"></span>
+          <span class="label">${esc(projectName(id))}</span>
+          <span class="count ${stats.attention ? "warn" : ""}" ${stats.attention ? `title="${plural(stats.attention, "session")} needing attention"` : ""}>${stats.sessions}</span></a>
+      </div>${subs}</li>`;
     }).join("");
+
+    return `<h2 class="nav-h">Views</h2><ul class="nav-list">${views}</ul>
+      <h2 class="nav-h">Projects</h2>${ids.length ? `<ul class="nav-list">${projects}</ul>` : '<p class="hint" style="margin:0 8px">None yet. Link a repo with <code>coven project link</code>.</p>'}`;
   }
 
-  function summary(type, payload) {
-    const tool = payload.tool ? `<span class="path">${esc(payload.tool)}</span>` : "";
-    const path = payload.path ? ` <span class="path">${esc(payload.path)}</span>` : "";
-    const bytes = payload.bytes ? ` <span class="note">· ${Number(payload.bytes)} B</span>` : "";
-    switch (type) {
-      case "tool_call": return `${tool}${path}${bytes}`;
-      case "task_started": return `task started ${payload.task_id ? `<span class="path">${esc(payload.task_id)}</span>` : ""}`;
-      case "task_finished": return `task finished ${payload.task_id ? `<span class="path">${esc(payload.task_id)}</span>` : ""}`;
-      case "file_changed": return `${esc(payload.change || "changed")} <span class="path">${esc(payload.path || "")}</span>`;
-      case "spec_deviation": {
-        const expected = Array.isArray(payload.expected) ? payload.expected.join(", ") : (payload.expected || "");
-        return `<span class="note">possible deviation:</span> <span class="path">${esc(payload.observed || "")}</span> outside ${esc(expected)}`;
+  /* ------------------------------------------------------------- page header */
+  /** `lede` is HTML the caller already escaped. */
+  function pageHeader({ crumbs, title, lede }) {
+    const trail = crumbs.map((c) => (c.href
+      ? `<a href="${c.href}"${c.key ? ` data-key="${c.key}"` : ""}>${esc(c.label)}</a>`
+      : `<span aria-current="page">${esc(c.label)}</span>`)).join('<span class="sep" aria-hidden="true">›</span>');
+    return `<header class="page-h"><nav class="crumbs" aria-label="Breadcrumb">${trail}</nav><h1>${esc(title)}</h1>${lede ? `<p class="lede">${lede}</p>` : ""}</header>`;
+  }
+
+  /* ----------------------------------------------------------- sessions pages */
+  const STATUS = {
+    all: () => true,
+    live: (r) => r.health === "LIVE",
+    attention: hasAttention,
+    finished: (r) => r.health === "FINISHED" || r.health === "FAILED",
+  };
+  const STATUS_LABEL = { all: "All", live: "Live", attention: "Needs attention", finished: "Finished" };
+  const SORTS = {
+    attention: ["Needs attention first", (runs) => sortedRuns(runs)],
+    recent: ["Most recent", (runs) => runs.slice().sort((a, b) => ((a.last_event_at || "") < (b.last_event_at || "") ? 1 : (a.last_event_at || "") > (b.last_event_at || "") ? -1 : 0))],
+    busiest: ["Most tool calls", (runs) => runs.slice().sort((a, b) => (b.tool_calls || 0) - (a.tool_calls || 0))],
+  };
+  const haystack = (run) => [run.run_id, run.project_id, run.spec, run.task_id, run.task_title, run.health, (run.attention || []).join(" "),
+    (run.last_action || {}).description, (run.last_action || {}).tool, ((run.last_action || {}).programs || []).join(" ")]
+    .filter(Boolean).join(" ").toLowerCase();
+
+  function scopeRuns() {
+    const r = state.route;
+    let runs = state.runs;
+    if (r.project) runs = runs.filter((x) => x.project_id === r.project);
+    if (r.spec) runs = runs.filter((x) => x.spec === r.spec);
+    return runs;
+  }
+  function visibleRuns() {
+    const q = state.query.trim().toLowerCase();
+    return scopeRuns().filter(STATUS[state.route.filter] || STATUS.all).filter((x) => !q || haystack(x).includes(q));
+  }
+
+  function sessionListHtml(list) {
+    if (!list.length) {
+      const why = [state.query.trim() ? `“${esc(state.query.trim())}”` : "", state.route.filter !== "all" ? esc(STATUS_LABEL[state.route.filter]) : ""].filter(Boolean).join(" under ");
+      const has = state.query.trim() || state.route.filter !== "all";
+      return `<div class="card"><div class="empty">${has ? `Nothing matches ${why}. <button class="link" type="button" data-clear>Clear</button>` : "No sessions here yet."}</div></div>`;
+    }
+    const sort = (SORTS[state.ui.sort] || SORTS.attention)[1];
+    const ids = [...new Set(list.map((x) => x.project_id))].sort();
+    if (!state.route.project && state.ui.group && ids.length > 1) {
+      return ids.map((id) => {
+        const specs = specsOf(id).map((sp) => `${esc(sp.spec)} ${Number(sp.done) || 0}/${Number(sp.total) || 0}`).join(" · ");
+        return `<h2><a href="${listHash({ project: id })}">${esc(id)}</a>${specs ? `<span class="hint">${specs}</span>` : ""}</h2>
+          <ul class="sessions">${sort(list.filter((x) => x.project_id === id)).map(sessionCard).join("")}</ul>`;
+      }).join("");
+    }
+    return `<ul class="sessions">${sort(list).map(sessionCard).join("")}</ul>`;
+  }
+
+  function refreshList() {
+    const box = $("session-list");
+    if (!box) return;
+    const list = visibleRuns();
+    box.innerHTML = sessionListHtml(list);
+    wire(box);
+    const n = $("result-n");
+    if (n) n.textContent = `${list.length} of ${scopeRuns().length}`;
+  }
+
+  function sessionsView() {
+    const everything = state.runs;
+    if (!everything.length) return `${demoBanner()}${firstRun()}`;
+    const r = state.route, project = r.project, spec = r.spec;
+    const scope = scopeRuns();
+    const list = visibleRuns();
+    const deviations = spec ? state.deviations.filter((d) => d.project_id === project && (d.payload || {}).spec === spec)
+      : project ? state.deviations.filter((d) => d.project_id === project) : state.deviations;
+
+    const known = project && (everything.some((x) => x.project_id === project) || specsOf(project).length);
+    if (project && !known) {
+      return `${demoBanner()}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: project }], title: project })}
+        <div class="card"><div class="empty">No sessions for project <b>${esc(project)}</b>. <a href="#/">Show all projects</a></div></div>`;
+    }
+
+    const live = scope.filter((x) => x.health === "LIVE").length;
+    const attention = scope.filter(hasAttention).length;
+    const failures = scope.reduce((sum, x) => sum + Number(x.recent_failures || 0), 0);
+    const credited = scope.filter((x) => x.usage_source);
+    const notes = [];
+    if (!credited.length) notes.push("Kiro hooks do not report credits; headless <code>coven run</code> sessions may.");
+    if (everything.some((x) => x.project_id === "unlinked")) notes.push("Sessions marked <b>unlinked</b> have no project name yet: run <code>coven project link &lt;name&gt;</code> in the repo.");
+
+    const titles = { all: "All sessions", live: "Live sessions", attention: "Sessions needing attention", finished: "Finished sessions" };
+    const head = spec
+      ? pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: project, href: listHash({ project }) }, { label: spec }], title: spec,
+          lede: `Spec of <b>${esc(project)}</b>.` })
+      : project
+        ? pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: project }], title: projectName(project),
+            lede: `${plural(scope.length, "session")} in this project.` })
+        : pageHeader({ crumbs: [{ label: "Sessions" }], title: titles[r.filter],
+            lede: "Every Kiro session across your projects, most urgent first." });
+
+    const ids = [...new Set(everything.map((x) => x.project_id))];
+    const groupBox = !project && ids.length > 1
+      ? `<label class="chk"><input type="checkbox" id="group" data-key="group" ${state.ui.group ? "checked" : ""}/> Group by project</label>` : "";
+    const toolbar = `<div class="toolbar" role="search">
+        <label class="sr" for="q">Search sessions</label>
+        <input id="q" data-key="search" type="search" placeholder="Search intent, session, task, program…   ( / )" value="${esc(state.query)}" autocomplete="off" />
+        <div class="seg" role="group" aria-label="Show">
+          ${Object.keys(STATUS_LABEL).map((key) => `<button class="filter" type="button" data-filter="${key}" data-key="filter-${key}" aria-pressed="${r.filter === key}">${STATUS_LABEL[key]}</button>`).join("")}
+        </div>
+        <label class="sr" for="sort">Sort sessions</label>
+        <select id="sort" data-key="sort">${Object.entries(SORTS).map(([key, [label]]) => `<option value="${key}" ${state.ui.sort === key ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
+        ${groupBox}
+        <span class="result-n" id="result-n" aria-live="polite">${list.length} of ${scope.length}</span>
+      </div>`;
+
+    return `${demoBanner()}
+      ${head}
+      <section class="stats" aria-label="Summary">
+        <div class="stat"><div class="k">Live</div><div class="v">${live}</div><div class="f">heartbeat under 15 s</div></div>
+        <div class="stat"><div class="k">Need attention</div><div class="v ${attention ? "warn" : ""}">${attention}</div><div class="f">failing, looping, off-spec or stalled</div></div>
+        <div class="stat"><div class="k">Failures</div><div class="v ${failures ? "bad" : ""}">${failures}</div><div class="f">failed tool calls, last 10 min</div></div>
+        <div class="stat"><div class="k">Open deviations</div><div class="v ${deviations.length ? "warn" : ""}">${deviations.length}</div><div class="f">possible, not confirmed</div></div>
+        ${credited.length ? `<div class="stat"><div class="k">Credits</div><div class="v">${num(credited.reduce((sum, x) => sum + Number(x.credits || 0), 0))}</div><div class="f">headless runs, as reported</div></div>` : ""}
+      </section>
+      ${spec ? specCard(project, spec) : project ? projectOverview(project) : ""}
+      ${deviationBanner(deviations)}
+      ${toolbar}
+      <div id="session-list">${sessionListHtml(list)}</div>
+      ${notes.map((n) => `<p class="note">${n}</p>`).join("")}`;
+  }
+
+  /* ------------------------------------------------------- deviations, councils */
+  function deviationCard(d) {
+    const p = d.payload || {};
+    const expected = Array.isArray(p.expected) ? p.expected.join(", ") : (p.expected || "—");
+    return `<li class="card dev-card"><div class="body">
+      <div class="row1"><span class="chip">possible deviation</span><span class="mono">${esc(p.observed || "—")}</span><span class="spacer"></span><span class="hint">${agoTag(d.ts)}</span></div>
+      <div class="hint" style="margin-top:6px">${esc(d.project_id)} · task ${esc(taskLabel(p.spec, d.task_id) || "—")} declares <span class="mono">${esc(expected)}</span></div>
+      <div class="actions"><a href="#/run/${encodeURIComponent(d.run_id)}" data-key="dev-open-${esc(d.event_id)}">Open session</a>
+        <button class="act" type="button" data-dismiss="${esc(d.event_id)}">dismiss</button></div>
+    </div></li>`;
+  }
+  function deviationsView() {
+    const list = state.deviations;
+    return `${demoBanner()}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Deviations" }], title: "Possible spec deviations",
+      lede: "Writes outside the declared paths of the current task. Advisory: Coven cannot know if the write was right. Dismiss what you have read." })}
+      ${list.length
+        ? `<ul class="devlist">${list.map(deviationCard).join("")}</ul>`
+        : '<div class="card"><div class="empty">No open deviations. One appears when a session writes outside the <span class="mono">_Paths:_</span> declared for its current task.</div></div>'}`;
+  }
+
+  /* -------------------------------------------------------------- coven board */
+  const ONLINE_SECONDS = 120;
+  const KIND_LABEL = { idea: "idea", question: "question", answer: "answer", review: "review", note: "note", "review-wanted": "review wanted" };
+  function boardColumns(b) {
+    const cols = { ready: [], claimed: [], review: [], done: [] };
+    const wanted = new Set((b.notes || []).filter((n) => n.kind === "review-wanted" && n.task).map((n) => n.task));
+    for (const spec of b.specs || []) {
+      const leaves = spec.tasks.filter((t) => t.leaf && !t.optional);
+      // The same rule as `coven board ready`: waves when Kiro's graph has them; otherwise the
+      // sub-tasks of one parent go in order and top-level tasks are independent.
+      const waitsFor = (t) => {
+        if (t.wave != null) return leaves.filter((o) => o.wave != null && o.wave < t.wave && o.status !== "completed").map((o) => o.task_id)[0] || null;
+        if (!t.parent) return null;
+        const earlier = leaves.slice(0, leaves.indexOf(t)).filter((o) => o.parent === t.parent && o.status !== "completed");
+        return earlier.length ? earlier[0].task_id : null;
+      };
+      for (const t of spec.tasks) {
+        if (!t.leaf) continue;
+        const ref = `${spec.spec}#${t.task_id}`;
+        const card = { ...t, spec: spec.spec, ref, waits_for: leaves.includes(t) ? waitsFor(t) : null,
+          notes: (b.notes || []).filter((n) => n.task === ref && n.kind !== "review-wanted").length };
+        if (t.status === "completed") cols.done.push(card);
+        else if ((t.reviewers || []).length || (wanted.has(ref) && t.claimed_by)) cols.review.push(card);
+        else if (t.claimed_by) cols.claimed.push(card);
+        else if (!t.optional) cols.ready.push(card);
       }
-      case "warning": return `<span class="note">${esc(payload.reason || payload.raw_type || payload.raw_trigger || "warning")}</span>`;
-      case "token_usage": return `<span class="note">usage reported</span>`;
-      case "run_started": return `<span class="note">session started${payload.cwd ? ` in ${esc(payload.cwd)}` : ""}</span>`;
-      case "run_finished": return `<span class="note">session finished cleanly</span>`;
-      case "run_failed": return `<span class="note">session failed${payload.exit_code != null ? ` (exit ${esc(payload.exit_code)})` : ""}</span>`;
-      case "turn_finished": return `<span class="note">turn finished</span>`;
-      default: return `<span class="note">${esc(JSON.stringify(payload).slice(0, 240))}</span>`;
+    }
+    cols.ready.sort((a, b) => (a.waits_for ? 1 : 0) - (b.waits_for ? 1 : 0)); // what can start now comes first
+    return cols;
+  }
+  function taskCard(t) {
+    const who = [t.waits_for && !t.claimed_by ? `waits for ${esc(t.waits_for)}` : "", t.claimed_by ? `${esc(t.claimed_by)} is on it` : "", (t.reviewers || []).length ? `reviewing: ${(t.reviewers).map(esc).join(", ")}` : "",
+      t.notes ? `${plural(t.notes, "note")}` : ""].filter(Boolean).join(" · ");
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${who ? `<div class="who">${who}</div>` : ""}</div>`;
+  }
+  function stickyNote(n) {
+    return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
+      <div class="kind">${esc(KIND_LABEL[n.kind] || n.kind)}</div><div>${esc(n.note)}</div>
+      <div class="meta">${[`<b>${esc(n.author)}</b>`, n.task ? `<span>on ${esc(n.task)}</span>` : "", `<span>${agoTag(n.ts)}</span>`].filter(Boolean).join(" · ")}</div></article>`;
+  }
+  function boardView() {
+    const project = defaultBoardProject();
+    const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Coven board" }];
+    if (!project) return `${pageHeader({ crumbs, title: "Coven board" })}<div class="card"><div class="empty">No project yet. Link a repo with <code>coven project link &lt;name&gt;</code>.</div></div>`;
+    const b = state.board;
+    if (!b) return `${pageHeader({ crumbs, title: `Coven board · ${project}` })}<div class="card"><div class="empty">Loading the board…</div></div>`;
+    const names = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
+    const picker = names.length > 1 ? `<label class="hint">Project <select data-board-project aria-label="Board project">${names.map((p) => `<option ${p === project ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
+    const members = (b.members || []).map((m) => {
+      const online = secondsSince(m.last_seen) !== null && secondsSince(m.last_seen) < ONLINE_SECONDS;
+      return `<div class="member"><div class="name"><span class="dot ${online ? "live" : ""}" aria-hidden="true"></span>${esc(m.member)}<span class="sr">${online ? "online" : "away"}</span></div>
+        <div class="what">${(m.claims || []).length ? `on ${(m.claims).map(esc).join(", ")}` : "no task"} · seen ${agoTag(m.last_seen)}</div></div>`;
+    }).join("");
+    const cols = boardColumns(b);
+    const column = (key, label) => `<section class="column" aria-label="${label}"><h3><span>${label}</span><span>${cols[key].length}</span></h3>${cols[key].map(taskCard).join("") || '<div class="hint" style="padding:4px">—</div>'}</section>`;
+    const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
+    const author = localStorage.getItem("coven_author") || "";
+    const compose = `<form class="compose" id="note-form" aria-label="Post a note">
+        <label class="sr" for="note-text">Note</label><textarea id="note-text" data-key="note-text" maxlength="400" placeholder="An idea, a question, a review… (everyone's agents read this as untrusted text)" required></textarea>
+        <label class="sr" for="note-kind">Kind</label><select id="note-kind">${["idea", "question", "answer", "review", "note"].map((k) => `<option>${k}</option>`).join("")}</select>
+        <label class="sr" for="note-task">About</label><select id="note-task"><option value="">the whole project</option>${tasks.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
+        <label class="sr" for="note-author">Your name</label><input id="note-author" maxlength="40" placeholder="your name" value="${esc(author)}" />
+        <button class="act" type="submit">Post</button></form>`;
+    return `${demoBanner()}${pageHeader({ crumbs, title: `Coven board · ${project}`,
+        lede: "Every member's agents work here together: members take tasks themselves, ask for reviews, and leave notes for each other." })}
+      ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
+      <h2>Members</h2>${members ? `<div class="members">${members}</div>` : '<p class="hint">No member has reported yet. In each working copy: <code>coven member join &lt;name&gt;</code>.</p>'}
+      <h2>Tasks</h2>${(b.specs || []).length ? `<div class="columns">${column("ready", "Ready")}${column("claimed", "Claimed")}${column("review", "In review")}${column("done", "Done")}</div>`
+        : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
+      <h2>Whiteboard</h2>${compose}
+      <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">Nothing on the board yet. Post the first note.</p>'}</div>`;
+  }
+
+  /* ------------------------------------------------------------------- flows */
+  const PERSONA_OF = { "green-witch": "Green Witch — Dev", "white-hat": "White Hat Witch — Tester", "black-hat": "Black Hat Witch — Red Team",
+    "elf": "Elf — Brainstorm", "grey-witch": "Grey Witch — Senior Kiro · Chair", "elder-witch": "Elder Witch — SA",
+    "weaver": "Weaver — Conductor", "scribe": "Scribe — Steward", "raven": "Raven — Watcher", "herald": "Herald — Reporter", "coven": "Coven (no model)" };
+  const STEP_MARK = { pending: "·", running: "▶", "waiting for you": "⏸", done: "✓", failed: "✗" };
+  const flowState = (f) => (f.status === "finished" ? `finished · ${f.outcome || "—"}` : f.waiting_for ? `waiting for you at ${f.waiting_for}` : f.step ? `running: ${f.step}` : "started");
+  function flowCard(f) {
+    const cls = f.waiting_for ? "waiting" : f.status === "finished" ? "done" : "";
+    return `<li class="card flow-card ${cls}"><div class="body">
+      <div class="row1"><a href="#/flow/${encodeURIComponent(f.flow_id)}" data-key="flow-${esc(f.flow_id)}"><b>${esc(taskLabel(f.spec, f.task_id, f.title))}</b></a>
+        ${f.waiting_for ? '<span class="chip">waiting for you</span>' : ""}
+        <span class="spacer"></span><span class="hint">${agoTag(f.last_event_at || f.started_at)}</span></div>
+      <div class="hint" style="margin-top:6px">${esc(f.project_id)} · ${esc(flowState(f))} · round ${esc(f.rounds)} · guard ${esc(f.verdict || "—")}</div>
+    </div></li>`;
+  }
+  function flowsView() {
+    const list = state.flows;
+    return `${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Flows" }], title: "Flows",
+      lede: "Spec tasks carried from ready to delivered by Kiro agents. Kiro runs them; Coven records each step and checks the result. Answer gates in the Kiro session." })}
+      ${list.length ? `<ul class="devlist">${list.map(flowCard).join("")}</ul>`
+        : '<div class="card"><div class="empty">No flows yet. Ask the Weaver agent in Kiro to start one, or run <code>coven flow new &lt;spec&gt;#&lt;task&gt;</code>.</div></div>'}`;
+  }
+  function flowView() {
+    const f = state.flows.find((x) => x.flow_id === state.route.flowId);
+    const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Flows", href: "#/flows" }, { label: short(state.route.flowId, 22) }];
+    if (!f) return `${pageHeader({ crumbs, title: "Flow" })}<div class="card"><div class="empty">No such flow. <a href="#/flows">All flows</a></div></div>`;
+    const waiting = f.steps.find((x) => x.state === "waiting for you");
+    const gateText = waiting ? (waiting.step_id === "ready"
+      ? "Gate — plan. The Scribe is checking the task with you. Approve the plan in the Kiro session."
+      : `Gate — decision. The guard says <b>${esc(f.verdict || "—")}</b>. Answer accept, rework or stop in the Kiro session.`) : "";
+    const rows = f.steps.map((x) => `<li class="${x.state === "waiting for you" ? "waiting" : x.state === "pending" ? "pending" : ""}">
+      <span class="m ${x.state === "done" ? "ok" : x.state === "failed" ? "bad" : ""}" aria-hidden="true">${STEP_MARK[x.state] || "·"}</span>
+      <span><b class="mono">${esc(x.step_id)}</b>${x.gate ? ' <span class="hint">gate</span>' : ""}</span>
+      <span class="hint">${esc(PERSONA_OF[x.agent] || x.agent || "")}</span>
+      <span class="hint">${x.run_id ? `<a href="#/run/${encodeURIComponent(x.run_id)}" data-key="flow-step-${esc(x.step_id)}">session</a> · ` : ""}<span class="sr">${esc(x.step_id)}: </span>${esc(x.state)}${x.runs > 1 ? ` · ${x.runs} runs` : ""}</span>
+    </li>`).join("");
+    const facts = [`project <b>${esc(f.project_id)}</b>`, `recipe <b class="mono">${esc(f.recipe || "—")}</b>`, `round <b>${esc(f.rounds)}</b>`,
+      `reworks <b>${esc(f.reworks)}</b>`, `guard <b>${esc(f.verdict || "—")}</b>`, f.decision ? `decision <b>${esc(f.decision)}</b>` : "",
+      f.council_id && state.councils.some((c) => c.council_id === f.council_id) ? `<a href="#/councils">council</a>` : ""].filter(Boolean);
+    return `${pageHeader({ crumbs, title: taskLabel(f.spec, f.task_id, f.title) || "Flow", lede: esc(flowState(f)) })}
+      ${waiting ? `<div class="gate" role="status"><b>Waiting for you.</b> ${gateText}</div>` : ""}
+      <div class="facts">${facts.map((x) => `<span>${x}</span>`).join("")}</div>
+      <section class="card" aria-label="Steps"><ol class="stepper">${rows}</ol></section>
+      <p class="note">Read-only: Coven never starts, stops or approves a flow. Step files stay on your machine; this page shows only what each step did and how it ended.</p>`;
+  }
+
+  function councilCard(c) {
+    const dev = c.role_runs && c.role_runs.dev;
+    return `<li class="card council-card"><div class="body">
+      <div class="row1"><b class="mono">${esc(c.council_id)}</b>
+        ${c.mode === "seeded" ? '<span class="badge warn">seeded replay</span>' : ""}
+        <span class="badge ${c.status === "closed" ? "grey" : "live"}">${esc(c.status)}</span>
+        <span class="spacer"></span><span class="hint">${agoTag(c.opened_at)}</span></div>
+      <div class="hint" style="margin-top:6px">${esc(c.project_id)} · task ${esc(c.task_id || "—")} · round ${esc(c.round)} · ${num(c.credits)} credits</div>
+      <div class="decision"><span class="hint">Chair</span> <span class="badge ${cls(c.chair_proposal)}">${esc(c.chair_proposal || "—")}</span>
+        <span class="hint">Guard</span> <span class="badge ${cls(c.verdict)}">${esc(c.verdict || "pending")}</span>
+        ${c.disagreement ? '<span class="chip red">disagreement</span>' : ""}</div>
+      ${dev ? `<div class="actions"><a href="#/run/${encodeURIComponent(dev)}/council/${encodeURIComponent(c.council_id)}" data-key="council-open-${esc(c.council_id)}">Open council</a></div>` : ""}
+    </div></li>`;
+  }
+  function councilsView() {
+    const list = state.councils;
+    return `${demoBanner()}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Councils" }], title: "Councils",
+      lede: "Post-task reviews: the Chair proposes, the Guard decides by its own checks. Recorded only; nothing is changed in the repo." })}
+      ${list.length ? `<ul class="devlist">${list.map(councilCard).join("")}</ul>` : '<div class="card"><div class="empty">No councils yet.</div></div>'}`;
+  }
+
+  function firstRun() {
+    return `<div class="card"><div class="empty">
+      <h3>No sessions yet</h3>
+      <ol>
+        <li>Name the project: <code>coven project link &lt;name&gt;</code></li>
+        <li>Start the relay, once per machine: <code>coven relay up --machine</code></li>
+        <li>Check the hooks: <code>coven hooks check</code></li>
+        <li>Start Kiro in the repo: <code>kiro-cli chat</code></li>
+      </ol>
+      <p class="hint">Nothing appears after a tool call? Kiro loads hooks when a session starts: restart the session. <code>coven doctor</code> shows when the last hook arrived.</p>
+    </div></div>`;
+  }
+
+  function outcome(action) {
+    if (!action) return "";
+    if (action.success === false) return `<span class="bad">✗ exit ${esc(action.exit_code)}</span>`;
+    if (action.success === true) return `<span class="ok">✓ exit ${esc(action.exit_code)}</span>`;
+    return "";
+  }
+  function intentOf(item) {
+    if (!item) return "";
+    if (item.description) return item.description;
+    const bits = [item.tool, item.path].filter(Boolean);
+    return bits.join(" ");
+  }
+
+  /** Kiro task identity, spec first: "coven-relay · 9 Fleet dashboard". */
+  function taskLabel(spec, taskId, title) {
+    if (!taskId) return "";
+    return [spec, [taskId, title].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+  }
+
+  function sessionCard(run) {
+    const a = run.last_action;
+    const chips = (run.attention || []).map((c) => `<span class="chip ${c === "failing" || c === "repeat failure" ? "red" : ""}">${esc(c)}</span>`).join("");
+    const counts = [plural(run.tool_calls || 0, "tool call")];
+    if (run.failures) counts.push(`${run.failures} failed`);
+    if (run.files_written) counts.push(`${plural(run.files_written, "file")} written`);
+    if (run.turns) counts.push(plural(run.turns, "turn"));
+    if (run.task_id) counts.push(`task ${esc(taskLabel(run.spec, run.task_id, run.task_title))}`);
+    const attn = run.attention && run.attention.length;
+    const label = `${run.project_id}, ${run.health}, ${intentOf(a) || "no tool calls yet"}`;
+    return `<li><a class="scard ${attn ? "attn" : ""} ${isFailure(run) ? "red" : ""}" href="#/run/${encodeURIComponent(run.run_id)}" data-key="card-${esc(run.run_id)}" aria-label="${esc(label)}">
+      <div class="l1"><span class="health"><span class="dot ${cls(run.health)}" aria-hidden="true"></span>${esc(run.health)}</span>
+        <span>${run.project_id === "unlinked" ? '<span class="hint">unlinked</span>' : esc(run.project_id)}</span>
+        <span class="mono hint">${esc(short(run.run_id, 16))}</span><span class="spacer"></span><span class="hint">${agoTag(run.last_event_at)}</span></div>
+      <div class="l2">${a ? esc(intentOf(a)) : '<span class="hint">Waiting for the first tool call.</span>'}</div>
+      ${a ? `<div class="l3">${outcome(a)}${Array.isArray(a.programs) && a.programs.length ? `<span class="mono">${esc(a.programs.join(" "))}</span>` : ""}${!a.description && a.tool ? "" : a.tool ? `<span class="mono">${esc(a.tool)}</span>` : ""}</div>` : ""}
+      <div class="l4"><span>${counts.join(" · ")}</span>${chips}</div>
+    </a></li>`;
+  }
+
+  function deviationBanner(list = state.deviations) {
+    if (!list.length) return "";
+    const top = list[0], p = top.payload || {};
+    const expected = Array.isArray(p.expected) ? p.expected.join(", ") : (p.expected || "—");
+    const more = list.length - 1;
+    const rows = state.expandDeviations ? `<ul>${list.map((d) => `<li><span class="mono">${esc((d.payload || {}).observed || "—")}</span><span class="hint">${esc(d.project_id)} · task ${esc(taskLabel((d.payload || {}).spec, d.task_id) || "—")} · ${esc(ago(secondsSince(d.ts)))}</span><a href="#/run/${encodeURIComponent(d.run_id)}">open session</a></li>`).join("")}</ul>` : "";
+    return `<section class="deviation" aria-label="Possible spec deviation">
+      <div class="dev-top"><span class="label">possible spec deviation</span>
+        ${more > 0 ? `<button class="act" data-toggle-dev data-key="toggle-dev" type="button" aria-expanded="${state.expandDeviations}">+${more} more</button>` : ""}
+        <span class="spacer"></span><a href="#/run/${encodeURIComponent(top.run_id)}">open session</a>
+        <button class="act" data-dismiss="${esc(top.event_id)}" type="button">dismiss</button></div>
+      <div style="margin-top:6px">Expected <span class="mono">${esc(expected)}</span> · Observed <span class="mono">${esc(p.observed || "—")}</span></div>
+      <div class="hint mono">task ${esc(taskLabel(p.spec, top.task_id) || "—")} · ${esc(short(top.run_id, 22))} · severity ${esc(p.severity || "possible")}</div>
+      ${rows}
+    </section>`;
+  }
+
+  /* --------------------------------------------------------- screen 2: session */
+  function turnsOf(events) {
+    // A turn ends at `turn_finished`; what follows the last one is the current turn.
+    const turns = [];
+    let current = { index: 0, items: [], closedAt: null };
+    let sawBoundary = false;
+    for (const e of events) {
+      if (COUNCIL_TYPES.has(e.type)) continue;
+      if (e.type === "turn_finished") {
+        sawBoundary = true;
+        current.closedAt = e.ts;
+        turns.push(current);
+        current = { index: turns.length, items: [], closedAt: null };
+        continue;
+      }
+      current.items.push(e);
+    }
+    if (current.items.length || !turns.length) turns.push(current);
+    return { turns, sawBoundary };
+  }
+
+  function sessionHeader(run) {
+    const from = state.lastListRoute;
+    const crumbs = [{ label: listLabel(from), href: sessionsHash(), key: "back" }];
+    if (run && run.project_id && !(from && from.view === "sessions" && from.project === run.project_id)) {
+      crumbs.push({ label: projectName(run.project_id), href: listHash({ project: run.project_id }) });
+    }
+    crumbs.push({ label: short(run ? run.run_id : state.route.runId, 22) });
+    return pageHeader({ crumbs, title: run ? `Session ${short(run.run_id, 13)}` : "Session" });
+  }
+
+  function sessionView() {
+    const run = state.run;
+    if (!run) return `${sessionHeader(null)}<div class="card"><div class="empty">Loading session…</div></div>`;
+    const events = state.events;
+    const calls = events.filter((e) => e.type === "tool_call");
+    const first = events.find((e) => !COUNCIL_TYPES.has(e.type));
+    const last = events.length ? events[events.length - 1] : null;
+    const started = events.find((e) => e.type === "run_started");
+    const running = run.status === "running";
+    const duration = first && last ? (Date.parse(last.ts) - Date.parse(first.ts)) / 1000 : null;
+    const parts = [
+      `<span class="health"><span class="dot ${cls(run.health)}" aria-hidden="true"></span>${esc(run.health)}</span>`,
+      duration != null ? (running ? `working for ${span(duration)}` : `${span(duration)} in total`) : "",
+      plural(calls.length, "tool call"),
+      run.failures ? `<span class="bad">${run.failures} failed</span>` : "",
+      `last activity ${agoTag(run.last_event_at)}`,
+    ].filter(Boolean);
+    const files = filesOf(events);
+    const councils = councilsFor(run);
+    const tab = state.route.tab === "council" && !councils.length ? "turns" : state.route.tab;
+    const facts = [
+      `project <b>${run.project_id === "unlinked" ? "unlinked" : esc(run.project_id)}</b>`,
+      `session <b class="mono">${esc(run.run_id)}</b> <button class="link" type="button" data-copy="${esc(run.run_id)}">copy</button>`,
+      started ? `started <b>${esc(clock(started.ts))}</b>` : (first ? `first seen <b>${esc(clock(first.ts))}</b>` : ""),
+      run.task_id ? `task <b>${esc(taskLabel(run.spec, run.task_id, run.task_title))}</b>` : "",
+      run.usage_source ? `credits <b>${num(run.credits)}</b> <span class="hint">(${esc(run.usage_source)})</span>` : "",
+      (run.attention || []).map((c) => `<span class="chip ${c === "failing" || c === "repeat failure" ? "red" : ""}">${esc(c)}</span>`).join(" "),
+    ].filter(Boolean);
+    const tabs = [["turns", "Turns"], ["files", `Files (${files.length})`]];
+    if (councils.length) tabs.push(["council", `Council (${councils.length})`]);
+    return `${demoBanner()}
+      ${sessionHeader(run)}
+      <p class="summary" aria-live="polite">${parts.join(" · ")}</p>
+      <div class="facts">${facts.map((f) => `<span>${f}</span>`).join("")}</div>
+      ${!started && first ? '<p class="note">Resumed session: Kiro does not report a start, so the duration counts from the first tool call.</p>' : ""}
+      <div class="tabs" role="tablist" aria-label="Session">
+        ${tabs.map(([key, label]) => `<button class="tab" role="tab" id="tab-${key}" data-tab="${key}" data-key="tab-${key}" aria-selected="${tab === key}" aria-controls="panel" type="button">${esc(label)}</button>`).join("")}
+      </div>
+      <div id="panel" role="tabpanel" aria-labelledby="tab-${tab}">${tab === "files" ? filesTab(files) : tab === "council" ? councilTab(run) : turnsTab(run)}</div>`;
+  }
+
+  function markOf(e) {
+    const p = e.payload || {};
+    if (e.type === "spec_deviation") return ["!", "possible deviation", ""];
+    if (e.type !== "tool_call") return ["•", e.type.replace(/_/g, " "), ""];
+    if (p.success === false) return ["✗", "failed", "bad"];
+    if (p.success === true) return ["✓", "succeeded", "ok"];
+    if (WRITE_TOOL.test(String(p.tool || ""))) return ["✎", "wrote a file", ""];
+    return ["•", "no outcome reported", ""];
+  }
+
+  function rowText(e) {
+    const p = e.payload || {};
+    switch (e.type) {
+      case "tool_call": {
+        const main = p.description || (WRITE_TOOL.test(String(p.tool || "")) && p.path ? p.path : "") || p.tool || "tool call";
+        const sub = [p.path && main !== p.path ? p.path : "", p.tool && main !== p.tool ? p.tool : ""].filter(Boolean).join(" · ");
+        return `${esc(main)}${sub ? ` <span class="sub mono">${esc(sub)}</span>` : ""}`;
+      }
+      case "spec_deviation": {
+        const expected = Array.isArray(p.expected) ? p.expected.join(", ") : (p.expected || "");
+        return `Possible spec deviation: wrote <span class="mono">${esc(p.observed || "")}</span><span class="sub">task ${esc(taskLabel(p.spec, e.task_id || p.task_id) || "—")} declares ${esc(expected)}</span>`;
+      }
+      case "task_started": {
+        const title = p.title || p.task_name || ""; // `task_name`: events recorded before the Kiro task format
+        return `Task started <span class="mono">${esc(taskLabel(p.spec, e.task_id || p.task_id || ""))}</span>${title ? `<span class="sub">${esc(title)}</span>` : ""}`;
+      }
+      // Kiro 3.1 fires PostTaskExec when a task is marked done; it reports no pass/fail.
+      case "task_finished": return `Task marked done <span class="mono">${esc(taskLabel(p.spec, e.task_id || p.task_id || ""))}</span>`;
+      case "run_started": return "Session started";
+      case "run_finished": return `Session ended${p.reason ? ` (${esc(p.reason)})` : ""}`;
+      case "run_failed": return `<span class="bad">Session failed${p.exit_code != null ? ` (exit ${esc(p.exit_code)})` : ""}</span>`;
+      case "file_changed": return `${esc(p.change || "changed")} <span class="mono">${esc(p.path || "")}</span>`;
+      case "spec_artifact_updated": return `Spec progress <span class="mono">${esc(p.spec || "")}</span><span class="sub">${esc(specSummary(p))}</span>`;
+      case "warning": return `<span class="hint">${esc(p.reason || p.raw_trigger || p.raw_type || "warning")}</span>`;
+      default: return `<span class="hint">${esc(e.type)}</span>`;
     }
   }
 
-  function clock(stamp) {
-    if (!stamp) return "--:--:--";
-    const date = new Date(stamp);
-    if (Number.isNaN(date.getTime())) return String(stamp).slice(11, 19);
-    return date.toLocaleTimeString([], { hour12: false });
+  function row(e) {
+    const p = e.payload || {};
+    const [mark, label, tone] = markOf(e);
+    const index = state.items.push(e) - 1;
+    const fresh = state.seen.size && !state.seen.has(e.event_id) ? "fresh" : "";
+    // A write shows how much was written; anything else shows how much Kiro answered.
+    const isWrite = e.type === "tool_call" && WRITE_TOOL.test(String(p.tool || ""));
+    const side = [
+      Array.isArray(p.programs) && p.programs.length ? esc(p.programs.join(" ")) : "",
+      p.success === false ? `<span class="badge fail">exit ${esc(p.exit_code)}</span>` : "",
+      size(isWrite ? (p.bytes ?? p.output_bytes) : (p.output_bytes ?? p.bytes)),
+    ].filter(Boolean).join(" ");
+    const dismiss = e.type === "spec_deviation" && !e.dismissed
+      ? ` <button class="act row-act" type="button" data-dismiss="${esc(e.event_id)}">dismiss</button>` : "";
+    return `<li><button class="row ${p.success === false ? "fail" : ""} ${e.type === "spec_deviation" ? "dev" : ""} ${fresh}" type="button" data-event="${index}" data-key="ev-${esc(e.event_id)}">
+      <span class="time">${esc(clock(e.ts))}</span><span class="mark ${tone}" aria-hidden="true">${mark}</span>
+      <span class="what"><span class="sr">${esc(label)}: </span>${rowText(e)}</span><span class="side">${side}</span>
+    </button>${dismiss}</li>`;
   }
 
-  function bindDismiss() {
-    document.querySelectorAll("[data-dismiss]").forEach((button) => {
-      button.addEventListener("click", async () => {
-        button.disabled = true;
-        try {
-          await api(`/v1/events/${encodeURIComponent(button.dataset.dismiss)}/dismiss`, { method: "POST" });
-          const event = state.events.find((item) => item.event_id === button.dataset.dismiss);
-          if (event) event.dismissed = true;
-          const host = $("timeline");
-          if (host) host.innerHTML = timeline(state.events);
-          bindDismiss();
-        } catch (error) {
-          if (error.message !== "unauthorised") toast(`dismiss failed: ${error.message}`);
-          button.disabled = false;
-        }
+  function turnsTab(run) {
+    const { turns, sawBoundary } = turnsOf(state.events);
+    const live = run.status === "running" && run.health === "LIVE";
+    const html = turns.slice().reverse().map((turn) => {
+      const isCurrent = !turn.closedAt;
+      const calls = turn.items.filter((e) => e.type === "tool_call");
+      const failed = calls.filter((e) => (e.payload || {}).success === false).length;
+      const deviations = turn.items.filter((e) => e.type === "spec_deviation" && !e.dismissed).length;
+      const firstTs = turn.items.length ? turn.items[0].ts : null;
+      const endTs = turn.closedAt || (turn.items.length ? turn.items[turn.items.length - 1].ts : null);
+      const length = firstTs && endTs ? (Date.parse(endTs) - Date.parse(firstTs)) / 1000 : null;
+      const key = `${run.run_id}:${turn.index}`;
+      const open = state.expanded.has(key) ? state.expanded.get(key) : (isCurrent || failed > 0 || deviations > 0);
+      const name = !sawBoundary ? "All tool calls" : `Turn ${turn.index + 1}`;
+      const meta = [
+        isCurrent && sawBoundary ? (live ? "in progress" : "last turn") : "",
+        plural(calls.length, "call"),
+        failed ? `<span class="bad">${failed} failed</span>` : "",
+        deviations ? `<span class="chip">${plural(deviations, "deviation")}</span>` : "",
+        length ? span(length) : "",
+      ].filter(Boolean).join(" · ");
+      const title = turn.items.map((e) => (e.payload || {}).description).find(Boolean);
+      const body = turn.items.length
+        ? `<ul class="rows">${turn.items.slice().reverse().map(row).join("")}</ul>`
+        : '<div class="empty" style="padding:12px 16px">Waiting for the first tool call.</div>';
+      return `<li class="turn ${failed ? "failed" : ""}">
+        <button class="turn-head" type="button" aria-expanded="${open}" data-turn="${esc(key)}" data-key="turn-${esc(key)}">
+          <span class="t">${name}</span><span class="meta">${meta}</span><span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
+          ${!open && title ? `<span class="title">${esc(title)}</span>` : ""}
+        </button>${open ? body : ""}</li>`;
+    }).join("");
+    const note = !sawBoundary && state.events.some((e) => e.type === "tool_call")
+      ? '<p class="note">Turns are grouped from Kiro\'s <code>Stop</code> hook; this session has no turn boundaries yet (it started before the hook was registered, or no turn has finished).</p>' : "";
+    for (const e of state.events) state.seen.add(e.event_id);
+    return `${note}<ul class="turns">${html}</ul>`;
+  }
+
+  function filesOf(events) {
+    // A deviation names the repo-relative path; a tool call carries the path as Kiro reported it (absolute, or `~/…`).
+    const observed = events.filter((e) => e.type === "spec_deviation" && !e.dismissed).map((e) => (e.payload || {}).observed).filter(Boolean);
+    const isOpen = (path) => observed.some((o) => path === o || path.endsWith("/" + String(o).replace(/^\.\//, "")));
+    const files = new Map();
+    for (const e of events) {
+      const p = e.payload || {};
+      const writes = (e.type === "tool_call" && WRITE_TOOL.test(String(p.tool || ""))) || e.type === "file_changed";
+      if (!writes || !p.path) continue;
+      const f = files.get(p.path) || { path: p.path, writes: 0, last: null, tool: null };
+      f.writes += 1; f.last = e.ts; f.tool = p.tool || p.change || e.type;
+      files.set(p.path, f);
+    }
+    return [...files.values()].map((f) => ({ ...f, deviation: isOpen(f.path) }))
+      .sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : 0));
+  }
+
+  function filesTab(files) {
+    if (!files.length) return '<div class="card"><div class="empty">No files written in this session.</div></div>';
+    return `<div class="card"><table><thead><tr><th>File</th><th class="num">Writes</th><th>Last</th><th>Tool</th></tr></thead><tbody>
+      ${files.map((f) => `<tr><td class="mono">${esc(f.path)}${f.deviation ? ' <span class="chip">possible deviation</span>' : ""}</td>
+        <td class="num">${f.writes}</td><td>${agoTag(f.last)}</td><td class="mono">${esc(f.tool)}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  }
+
+  /* ------------------------------------------------------------- council tab */
+  function personaLabel(e) {
+    const slug = (e.payload || {}).persona;
+    if (e.role === "chair") return `${PERSONAS[slug] || "Grey Witch"} — Senior Kiro · Chair`;
+    return PERSONAS[slug] ? `${PERSONAS[slug]} — ${ROLE[e.role] || e.role}` : (ROLE[e.role] || String(e.role || "member"));
+  }
+  function evidenceLabel(item) {
+    switch (item.kind) {
+      case "file": return `${item.path || "file"}${item.line ? ":" + item.line : ""}`;
+      case "spec": return `spec ${item.task_id || ""} · ${item.path || ""}`;
+      case "event": return `event ${short(item.event_id, 24)}`;
+      case "test": return `test ${item.name || ""}${item.log_excerpt_id ? " · " + item.log_excerpt_id : ""}`;
+      case "repro": return `repro ${item.test || ""}`;
+      default: return String(item.kind || "evidence");
+    }
+  }
+  function evidenceLinks(list) {
+    const items = Array.isArray(list) ? list.filter((x) => x && typeof x === "object") : [];
+    if (!items.length) return "";
+    return `<div class="evidence">${items.map((item) => `<button class="ev-link" type="button" data-evidence="${state.evidence.push(item) - 1}">${esc(evidenceLabel(item))}</button>`).join("")}</div>`;
+  }
+  function councilTab(run) {
+    const list = councilsFor(run);
+    if (!state.council) return '<div class="card"><div class="empty">Loading council…</div></div>';
+    const { council, events } = state.council;
+    const picker = list.length > 1
+      ? `<label class="hint">Council <select data-council-picker aria-label="Switch council">${list.map((c) => `<option value="${esc(c.council_id)}" ${c.council_id === council.council_id ? "selected" : ""}>${esc(c.council_id)} · ${esc(c.task_id || "")}</option>`).join("")}</select></label>` : "";
+    const ordered = events.slice().sort(byTime);
+    const claims = ordered.filter((e) => ["claim_proposed", "claim_challenged", "test_result"].includes(e.type));
+    const summaries = ordered.filter((e) => e.type === "chair_summary");
+    const proposal = ordered.filter((e) => e.type === "chair_proposal").pop();
+    const guard = ordered.filter((e) => e.type === "guard_verdict").pop();
+    const closed = ordered.filter((e) => e.type === "council_closed").pop();
+    const status = council.status === "closed" ? (council.verdict === "no-consensus" ? "closed by no consensus" : "closed by guard verdict") : "in progress";
+    return `${council.mode === "seeded" ? '<div class="banner replay">SEEDED REPLAY — recorded events, not a live council</div>' : ""}
+      <section class="card"><div class="head"><div><span class="round">Round ${council.round} / 3 — ${esc(council.task_id || "")}</span> <span class="badge grey">${esc(status)}</span></div>${picker}</div>
+        ${claims.map(claimRow).join("") || '<div class="empty">No claims yet.</div>'}</section>
+      ${chairCard(summaries, proposal)}${guardCard(guard, proposal)}
+      ${closed ? `<div class="banner">Council closed — verdict <b>${esc(council.verdict || "—")}</b>, ${esc((closed.payload || {}).rounds || council.round)} round(s), ${num(council.credits)} credits. Recorded only — nothing was changed in the repo.</div>` : ""}`;
+  }
+  function claimRow(e) {
+    const p = e.payload || {};
+    const evidence = Array.isArray(p.evidence) ? p.evidence : [];
+    const counted = e.counted !== false;
+    const note = counted ? "" : (e.type === "claim_challenged" && evidence.length ? "challenge without reproducing test — not counted" : "claim without evidence — not counted");
+    let body;
+    if (e.type === "test_result") {
+      body = (Array.isArray(p.tests) ? p.tests : []).map((t) => `<div><span class="badge ${cls(t.status)}">${esc(t.status)}</span> <span class="mono">${esc(t.name)}</span> <span class="hint">${t.duration_s != null ? num(t.duration_s, 1) + " s" : ""}</span></div>`).join("")
+        + '<div class="hint">Information for humans; the guard does not read it.</div>';
+    } else {
+      body = `<div>${esc(p.claim || "")}</div>`;
+      if (p.alternative_cost) body += `<div class="hint">cost ~${num(p.alternative_cost.credits)} credits (${esc(p.alternative_cost.usage_source || "estimate")})</div>`;
+    }
+    return `<div class="claim ${counted ? "" : "uncounted"}"><div class="who"><span class="persona ${esc(cls(e.role))}">${esc(personaLabel(e))}</span><span class="hint">${esc(clock(e.ts))}</span></div>
+      <div>${body}${evidenceLinks(evidence)}${note ? `<div class="note-uncounted">${esc(note)}</div>` : ""}</div></div>`;
+  }
+  function chairCard(summaries, proposal) {
+    const header = proposal ? personaLabel(proposal) : (summaries[0] ? personaLabel(summaries[0]) : "Grey Witch — Senior Kiro · Chair");
+    const sum = summaries[summaries.length - 1];
+    let html = `<section class="card"><div class="head"><h3>${esc(header)}</h3><span class="hint">proposes — never decides</span></div><div class="body">`;
+    if (!sum && !proposal) return html + '<div class="hint">Chair is summarising…</div></div></section>';
+    if (sum) {
+      const sp = sum.payload || {};
+      html += `<div>${esc(sp.summary || "")}</div>`;
+      for (const [label, arr] of [["Agreed", sp.agreed], ["Disagreed", sp.disagreed], ["Missing evidence", sp.missing_evidence]]) {
+        if (Array.isArray(arr) && arr.length) html += `<div class="hint">${label}: ${esc(arr.join("; "))}</div>`;
+      }
+    }
+    if (proposal) {
+      const pp = proposal.payload || {};
+      const invalid = proposal.valid === false;
+      html += `<div class="decision"><span class="hint">Proposal</span> <span class="badge ${invalid ? "grey" : cls(pp.proposal)}">${esc(pp.proposal || "—")}</span>${invalid ? '<span class="note-uncounted">invalid — relies on a claim with no evidence link</span>' : ""}</div>`;
+      if (Array.isArray(pp.reasons)) html += `<ul style="margin:4px 0 6px 18px;padding:0">${pp.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
+      const relies = (Array.isArray(pp.relies_on) ? pp.relies_on : []).map((id) => ({ kind: "event", event_id: id }));
+      if (relies.length) html += `<div class="hint">Relies on</div>${evidenceLinks(relies)}`;
+      for (const d of Array.isArray(pp.dissent) ? pp.dissent : []) {
+        html += `<div class="dissent"><div class="who">Dissent — ${esc(ROLE[d.role] || d.role || "")} (verbatim)</div>${esc(d.claim || "")}${evidenceLinks(d.evidence)}</div>`;
+      }
+    }
+    return html + "</div></section>";
+  }
+  function guardCard(guard, proposal) {
+    let html = '<section class="card"><div class="head"><h3>Guard — runs its own checks</h3><span class="hint">reads results, not opinions</span></div><div class="body">';
+    if (!guard) return html + '<div class="hint">The guard has not run yet.</div></div></section>';
+    const gp = guard.payload || {};
+    const m = { pass: "✓", fail: "✗", unknown: "?" };
+    html += `<ul class="checks">${(Array.isArray(gp.checks) ? gp.checks : []).map((c) => `<li class="${cls(c.result)}"><span class="m mono">${m[c.result] || "?"}</span><b>${esc(c.name)}</b><span class="hint">${esc(c.detail || c.result)}</span></li>`).join("")}</ul>`;
+    html += `<div class="decision"><span class="hint">Verdict</span> <span class="badge ${cls(gp.verdict)}">${esc(String(gp.verdict || "—").toUpperCase())}</span></div>`;
+    const pp = proposal ? (proposal.payload || {}).proposal : null;
+    if (pp && gp.verdict && pp !== gp.verdict) {
+      html += `<div class="disagree">Guard ${esc(gp.verdict === "reject" ? "rejected" : gp.verdict === "accept" ? "accepted" : "found no consensus on")} this. Chair proposed ${esc(pp)}. ${gp.verdict === "reject" ? "Reject wins. " : ""}Dissent recorded.</div>`;
+    }
+    return html + '<div class="hint" style="margin-top:8px">Recorded only — nothing was changed in the repo.</div></div></section>';
+  }
+
+  /* ------------------------------------------------------------------ drawer */
+  let lastFocus = null;
+  function openDrawer(title, value) {
+    lastFocus = document.activeElement;
+    $("drawer-title").textContent = title;
+    $("drawer-body").textContent = JSON.stringify(value, null, 2);
+    $("drawer").classList.add("open");
+    $("drawer").focus();
+  }
+  function closeDrawer() {
+    if (!$("drawer").classList.contains("open")) return false;
+    $("drawer").classList.remove("open");
+    if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+    return true;
+  }
+  const findEvent = (id) => state.events.find((e) => e.event_id === id) || (state.council && state.council.events.find((e) => e.event_id === id)) || null;
+
+  /* ------------------------------------------------------------------ wiring */
+  async function dismiss(id) {
+    try {
+      await api(`/v1/events/${encodeURIComponent(id)}/dismiss`, { method: "POST" });
+      state.deviations = state.deviations.filter((d) => d.event_id !== id);
+      const e = state.events.find((x) => x.event_id === id);
+      if (e) e.dismissed = true;
+      render({ keepScroll: true });
+      loadFleet();
+    } catch (error) { quiet(error); }
+  }
+
+  function wire(root) {
+    root.querySelectorAll("[data-filter]").forEach((el) => el.addEventListener("click", () => {
+      go(listHash({ project: state.route.project, spec: state.route.spec, filter: el.dataset.filter }));
+    }));
+    root.querySelectorAll("#q").forEach((el) => el.addEventListener("input", () => { state.query = el.value; refreshList(); }));
+    root.querySelectorAll("#sort").forEach((el) => el.addEventListener("change", () => { state.ui.sort = el.value; saveUi(); refreshList(); }));
+    root.querySelectorAll("#group").forEach((el) => el.addEventListener("change", () => { state.ui.group = el.checked; saveUi(); refreshList(); }));
+    root.querySelectorAll("[data-clear]").forEach((el) => el.addEventListener("click", () => {
+      state.query = "";
+      const { project, spec } = state.route;
+      if (state.route.filter !== "all") go(listHash({ project, spec })); else render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-caret]").forEach((el) => el.addEventListener("click", () => {
+      const id = el.dataset.caret, open = new Set(state.ui.open);
+      if (open.has(id)) open.delete(id); else open.add(id);
+      state.ui.open = [...open];
+      saveUi();
+      render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-toggle-dev]").forEach((el) => el.addEventListener("click", () => { state.expandDeviations = !state.expandDeviations; render({ keepScroll: true }); }));
+    root.querySelectorAll("[data-dismiss]").forEach((el) => el.addEventListener("click", (ev) => { ev.stopPropagation(); el.disabled = true; dismiss(el.dataset.dismiss); }));
+    root.querySelectorAll("[data-tab]").forEach((el) => {
+      el.addEventListener("click", () => go(`#/run/${encodeURIComponent(state.route.runId)}/${el.dataset.tab}`));
+      el.addEventListener("keydown", (ev) => {
+        if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+        const tabs = [...root.querySelectorAll("[data-tab]")];
+        const next = tabs[(tabs.indexOf(el) + (ev.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+        next.focus(); next.click();
       });
     });
+    root.querySelectorAll("[data-turn]").forEach((el) => el.addEventListener("click", () => {
+      state.expanded.set(el.dataset.turn, el.getAttribute("aria-expanded") !== "true");
+      render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-event]").forEach((el) => el.addEventListener("click", () => {
+      const e = state.items[Number(el.dataset.event)];
+      if (e) openDrawer(`${e.type} · ${short(e.event_id, 26)}`, e);
+    }));
+    root.querySelectorAll("[data-evidence]").forEach((el) => el.addEventListener("click", () => {
+      const item = state.evidence[Number(el.dataset.evidence)];
+      if (!item) return;
+      const target = item.kind === "event" ? findEvent(item.event_id) : null;
+      openDrawer(target ? `${target.type} · ${short(target.event_id, 26)}` : `evidence · ${item.kind}`, target || item);
+    }));
+    root.querySelectorAll("[data-copy]").forEach((el) => el.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(el.dataset.copy); el.textContent = "copied"; } catch { el.textContent = "copy failed"; }
+    }));
+    root.querySelectorAll("[data-board-project]").forEach((el) => el.addEventListener("change", () => { state.boardProject = el.value; go(`#/board/${encodeURIComponent(el.value)}`); }));
+    root.querySelectorAll("#note-form").forEach((form) => form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const text = $("note-text").value.trim();
+      if (!text) return;
+      const author = $("note-author").value.trim();
+      if (author) localStorage.setItem("coven_author", author);
+      const body = { project_id: defaultBoardProject(), note: text, kind: $("note-kind").value, task: $("note-task").value || undefined, author: author || undefined };
+      try {
+        await api("/v1/board/notes", { method: "POST", body: JSON.stringify(body) });
+        $("note-text").value = "";
+        await loadBoard();
+        render({ keepScroll: true });
+      } catch (error) { quiet(error); }
+    }));
+    root.querySelectorAll("[data-council-picker]").forEach((el) => el.addEventListener("change", () => go(`#/run/${encodeURIComponent(state.route.runId)}/council/${encodeURIComponent(el.value)}`)));
   }
 
-  function connectStream() {
-    if (state.source) state.source.close();
-    const url = `/v1/stream?token=${encodeURIComponent(state.token)}`;
-    const source = new EventSource(url);
-    state.source = source;
-    const pill = $("stream-pill");
-
-    source.onopen = () => { pill.textContent = "LIVE STREAM"; pill.className = "pill live"; };
-    source.onerror = () => { pill.textContent = "RECONNECTING"; pill.className = "pill off"; };
-
-    const onMessage = (message) => {
-      let payload;
-      try { payload = JSON.parse(message.data); } catch { return; }
-      if (payload.kind === "event" && payload.event) {
-        const event = payload.event;
-        if (event.run_id === state.selected && !state.events.some((item) => item.event_id === event.event_id)) {
-          state.events.push(event);
-          const host = $("timeline");
-          if (host) { host.innerHTML = timeline(state.events); bindDismiss(); }
-        }
-      }
-      if (payload.kind === "dismiss" && payload.event_id) {
-        const event = state.events.find((item) => item.event_id === payload.event_id);
-        if (event) event.dismissed = true;
-      }
-      scheduleRefresh();
-    };
-
-    source.addEventListener("event", onMessage);
-    source.addEventListener("heartbeat", onMessage);
-    source.addEventListener("dismiss", onMessage);
-  }
-
+  /* -------------------------------------------------------------- live stream */
   function scheduleRefresh() {
     clearTimeout(state.refreshTimer);
-    state.refreshTimer = setTimeout(load, 400);
+    state.refreshTimer = setTimeout(async () => {
+      await loadFleet();
+      if (state.route.view === "session" && state.route.tab === "council") { await loadCouncil(); render({ keepScroll: true }); }
+      if (state.route.view === "board") { await loadBoard(); render({ keepScroll: true }); }
+    }, 400);
+  }
+  function onMessage(message) {
+    let data;
+    try { data = JSON.parse(message.data); } catch { return; }
+    if (data.kind === "event" && data.event && state.route.view === "session" && data.event.run_id === state.route.runId
+        && !state.events.some((e) => e.event_id === data.event.event_id)) {
+      state.events.push(data.event);
+      state.events.sort(byTime);
+      if (data.run) state.run = { ...state.run, ...data.run, health: state.run.health, attention: state.run.attention };
+      if (!document.hidden) render({ keepScroll: true });
+    }
+    if (data.kind === "dismiss") state.deviations = state.deviations.filter((d) => d.event_id !== data.event_id);
+    scheduleRefresh();
+  }
+  function connectStream() {
+    if (state.source) state.source.close();
+    const source = new EventSource(`/v1/stream?token=${encodeURIComponent(state.token)}`);
+    state.source = source;
+    const pill = $("stream-pill");
+    source.onopen = () => { pill.textContent = "LIVE STREAM"; pill.className = "pill ok"; };
+    source.onerror = () => { pill.textContent = "RECONNECTING"; pill.className = "pill bad"; };
+    ["event", "heartbeat", "dismiss", "board"].forEach((name) => source.addEventListener(name, onMessage));
   }
 
-  function start() {
-    state.token = tokenFromUrl();
-    if (!state.token) {
-      $("login").classList.add("show");
-      $("token-input").focus();
-      return;
-    }
+  /* -------------------------------------------------------------------- boot */
+  async function start() {
+    state.token = state.token || tokenFromUrl();
+    if (!state.token) { $("login").classList.add("show"); $("token-input").focus(); return; }
     localStorage.setItem("coven_token", state.token);
     $("login").classList.remove("show");
-    load();
+    state.route = parseRoute();
+    applyNav();
+    await loadFleet();
+    await onRoute();
     connectStream();
-    setInterval(load, 10000);
+    setInterval(() => { if (!document.hidden) loadFleet(); }, 10000);
   }
 
-  $("login-form").addEventListener("submit", (event) => {
-    event.preventDefault();
+  // Age labels tick every second, without a request.
+  setInterval(() => {
+    document.querySelectorAll("time[data-ago]").forEach((el) => { el.textContent = ago(secondsSince(el.dataset.ago)); });
+  }, 1000);
+
+  $("login-form").addEventListener("submit", (ev) => {
+    ev.preventDefault();
     const value = $("token-input").value.trim();
     if (!value) return;
     state.token = value;
     start();
   });
+  $("drawer-close").addEventListener("click", closeDrawer);
 
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && state.token) load();
+  /* sidebar visibility: an overlay on narrow screens, hide/show on wide ones */
+  const narrow = () => window.innerWidth <= 900;
+  function applyNav() {
+    $("app").classList.toggle("nav-closed", !state.ui.nav);
+    const shown = narrow() ? $("app").classList.contains("nav-open") : state.ui.nav;
+    $("menu").setAttribute("aria-expanded", String(shown));
+  }
+  function closeNav() { $("app").classList.remove("nav-open"); applyNav(); }
+  function toggleNav() {
+    if (narrow()) $("app").classList.toggle("nav-open");
+    else { state.ui.nav = !state.ui.nav; saveUi(); }
+    applyNav();
+  }
+  $("menu").addEventListener("click", toggleNav);
+  $("scrim").addEventListener("click", closeNav);
+  $("nav-hide").addEventListener("click", () => { if (narrow()) closeNav(); else { state.ui.nav = false; saveUi(); applyNav(); $("menu").focus(); } });
+  $("sign-out").addEventListener("click", () => {
+    localStorage.removeItem("coven_token");
+    if (state.source) state.source.close();
+    state.token = ""; state.runs = []; state.projects = []; state.deviations = []; state.councils = [];
+    $("login-error").hidden = true;
+    $("login").classList.add("show");
+    $("token-input").value = "";
+    $("token-input").focus();
   });
+
+  document.addEventListener("keydown", (ev) => {
+    const active = document.activeElement;
+    const tag = (active && active.tagName) || "";
+    const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(tag);
+    if (ev.key === "/" && !typing && $("q")) { ev.preventDefault(); $("q").focus(); return; }
+    if (ev.key === "[" && !typing && !ev.ctrlKey && !ev.metaKey) { toggleNav(); return; }
+    if (ev.key !== "Escape") return;
+    if (active && active.id === "q" && state.query) { state.query = ""; active.value = ""; refreshList(); return; }
+    if (closeDrawer()) return;
+    if (state.route.view === "session" && !typing) go(sessionsHash());
+  });
+  window.addEventListener("hashchange", onRoute);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) { loadFleet(); if (state.route.view === "session") loadSession().then(() => render({ keepScroll: true })); } });
 
   start();
 })();

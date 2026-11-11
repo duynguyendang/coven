@@ -1,68 +1,365 @@
-"""Parse .kiro/specs/*/tasks.md and flag writes outside the current task's paths."""
+"""Read `.kiro/specs/*/tasks.md` exactly as Kiro does, and flag writes outside a task's declared paths.
+
+The task syntax is Kiro's own (Kiro CLI 3.1 `parseMarkdownTasks` / `extractTaskNumber`,
+and the `tasks.md` template Kiro writes):
+
+    - [ ] 1. Set up project structure            top-level task, number "1"
+      - Create directory structure               detail bullet (task content)
+      - _Requirements: 1.1, 2.3_                 Kiro annotation
+      - _Paths: `src/coven/`, `tests/`_          Coven annotation: declared paths
+      - _Verify: `pytest -q tests/test_x.py`_    Coven annotation: the guard's command
+    - [ ]* 1.2 Write property tests              `*` after the box: optional sub-task
+
+    ## Task Dependency Graph
+    ```json
+    {"waves": [{"id": 0, "tasks": ["1.1"]}, {"id": 1, "tasks": ["1.2"]}]}
+    ```
+
+Status boxes: `[ ]` not_started, `[x]` completed, `[-]` in_progress, `[~]` queued.
+Kiro identifies a task by (tasks file, task text); Coven identifies it by
+(spec folder name, task number), falling back to the text for unnumbered tasks.
+
+Declared paths come only from `_Paths:_`. Coven never infers them from file names
+mentioned in a task's description: a task without `_Paths:_` has unknown paths and
+never raises a deviation.
+"""
 
 from __future__ import annotations
 
+import fnmatch
+import json
 import re
 from pathlib import Path
 
-TASK_RE = re.compile(r"^\s*[-*]\s*\[(?P<done>[ xX])\]\s*(?P<id>[A-Z]+-\d+)\s*(?P<title>.*)$")
-PATH_RE = re.compile(r"`([^`]+)`")
+# Kiro 3.1 parseTaskLine: indent, bullet, status box, optional marker, text.
+TASK_LINE = re.compile(r"^(\s*)([-*+])\s+\[([ xX\-~])\](\\?\*?)\s+(.+)$")
+# Kiro 3.1 extractTaskNumber: "2.1 Title" or "1. Title".
+NUMBER = (re.compile(r"^(\d+(?:\.\d+)*)\s"), re.compile(r"^(\d+(?:\.\d+)*)\."))
+STATUS = {" ": "not_started", "x": "completed", "-": "in_progress", "~": "queued"}
+GRAPH_HEADING = "## Task Dependency Graph"
+# `- _Paths: ..._`, `_Verify: ..._`, `_Requirements: ..._` (bullet and underscores optional).
+ANNOTATION = re.compile(r"^\s*(?:[-*+]\s+)?_?(?P<key>paths|verify|requirements)\s*:\s*(?P<value>.*?)_?\s*$", re.IGNORECASE)
+BACKTICKED = re.compile(r"`([^`]+)`")
+HEADING = re.compile(r"^\s*#{1,6}\s")
 
 
-def parse(text: str) -> dict[str, dict]:
-    tasks: dict[str, dict] = {}
-    for line in text.splitlines():
-        match = TASK_RE.match(line)
+def task_number(text: str) -> str | None:
+    """Kiro's task number for a task's text: "2.1 Create models" -> "2.1", "Set up" -> None."""
+    for pattern in NUMBER:
+        match = pattern.match(text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def task_title(text: str) -> str:
+    """The task text without its number: "2.1 Create models" -> "Create models"."""
+    number = task_number(text)
+    if not number:
+        return text.strip()
+    rest = text[len(number):]
+    return rest.lstrip(".").strip()
+
+
+def task_ref(task_text: str | None) -> str | None:
+    """Coven's task id for Kiro's task id (the task text): its number, else the text itself."""
+    if not task_text:
+        return None
+    text = str(task_text).strip()
+    if re.fullmatch(r"\d+(?:\.\d+)*", text):  # already a bare task number
+        return text
+    return task_number(text) or text or None
+
+
+def spec_of(tasks_file: str | None) -> str | None:
+    """Kiro names a spec by the folder holding its tasks file (`MXu` in Kiro 3.1)."""
+    if not tasks_file:
+        return None
+    value = str(tasks_file).strip().replace("\\", "/").rstrip("/")
+    if value.endswith(".md"):
+        parent = value.rsplit("/", 2)
+        return parent[-2] if len(parent) >= 2 and parent[-2] else None
+    return value.rsplit("/", 1)[-1] or None  # a bare spec name
+
+
+def _line(line: str) -> dict | None:
+    match = TASK_LINE.match(line)
+    if not match:
+        return None
+    text = match.group(5)
+    return {
+        "indent": len(match.group(1)),
+        "status": STATUS[match.group(3).lower()],
+        "optional": match.group(4) in ("*", "\\*"),
+        "text": text,
+        "number": task_number(text),
+    }
+
+
+def _process(lines: list[str], start: int, parent_text: str | None, out: list[dict]) -> int:
+    """Kiro 3.1 processTask: read one task and its content; nest unnumbered sub-tasks by indent."""
+    info = _line(lines[start])
+    task = {**info, "line": start + 1, "content": [], "parent_text": parent_text}
+    out.append(task)
+    index = start + 1
+    while index < len(lines):
+        line = lines[index]
+        nested = _line(line)
+        indent = len(line) - len(line.lstrip())
+        if info["number"]:
+            if nested:  # numbered tasks end at the next task line; nesting comes from the number
+                break
+        else:
+            if line.strip() and indent <= info["indent"]:
+                break
+            if nested:
+                index = _process(lines, index, info["text"], out)
+                continue
+        if line.strip():
+            task["content"].append(line[min(indent, info["indent"] + 2):])
+        index += 1
+    return index
+
+
+def _annotations(content: list[str]) -> dict:
+    found: dict = {"paths": [], "verify": None, "requirements": []}
+    for line in content:
+        if HEADING.match(line):  # `## Notes` / `## Task Dependency Graph` are not task content for Coven
+            break
+        match = ANNOTATION.match(line)
         if not match:
             continue
-        title = match.group("title").strip()
-        paths = [p for p in PATH_RE.findall(title) if "/" in p or "." in p]
-        tasks[match.group("id")] = {
-            "id": match.group("id"),
-            "title": title,
-            "paths": paths,
-            "done": match.group("done").lower() == "x",
+        key, value = match.group("key").lower(), match.group("value").strip()
+        quoted = BACKTICKED.findall(value)
+        if key == "paths":
+            items = quoted or [part.strip() for part in value.split(",")]
+            found["paths"].extend(item for item in items if item and item not in found["paths"])
+        elif key == "verify" and found["verify"] is None:
+            found["verify"] = (quoted[0] if quoted else value) or None
+        elif key == "requirements":
+            found["requirements"].extend(part.strip() for part in value.split(",") if part.strip())
+    return found
+
+
+def _waves(text: str) -> dict[str, int]:
+    """Kiro's `## Task Dependency Graph`: task number (or text) -> wave id. Malformed means none."""
+    start = text.find(GRAPH_HEADING)
+    if start == -1:
+        return {}
+    section = text[start + len(GRAPH_HEADING):]
+    end = re.search(r"\n(#{1,2}\s)", section)
+    if end:
+        section = section[: end.start()]
+    block = re.search(r"```json\s*\n?(.*?)(```|$)", section, re.DOTALL)
+    if not block:
+        return {}
+    try:
+        graph = json.loads(block.group(1))
+    except ValueError:
+        return {}
+    waves: dict[str, int] = {}
+    for wave in graph.get("waves", []) if isinstance(graph, dict) else []:
+        if not isinstance(wave, dict) or not isinstance(wave.get("id"), (int, float)):
+            continue
+        for item in wave.get("tasks") or []:
+            if isinstance(item, str) and item.strip():
+                # Graph ids are bare numbers ("2.1"), compared as strings, as Kiro does.
+                item = item.strip()
+                key = item if re.fullmatch(r"\d+(?:\.\d+)*", item) else task_ref(item)
+                waves.setdefault(key, int(wave["id"]))
+    return waves
+
+
+def parse(text: str, spec: str | None = None) -> dict[str, dict]:
+    """Every task in one `tasks.md`, keyed by `spec#task_id` (or `task_id` without a spec)."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    raw: list[dict] = []
+    index = 0
+    while index < len(lines):
+        if _line(lines[index]):
+            index = _process(lines, index, None, raw)
+        else:
+            index += 1
+
+    waves = _waves(text)
+    by_text = {task["text"]: task for task in raw}
+    tasks: dict[str, dict] = {}
+    for task in raw:
+        task_id = task["number"] or task["text"]
+        if task["number"] and "." in task["number"]:
+            parent = task["number"].rsplit(".", 1)[0]
+        elif task["parent_text"]:
+            parent_task = by_text.get(task["parent_text"])
+            parent = (parent_task["number"] or parent_task["text"]) if parent_task else None
+        else:
+            parent = None
+        notes = _annotations(task["content"])
+        tasks[f"{spec}#{task_id}" if spec else task_id] = {
+            "spec": spec,
+            "task_id": task_id,
+            "number": task["number"],
+            "text": task["text"],  # Kiro's own task id
+            "title": task_title(task["text"]),
+            "status": task["status"],
+            "done": task["status"] == "completed",
+            "optional": task["optional"],
+            "parent": parent,
+            "paths": notes["paths"],
+            "verify": notes["verify"],
+            "requirements": notes["requirements"],
+            "wave": waves.get(task_id),
+            "line": task["line"],
         }
+
+    # A sub-task without `_Paths:_` uses its parent's declared paths: still declared, not inferred.
+    for task in tasks.values():
+        current, seen = task, set()
+        while not task["paths"] and current.get("parent") and current["parent"] not in seen:
+            seen.add(current["parent"])
+            current = tasks.get(f"{spec}#{current['parent']}" if spec else current["parent"])
+            if not current:
+                break
+            task["paths"] = list(current["paths"])
     return tasks
 
 
 def load(root: Path) -> dict[str, dict]:
+    """All specs in the repository, keyed by `spec#task_id`; specs do not collide."""
     merged: dict[str, dict] = {}
     for path in sorted((root / ".kiro" / "specs").glob("*/tasks.md")):
         try:
-            merged.update(parse(path.read_text()))
-        except OSError:
+            merged.update(parse(path.read_text(encoding="utf-8"), spec=path.parent.name))
+        except (OSError, UnicodeDecodeError):
             continue
     return merged
 
 
+class SpecCache:
+    """`load()` that re-reads a `tasks.md` only when it changed.
+
+    A relay lives for days and Kiro edits `tasks.md` (ticking tasks off), so a copy read
+    once at start-up would go stale. A stat per call is cheap; parsing happens on change.
+    """
+
+    def __init__(self, root: Path):
+        self.root = root
+        self._files: dict[Path, tuple[tuple[int, int], dict]] = {}
+
+    def tasks(self) -> dict[str, dict]:
+        merged: dict[str, dict] = {}
+        seen: set[Path] = set()
+        for path in sorted((self.root / ".kiro" / "specs").glob("*/tasks.md")):
+            try:
+                stat = path.stat()
+                signature = (stat.st_mtime_ns, stat.st_size)
+                cached = self._files.get(path)
+                if cached is None or cached[0] != signature:
+                    parsed = parse(path.read_text(encoding="utf-8"), spec=path.parent.name)
+                    self._files[path] = (signature, parsed)
+            except (OSError, UnicodeDecodeError):
+                continue
+            seen.add(path)
+            merged.update(self._files[path][1])
+        for gone in set(self._files) - seen:
+            del self._files[gone]
+        return merged
+
+
+def progress(tasks: dict[str, dict], spec: str | None) -> dict | None:
+    """Counts for one spec: done / in progress / queued of its required leaf tasks.
+
+    Leaf tasks are the ones nothing nests under (parents are summaries of their children);
+    optional tasks (`[ ]*`) are counted apart so skipping them never looks like lateness.
+    """
+    mine = [task for task in tasks.values() if spec and task.get("spec") == spec]
+    if not mine:
+        return None
+    parents = {task["parent"] for task in mine if task.get("parent")}
+    leaves = [task for task in mine if task["task_id"] not in parents]
+    required = [task for task in leaves if not task["optional"]]
+    count = lambda status: sum(1 for task in required if task["status"] == status)  # noqa: E731
+    return {
+        "spec": spec,
+        "total": len(required),
+        "done": count("completed"),
+        "in_progress": count("in_progress"),
+        "queued": count("queued"),
+        "optional": len(leaves) - len(required),
+    }
+
+
+def find(tasks: dict[str, dict], task_id: str | None, spec: str | None = None) -> dict | None:
+    """The task a run is on. Without a spec, only an unambiguous task id matches."""
+    if not task_id:
+        return None
+    if spec:
+        return tasks.get(f"{spec}#{task_id}")
+    if task_id in tasks:
+        return tasks[task_id]
+    matches = [task for task in tasks.values() if task["task_id"] == task_id]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _normalise(value: str) -> str:
-    return value.strip().lstrip("./")
+    value = value.strip()
+    while value.startswith("./"):
+        value = value[2:]
+    return value
+
+
+def relative_to_root(path: str, root: Path | None) -> str:
+    """Make a tool path repo-relative so it can be compared with `tasks.md` paths.
+
+    Kiro reports absolute paths, and redaction rewrites the home directory to `~`
+    before the relay sees them, so both forms of the repository root are stripped.
+    A path outside the repository is returned unchanged.
+    """
+    if root is None:
+        return path
+    base = str(root.resolve())
+    prefixes = [base]
+    home = str(Path.home())
+    if base == home or base.startswith(home + "/"):
+        prefixes.append("~" + base[len(home):])
+    for prefix in prefixes:
+        if path == prefix:
+            return "."
+        if path.startswith(prefix.rstrip("/") + "/"):
+            return path[len(prefix.rstrip("/")) + 1 :]
+    return path
 
 
 def covers(task: dict, path: str) -> bool:
+    """A declared file, a declared directory (`tests/`) or a glob (`src/**`, `*.md`) covers the path."""
     observed = _normalise(path)
     for declared in task.get("paths", []):
         target = _normalise(declared)
-        if observed == target or observed.startswith(target.rstrip("/") + "/"):
+        if any(char in target for char in "*?["):
+            if fnmatch.fnmatchcase(observed, target) or (target.endswith("/**") and observed.startswith(target[:-3].rstrip("/") + "/")):
+                return True
+        elif observed == target.rstrip("/") or observed.startswith(target.rstrip("/") + "/"):
             return True
     return False
 
 
-def deviation(event: dict, task_id: str | None, tasks: dict[str, dict]) -> dict | None:
+def deviation(event: dict, task_id: str | None, tasks: dict[str, dict], root: Path | None = None, spec: str | None = None) -> dict | None:
     if not task_id or event.get("type") != "tool_call":
         return None
-    task = tasks.get(task_id)
+    task = find(tasks, task_id, spec)
     payload = event.get("payload") or {}
     path = payload.get("path")
     if not task or not path or not task.get("paths"):
         return None
-    if covers(task, path):
-        return None
-    return {
-        "task_id": task_id,
+    relative = relative_to_root(path, root)
+    if covers(task, relative) or relative.startswith(".coven/flows/"):
+        return None  # a flow step's own artifact is its job, not a deviation
+    found = {
+        "task_id": task["task_id"],
         "expected": task["paths"],
-        "observed": path,
+        "observed": relative,
         "severity": "possible",
         "reason": "write outside the current task's declared paths",
     }
+    if task.get("spec"):
+        found["spec"] = task["spec"]
+    return found

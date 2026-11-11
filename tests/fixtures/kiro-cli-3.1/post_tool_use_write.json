@@ -1,0 +1,11 @@
+{
+  "session_id": "sess_4dca3397-f930-497a-8736-9aa48fc9e41a",
+  "cwd": "/mnt/e/coven",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "fs_write",
+  "tool_input": {
+    "path": "/mnt/e/coven/src/other.py",
+    "content": "SECRET FILE BODY"
+  },
+  "tool_response": "Wrote 16 bytes"
+}

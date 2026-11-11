@@ -1,0 +1,14 @@
+{
+  "session_id": "sess_4dca3397-f930-497a-8736-9aa48fc9e41a",
+  "cwd": "/mnt/e/coven",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "execute_bash",
+  "tool_input": {
+    "command": "cat .env && echo done",
+    "description": "Show settings",
+    "cwd": null,
+    "run_in_background": false,
+    "timeout": null
+  },
+  "tool_response": "Output:\nAWS_SECRET=SECRET COMMAND OUTPUT\ndone\n\nExit Code: 0"
+}

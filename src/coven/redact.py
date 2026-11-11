@@ -1,6 +1,6 @@
 """Secret redaction and payload budgeting.
 
-Redaction runs on the developer machine, before anything reaches the outbox.
+Redaction runs on the developer machine, before anything is written to the local event log.
 If a pattern cannot be applied, the event is dropped rather than sent raw.
 """
 
@@ -30,6 +30,7 @@ DROP_KEYS = {
     "code",
     "response",
     "completion",
+    "tool_response",  # Kiro PostToolUse: the tool's output (file contents, command output)
 }
 
 PATH_KEYS = {"path", "file_path", "target_file", "absolute_path", "cwd", "file"}

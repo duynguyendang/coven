@@ -5,7 +5,7 @@ Target shape:
 ```text
 developer machine                    AWS
 -----------------                    ---------------------------------
-coven relay  --HTTPS-->  App Runner (FastAPI container, port 8080)
+coven relay  --HTTPS-->  App Runner (Node.js container, port 8080)
                           |-- DynamoDB table `coven-events` (TTL 30 days)
                           |-- CloudWatch logs
 browser      --HTTPS-->  same service, static dashboard + SSE
@@ -56,12 +56,12 @@ Item layout:
 | PK | SK | Meaning |
 | :--- | :--- | :--- |
 | `PROJECT#<id>` | `RUN#<run_id>#META` | run summary: status, stage, task, credits, last event |
-| `PROJECT#<id>` | `RUN#<run_id>#EVT#<seq>` | one event; `body` is the JSON envelope, `ttl` expires it |
+| `PROJECT#<id>` | `RUN#<run_id>#EVT#<seq>#<event_id>` | one event (`seq` zero-padded to 8 digits; the event id keeps two events with a missing `seq` apart); `body` is the JSON envelope, `ttl` expires it |
 
 ## 3. Make a token
 
 ```bash
-python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
 Store it in Secrets Manager (or SSM Parameter Store) and reference it from the
@@ -70,14 +70,15 @@ App Runner service, rather than committing it or baking it into the image:
 ```bash
 aws secretsmanager create-secret \
   --name coven/tokens \
-  --secret-string "$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" \
+  --secret-string "$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))")" \
   --region "$REGION"
 ```
 
 The app accepts a comma-separated list in `COVEN_TOKENS`, or split scopes with
 `COVEN_INGEST_TOKEN` and `COVEN_READ_TOKEN` (the relay only needs the ingest one;
 the dashboard only needs the read one). With no token configured the app falls
-back to `dev` and prints a warning — never leave that on a public URL.
+back to `dev` and prints a warning — never leave that on a public URL. A persistent store
+(`COVEN_STORE=dynamo`) refuses to start with the development token.
 
 ## 4. Create the App Runner service
 
@@ -92,7 +93,7 @@ Service settings:
 | Health check | HTTP `/healthz` |
 | Environment | `COVEN_STORE=dynamo`, `COVEN_TABLE=coven-events`, `COVEN_TTL_DAYS=30`, `AWS_REGION=<region>` |
 | Secret | `COVEN_TOKENS` ← `coven/tokens` from Secrets Manager |
-| Instance role | `dynamodb:PutItem`, `dynamodb:GetItem`, `dynamodb:Scan`, `dynamodb:UpdateItem` on the table |
+| Instance role | `dynamodb:PutItem` and `dynamodb:Scan` on the table (conditional put for writes, scan to rehydrate) |
 | Auto scaling | **max instances = 1** for the demo |
 
 `max instances = 1` matters: live SSE fan-out is in-process. With two instances a

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import stat
 
-from coven import cli, outbox
+from coven import cli, eventlog
 
 
 def test_parser_wires_the_documented_commands():
@@ -22,9 +22,7 @@ def test_emit_json_is_silent_and_queues(root, capsys):
     assert code == 0
     assert capsys.readouterr().out == ""
 
-    conn = outbox.connect(root)
-    stored = outbox.pending(conn)[0]["event"]
-    conn.close()
+    stored = eventlog.pending(root)[0].event
     assert stored["type"] == "run_started"
     assert stored["run_id"] == "run_cli"
 
@@ -44,4 +42,4 @@ def test_doctor_reports_a_stopped_relay(root, capsys):
 
     out = capsys.readouterr().out
     assert "relay: stopped" in out
-    assert "outbox: 0 pending / 0 total" in out
+    assert "events: 0 not yet pushed / 0 in the local log" in out

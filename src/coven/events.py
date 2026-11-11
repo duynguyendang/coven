@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
+from . import specmap
 
 RUNTIME = "kiro-cli-v3"
 
@@ -64,13 +67,32 @@ def _first(payload: dict, *keys: str) -> Any:
 
 
 def _task_id(payload: dict) -> str | None:
-    value = _first(payload, "task_id", "taskId", "task")
+    """Coven's task id: Kiro's task number ("2.1"), or the task text when it has none.
+
+    Kiro CLI 3.1 task hooks send `task_name` = Kiro's task id, which is the whole
+    task text after the status box ("2.1 Create core data model").
+    """
+    value = _first(payload, "task_id", "taskId", "task", "task_name", "taskName")
     if isinstance(value, dict):
         value = value.get("id") or value.get("task_id") or value.get("name")
     if value is None:
         return None
-    match = re.search(r"[A-Z]+-\d+", str(value))
-    return match.group(0) if match else str(value)
+    return specmap.task_ref(str(value))
+
+
+def _task_body(payload: dict, task_id: str | None) -> dict:
+    """`{task_id, spec, title}` for task events; the tasks file path itself is not kept."""
+    body: dict = {"task_id": task_id} if task_id else {}
+    # Kiro 3.1 sends the tasks file path as `spec_name`; Kiro names the spec after its folder.
+    spec = specmap.spec_of(_first(payload, "spec_name", "specName", "spec", "tasks_file_path", "tasksFilePath"))
+    if spec:
+        body["spec"] = spec
+    name = _first(payload, "task_name", "taskName")
+    if name:
+        title = specmap.task_title(str(name))
+        if title and title != task_id:
+            body["title"] = title[:MAX_DESCRIPTION]
+    return body
 
 
 def _tool_input(payload: dict) -> dict:
@@ -100,6 +122,172 @@ def _size(payload: dict) -> int | None:
         if isinstance(data.get(key), str):
             return len(data[key].encode("utf-8"))
     return None
+
+
+EXIT_CODE = re.compile(r"Exit Code:\s*(-?\d+)")
+_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+MAX_DESCRIPTION = 160
+MAX_PROGRAMS = 5
+
+
+def _exit_code(payload: dict) -> int | None:
+    """The tool's exit code, read from Kiro's `tool_response` before it is dropped.
+
+    Kiro 3.1 shell tools end their response with `Exit Code: <n>`. Structured
+    responses may carry `exit_code` / `exitCode`. Only the number is kept.
+    """
+    response = _first(payload, "tool_response", "toolResponse")
+    if isinstance(response, dict):
+        value = _first(response, "exit_code", "exitCode")
+        return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    if isinstance(response, str):
+        found = EXIT_CODE.findall(response)
+        return int(found[-1]) if found else None
+    return None
+
+
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+_PROGRAM_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,40}$")
+_REDIRECT = re.compile(r"\d*(?:&?>>?|<<?<?|>&|<&)&?\d*")
+_WRAPPERS = {"env", "sudo", "nohup", "exec", "time", "command", "nice"}
+
+
+def _strip_heredocs(command: str) -> str:
+    """Remove here-document bodies: they are file contents or scripts, not commands."""
+    lines = command.split("\n")
+    out: list[str] = []
+    pending: list[str] = []  # delimiters still open, in order
+    for line in lines:
+        if pending:
+            if line.strip() == pending[0]:
+                pending.pop(0)
+            continue
+        out.append(line)
+        pending.extend(match.group(2) for match in _HEREDOC.finditer(line))
+    return "\n".join(out)
+_WRAPPER_OPTIONS_WITH_VALUE = {"-u", "-g", "-C", "-D", "-p", "-n"}  # sudo -u bob, nice -n 5, ...
+
+
+def _segments(command: str) -> list[str]:
+    """Split on unquoted `&&`, `||`, `;`, `|`, `&` and newlines; quoted text stays whole."""
+    parts: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if quote:
+            current.append(char)
+            if char == "\\" and quote == '"' and index + 1 < len(command):
+                current.append(command[index + 1])
+                index += 1
+            elif char == quote:
+                quote = None
+        elif char in ("'", '"'):
+            quote = char
+            current.append(char)
+        elif char == "\\" and index + 1 < len(command):
+            current.append(command[index : index + 2])
+            index += 1
+        elif char in ";|&\n":
+            redirect = char == "&" and (
+                (index + 1 < len(command) and command[index + 1] == ">") or (current and current[-1] in "<>")
+            )
+            if redirect:  # `&>file`, `2>&1` are redirections, not separators
+                current.append(char)
+            else:
+                parts.append("".join(current))
+                current = []
+                while index + 1 < len(command) and command[index + 1] in "|&" and char in "|&":
+                    index += 1  # `&&`, `||`
+        else:
+            current.append(char)
+        index += 1
+    parts.append("".join(current))
+    return [part for part in parts if part.strip()]
+
+
+def _words(segment: str) -> list[str]:
+    try:
+        words = shlex.split(segment, posix=True)
+    except ValueError:  # unbalanced quotes: fall back to whitespace
+        words = segment.split()
+    return [w for w in (word.strip("(){}") for word in words) if w]
+
+
+def _program_word(words: list[str]) -> str | None:
+    """Skip `VAR=value`, wrappers such as `env`/`sudo`, and their options; return the program."""
+    index, after_wrapper = 0, False
+    while index < len(words):
+        word = words[index]
+        base = word.rsplit("/", 1)[-1]
+        if _REDIRECT.match(word):
+            # `> out` is two words, `>out` / `2>&1` / `&>/dev/null` one: skip the target either way
+            index += 2 if word.endswith((">", "<")) else 1
+        elif _ASSIGNMENT.match(word):
+            index += 1
+        elif base in _WRAPPERS:
+            index, after_wrapper = index + 1, True
+        elif after_wrapper and word.startswith("-"):
+            index += 2 if word in _WRAPPER_OPTIONS_WITH_VALUE else 1
+        else:
+            return base
+    return None
+
+
+def _programs(command: str) -> list[str]:
+    """Program names in a shell command, without arguments: `cd x && pytest -q | tail` -> ["pytest", "tail"].
+
+    Arguments can hold secrets and paths, so only the first word of each segment is
+    kept, as a basename, skipping `VAR=value` prefixes and the navigation builtins.
+    """
+    found: list[str] = []
+    for segment in _segments(_strip_heredocs(command)):
+        if segment.strip().startswith("(("):  # shell arithmetic, not a program
+            continue
+        name = _program_word(_words(segment))
+        if not name or not _PROGRAM_NAME.match(name) or name in ("cd", "pushd", "popd", "export", "true") or name in found:
+            continue
+        found.append(name)
+        if len(found) >= MAX_PROGRAMS:
+            break
+    return found
+
+
+def _tool_details(payload: dict) -> dict:
+    """Safe facts about a tool call: exit code, outcome, program names, intent, output size."""
+    details: dict = {}
+    code = _exit_code(payload)
+    if code is not None:
+        details["exit_code"] = code
+        details["success"] = code == 0
+    data = _tool_input(payload)
+    command = data.get("command")
+    if isinstance(command, str) and command.strip():
+        programs = _programs(command)
+        if programs:
+            details["programs"] = programs
+    description = data.get("description") or data.get("explanation")
+    if isinstance(description, str) and description.strip():
+        text = " ".join(description.split())
+        details["description"] = text if len(text) <= MAX_DESCRIPTION else text[: MAX_DESCRIPTION - 1] + "…"
+    response = _first(payload, "tool_response", "toolResponse")
+    if isinstance(response, str):
+        details["output_bytes"] = len(response.encode("utf-8"))
+    return details
+
+
+def _workflow_details(payload: dict) -> dict:
+    """For Kiro's `run_workflow`: the recipe file name and the `flow_dir` input. Never the prompt or other inputs."""
+    data = _tool_input(payload)
+    out: dict = {}
+    recipe = data.get("workflowPath")
+    if isinstance(recipe, str) and recipe:
+        out["workflow"] = recipe.rsplit("/", 1)[-1][:120]
+    inputs = data.get("inputs") if isinstance(data.get("inputs"), dict) else {}
+    if isinstance(inputs.get("flow_dir"), str) and inputs["flow_dir"]:
+        out["flow_dir"] = inputs["flow_dir"][:300]
+    return out
 
 
 def _usage(payload: dict) -> dict | None:
@@ -169,17 +357,19 @@ def normalize_hook(payload: dict, *, project_id: str, run_id: str) -> list[dict]
     task_id = _task_id(payload)
     usage = _usage(payload)
 
-    if trigger == "sessionstart":
+    if trigger in ("sessionstart", "agentspawn"):  # agentSpawn: the CLI 2.x name, still accepted by 3.x
         return [make_event(project_id=project_id, run_id=run_id, type="run_started", stage="START", payload_extra={"cwd": payload.get("cwd")})]
 
     if trigger == "sessionend":
-        return [make_event(project_id=project_id, run_id=run_id, type="run_finished", stage="DONE")]
+        reason = payload.get("reason")
+        extra = {"reason": str(reason)} if reason else None
+        return [make_event(project_id=project_id, run_id=run_id, type="run_finished", stage="DONE", payload_extra=extra)]
 
     if trigger in ("pretaskexec", "posttaskexec"):
         kind = "task_started" if trigger == "pretaskexec" else "task_finished"
-        stage = "IMPLEMENT"
-        body = {"task_id": task_id} if task_id else {}
-        return [make_event(project_id=project_id, run_id=run_id, type=kind, stage=stage, task_id=task_id, payload_extra=body)]
+        # `task_success` is not kept: Kiro 3.1 always sends true (it fires when the task is marked done).
+        body = _task_body(payload, task_id)
+        return [make_event(project_id=project_id, run_id=run_id, type=kind, stage="IMPLEMENT", task_id=task_id, payload_extra=body)]
 
     if trigger in ("posttooluse", "pretooluse"):
         tool = _tool_name(payload)
@@ -192,6 +382,9 @@ def normalize_hook(payload: dict, *, project_id: str, run_id: str) -> list[dict]
         size = _size(payload)
         if size is not None:
             body["bytes"] = size
+        body.update(_tool_details(payload))
+        if tool == "run_workflow":
+            body.update(_workflow_details(payload))
         return [make_event(project_id=project_id, run_id=run_id, type="tool_call", stage=stage, task_id=task_id, payload_extra=body, usage=usage)]
 
     if trigger in ("postfilesave", "postfilecreate", "postfiledelete"):
