@@ -267,6 +267,25 @@ describe("council jobs: the Chair turns a request into tasks on the board", () =
       assert.equal((await postJson(s.base, "/v1/board/done", { project_id: "shop", task: "bad" }, auth("dev"))).status, 422);
     } finally { await s.close(); }
   });
+
+  test("a person requests and cancels; a relay cannot", async () => {
+    const s = await startServer();
+    try {
+      await send([created("council#rq1-1", "white-hat")], s.base);
+      const task = async () => (await getJson(s.base, "/v1/board?project_id=shop")).body.specs[0].tasks[0];
+      assert.equal((await task()).dispatch_via, null);
+      const sneaky = await send([{ event_id: "evt_dsp", project_id: "shop", run_id: "member_wsl-1", type: "task_dispatch", ts: new Date().toISOString(), source: "coven-cli", member: "wsl-1", payload: { task: "council#rq1-1", via: "kiro-web", state: "requested" } }], s.base);
+      assert.equal(sneaky.body.accepted, 0);
+      const ask = await postJson(s.base, "/v1/board/dispatch", { project_id: "shop", task: "council#rq1-1", author: "duy" }, auth("dev"));
+      assert.equal(ask.status, 201);
+      assert.deepEqual([(await task()).dispatch_via, (await task()).dispatch_by], ["kiro-web", "duy"]);
+      await postJson(s.base, "/v1/board/dispatch", { project_id: "shop", task: "council#rq1-1", state: "cancelled" }, auth("dev"));
+      assert.equal((await task()).dispatch_via, null);
+      for (const bad of [{ task: "bad" }, { task: "council#rq1-1", via: "elsewhere" }, { task: "council#rq1-1", state: "now" }]) {
+        assert.equal((await postJson(s.base, "/v1/board/dispatch", { project_id: "shop", ...bad }, auth("dev"))).status, 422);
+      }
+    } finally { await s.close(); }
+  });
 });
 
 describe("racing members", () => {

@@ -1,6 +1,6 @@
 /**
  * Drives web/index.html in jsdom against the real server: the acceptance checks of
- * docs/design/coven-ux-design-v2.md §12. jsdom is not a browser: this checks
+ * docs/requirements.md §4.4. jsdom is not a browser: this checks
  * behaviour and content, not layout.
  */
 
@@ -690,6 +690,7 @@ describe("session screen", () => {
       return [...doc().querySelector(`section.column-detail[aria-label="${label}"]`)!.querySelectorAll(".tcard .id")].map((e) => e.textContent);
     };
     assert.deepEqual(column("Ready"), ["shop#4"]);
+    assert.equal(doc().querySelector(".tcard.stuck"), null, "an online member from before hosts can still run the Dev: not stuck");
     assert.deepEqual(column("Claimed"), ["shop#2"]);
     assert.deepEqual(column("In review"), ["shop#1"], "a task with a reviewer is in review");
     assert.deepEqual(column("Done"), ["shop#3"]);
@@ -698,6 +699,29 @@ describe("session screen", () => {
     assert.match(cart, /ana is on it.*reviewing: cy.*1 note/s);
   });
 
+  test("board: a person dispatches a ready task to Kiro Web, once a host is set up for it", async () => {
+    await go("#/board/shop", 600);
+    openColumn("ready");
+    const button = () => doc().querySelector('[data-key="dispatch-shop#4"]') as HTMLButtonElement;
+    assert.ok(button().disabled, "no online host can run Kiro Web");
+    assert.match(doc().querySelector('[data-key="task-shop#4"]')!.textContent!, /no online host is set up for Kiro Web/);
+    await send("shop", "member_kw", [{ ...ev("member_kw", "shop", "host_online", { agents: ["green-witch"], slots: 1, running: [], cloud: ["acme/shop"] }, 1), member: "kw" }]);
+    await go("#/");
+    await go("#/board/shop", 600);
+    openColumn("ready");
+    assert.equal(button().disabled, false);
+    button().click();
+    await wait(900);
+    openColumn("ready");
+    const card = doc().querySelector('[data-key="task-shop#4"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(card, /Kiro Web requested by/);
+    assert.equal(button(), null, "the request replaces the button");
+    (doc().querySelector('[data-key="undispatch-shop#4"]') as HTMLButtonElement).click();
+    await wait(900);
+    openColumn("ready");
+    assert.ok(button(), "taken back: the button returns");
+    await go("#/");
+  });
   test("board: the witches are what is shown: who works, who is available, who is not; hosts are only where", async () => {
     await go("#/board/lab", 600);
     const by = (slug: string) => doc().querySelector(`[data-key="witch-${slug}"]`)!;
@@ -715,11 +739,15 @@ describe("session screen", () => {
     const label = (col: string) => doc().querySelector(`button.tile[data-col="${col}"]`)?.getAttribute("aria-label");
     assert.equal(label("review"), "In review: 1 task", "an answered task waits in review, not in claimed");
     assert.equal(label("failed"), "Blocked: 1 task", "a failed task is blocked, not ready");
-    assert.equal(label("ready"), "Ready: 1 task", "the Chair's job is a task on the board, waiting for a White Hat host");
+    assert.equal(label("ready"), "Ready: 1 task, 1 needs a host", "the Chair's job waits for a White Hat host, and nobody online runs her");
+    assert.match(doc().querySelector('button.tile[data-col="ready"] .go')!.textContent!, /1 need a host/);
     openColumn("ready");
-    const job = doc().querySelector('[data-key="task-council#rq9-1"]')!.textContent!.replace(/\s+/g, " ");
+    const jobCard = doc().querySelector('[data-key="task-council#rq9-1"]')!;
+    const job = jobCard.textContent!.replace(/\s+/g, " ");
     assert.match(job, /Run the relay tests/);
     assert.match(job, /White Hat Witch needed/);
+    assert.ok(jobCard.classList.contains("stuck"));
+    assert.match(job, /No online host runs White Hat Witch\. It waits until one does: \.\/run-host\.sh --agents white-hat/);
     openColumn("review");
     const held = doc().querySelector('[data-key="task-lab#L1"]')!.textContent!.replace(/\s+/g, " ");
     assert.match(held, /Elf on wsl-7/);

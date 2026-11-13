@@ -22,7 +22,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import board, config, specmap
+from . import agents, board, config, specmap
 
 AGENT = "council-chat"
 ANSWER_TIMEOUT = 300           # one Kiro run per message
@@ -30,14 +30,8 @@ PRESENCE_EVERY = 60            # the dashboard shows a listener online while it 
 MAX_AGE = timedelta(hours=24)  # an old unanswered message is left alone, not answered days late
 ANSWERED_FILE = "council-answered.json"
 
-PERSONAS = {
-    "chair": "Grey Witch — Senior Kiro · Chair",
-    "sa": "Elder Witch — SA",
-    "dev": "Green Witch — Dev",
-    "tester": "White Hat Witch — Tester",
-    "red-team": "Black Hat Witch — Red Team",
-    "brainstorm": "Elf — Brainstorm",
-}
+# The council's role tags and how each is shown, from the one table of witches (agents.py).
+PERSONAS = {tag: agents.label(agents.ALIASES[tag]) for tag in ("chair", "sa", "dev", "tester", "red-team", "brainstorm")}
 
 
 # ------------------------------------------------------------------ bookkeeping
@@ -73,6 +67,17 @@ def _parse_ts(stamp: str | None) -> datetime | None:
 def chair_on_a_host(chat: dict) -> bool:
     """True when an online host runs the Grey Witch: she, not the listener, takes what is said to the council."""
     return any(h.get("online") and "grey-witch" in (h.get("agents") or []) for h in chat.get("hosts") or [])
+
+
+def superseded(root: Path, message: dict) -> bool:
+    """True when the message no longer waits for this listener: someone answered it, or a host's Chair now takes it."""
+    try:
+        chat = board.chat(root)
+    except board.BoardError:
+        return False
+    if message.get("message_id") not in set(chat.get("waiting") or []):
+        return True
+    return chair_on_a_host(chat) and (not message.get("to") or message.get("to") == "chair")
 
 
 def pending(chat: dict, done: set[str], now: datetime | None = None) -> list[dict]:
@@ -147,7 +152,9 @@ def final_text(stream: str) -> tuple[str | None, str | None]:
             data = record.get("data") or {}
             if data.get("status") not in (None, "success"):
                 return None, f"the run ended: {data.get('status')}"
-            text = " ".join(str(data.get("finalText") or "").split())
+            # Keep the lines (an answer in numbered steps is split on them); tidy the spaces inside each.
+            lines = [" ".join(line.split()) for line in str(data.get("finalText") or "").splitlines()]
+            text = "\n".join(line for line in lines if line)
             return (text, None) if text else (None, "the run gave no answer")
     return None, "the run did not finish"
 
@@ -183,6 +190,10 @@ def answer_one(root: Path, message: dict, chat: dict, notes: list[dict] | None =
     """Answer one human message and post it. An agent that fails still gets a reply: the error."""
     role = message.get("to") if message.get("to") in PERSONAS else "chair"
     text, error = runner(root, prompt_for(root, message, chat, notes))
+    if superseded(root, message):
+        # While this run thought, a host's Chair (or another listener) answered: one voice per message, so stay quiet.
+        _remember(root, message["message_id"])
+        return {"message_id": message["message_id"], "role": role, "kind": "skipped", "answer": ""}
     if text:
         event = board.answer(root, message["message_id"], clip(text), role=role)
     else:
@@ -213,6 +224,9 @@ def listen(root: Path, once: bool = False, interval: float = 10.0, runner=run_ag
         for message in todo:
             out(f"council: answering {message.get('kind')} from {message.get('author')} ({message['message_id']})")
             result = answer_one(root, message, chat, notes, runner=runner)
+            if result["kind"] == "skipped":
+                out(f"council: {message['message_id']} was answered meanwhile; staying quiet")
+                continue
             out(f"council: {result['role']} {result['kind']}: {result['answer']}")
             results.append(result)
             board.listening(root)

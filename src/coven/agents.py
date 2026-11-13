@@ -46,7 +46,10 @@ ALIASES = {
 }
 
 # `kiro-cli chat --trust-tools=...` per kind: what a headless run may do without anyone to ask.
-TRUST = {"build": "fs_read,fs_write,execute_bash", "inspect": "fs_read,execute_bash", "think": "fs_read"}
+# Kiro CLI 3.2 (engine v3) names the shell tool `run_command` when it asks for permission; a run trusted
+# only with `execute_bash` has every shell call refused ("permission request failed before it was answered").
+# `execute_bash` stays for the v2 engine. Probed on kiro-cli 3.2.1: `run_command` runs, `shell` does not.
+TRUST = {"build": "fs_read,fs_write,execute_bash,run_command", "inspect": "fs_read,execute_bash,run_command", "think": "fs_read"}
 
 
 def resolve(name: object) -> str | None:

@@ -192,7 +192,7 @@ export class MemoryStore {
       this.publish({ kind: "event", event: this.view(event), run: { ...run } });
       // An answer or a note arrives from a relay as an ordinary event: tell the chat and board pages too.
       if (event.type === "chat_message") this.publish({ kind: "chat", project_id: event.project_id });
-      else if (["board_note", "host_online", "task_status", "task_created"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
+      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
     }
     return true;
   }
@@ -515,6 +515,14 @@ export class MemoryStore {
   /** People accept a task's result (a `task_status` of `done`, from the web). */
   async postWebStatus(projectId: string, payload: Json): Promise<Json> {
     const event = this.boardEvent(projectId, "task_status", undefined, payload, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    this.publish({ kind: "board", project_id: projectId });
+    return event;
+  }
+
+  /** A person decides a task runs in Kiro Web, or takes that back (a `task_dispatch`, from the web). */
+  async postWebDispatch(projectId: string, payload: Json): Promise<Json> {
+    const event = this.boardEvent(projectId, "task_dispatch", undefined, payload, "web");
     await this.ingest(projectId, event.run_id, [event]);
     this.publish({ kind: "board", project_id: projectId });
     return event;

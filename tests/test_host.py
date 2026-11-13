@@ -38,7 +38,7 @@ class FakeCloud:
     """The cloud's side of the board, with one rule of its own: a path overlap with another claim is a 409."""
 
     def __init__(self):
-        self.claims, self.notes, self.released, self.online, self.chat = [], [], [], [], []
+        self.claims, self.notes, self.released, self.online, self.chat, self.specs = [], [], [], [], [], []
         self.lock = threading.Lock()
 
     def install(self, monkeypatch, name="wsl-1"):
@@ -72,9 +72,9 @@ class FakeCloud:
         for attr, fn in {
             "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root: [],
             "held": lambda root: list(c.claims), "chat": lambda root: {"messages": c.chat, "waiting": []},
-            "read": lambda root: {"notes": c.notes, "claims": []}, "member": lambda root: name,
+            "read": lambda root: {"notes": c.notes, "claims": [], "specs": c.specs}, "member": lambda root: name,
             "post": lambda root, note, **k: c.notes.append({"note": note, **k}) or {},
-            "host_online": lambda root, agents_, slots, running=None: c.online.append((list(agents_), slots)) or {},
+            "host_online": lambda root, agents_, slots, running=None, cloud=None: c.online.append((list(agents_), slots)) or {},
         }.items():
             monkeypatch.setattr(board, attr, fn)
         return self
@@ -467,3 +467,207 @@ def test_ready_skips_what_people_marked_done(repo):
     view = {"claims": [], "specs": [{"spec": "shop", "tasks": [{"task_id": "2", "doer_state": "done"}, {"task_id": "3", "doer_state": "answered"}]}]}
     refs = [f"{t['spec']}#{t['task_id']}" for t in board.ready(repo, view)]
     assert "shop#2" not in refs and "shop#3" in refs
+
+
+UNPREPARED = """# Implementation Plan
+
+- [ ] 1. Cart totals
+  - Sum the cart.
+- [ ] 2. Search ideas
+  - _Paths: `docs/ideas/`_
+- [x] 3. Done already
+- [ ] 4. Docs
+  - [ ] 4.1 Readme
+    - _Paths: `docs/readme.md`_
+    - _Verify: `test -f docs/readme.md`_
+    - _Agent: herald_
+"""
+
+PROPOSAL = json.dumps({"tasks": {
+    "shop#1": {"agent": "Dev", "paths": ["src/cart/", "/etc/passwd", "../up", "**"], "verify": "pytest -q tests/test_cart.py", "why": "code change"},
+    "shop#2": {"agent": "elf", "paths": ["src/everything/"], "verify": "true", "why": "an idea, not code"},
+    "shop#3": {"agent": "raven"},
+    "shop#9": {"agent": "elf"},
+    "shop#4.1": {"agent": "imp"}}})
+
+
+def test_the_scribe_proposes_and_the_host_writes_only_what_is_missing_on_a_branch(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    (repo / ".kiro" / "specs" / "shop" / "tasks.md").write_text(UNPREPARED)
+    git(repo, "commit", "-qam", "unprepared tasks")
+    assert [(t["ref"], t["missing"]) for t in host.unprepared(repo)] == [("shop#1", ["agent", "paths", "verify"]), ("shop#2", ["agent", "verify"])]
+    runner = Runner({"scribe": lambda cwd, prompt: (PROPOSAL, None)})
+    result = host.prepare(repo, runner, guidance="be narrow")
+    (call,) = runner.calls
+    assert call["agent"] == "scribe" and call["cwd"] == repo and "be narrow" in call["prompt"] and "missing agent, paths, verify" in call["prompt"]
+    assert result["action"] == "prepared" and result["branch"] == "coven/prepare-all"
+    assert [w["task"] for w in result["tasks"]] == ["shop#1", "shop#2"], "only the tasks asked; done and unknown ones are ignored"
+    assert result["tasks"][0]["paths"] == ["src/cart/"], "absolute, parent and whole-repo paths are dropped"
+    assert result["tasks"][0]["agent"] == "green-witch"
+    assert "paths" not in result["tasks"][1], "shop#2 declares its paths already: never overwritten"
+    proposed = git(repo, "show", "coven/prepare-all:.kiro/specs/shop/tasks.md")
+    assert "  - Sum the cart.\n  - _Paths: `src/cart/`_\n  - _Verify: `pytest -q tests/test_cart.py`_\n  - _Agent: green-witch_\n" in proposed
+    assert "  - _Paths: `docs/ideas/`_\n  - _Verify: `true`_\n  - _Agent: elf_\n" in proposed
+    assert "_Agent: herald_" in proposed and "_Agent: imp_" not in proposed, "a task that is prepared already is left alone"
+    assert (repo / ".kiro" / "specs" / "shop" / "tasks.md").read_text() == UNPREPARED, "main is untouched until people merge"
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "main" and not host.worktree_dir(repo, "prepare-all").exists()
+    assert cloud.notes[-1]["kind"] == "review-wanted" and "coven/prepare-all" in cloud.notes[-1]["note"]
+    steps = host.prepare_steps(result)
+    assert steps[0].startswith("Proposed for 2 task(s) on branch coven/prepare-all") and steps[1].startswith("1. shop#1 → Green Witch; paths src/cart/")
+    # merged: the hosts route by it
+    git(repo, "merge", "-q", "coven/prepare-all")
+    tasks = specmap.load(repo)
+    assert (agents.for_task(tasks["shop#2"]), tasks["shop#1"]["verify"]) == ("elf", "pytest -q tests/test_cart.py")
+    assert host.unprepared(repo) == [] and host.prepare(repo, runner)["action"] == "nothing"
+
+
+def test_a_scribe_reply_that_is_not_a_proposal_is_refused(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    with pytest.raises(host.HostError, match="did not reply with proposals"):
+        host.prepare(repo, Runner({"scribe": lambda cwd, prompt: ("Looks fine to me.", None)}))
+    assert git(repo, "branch", "--list", "coven/prepare-all") == "", "nothing written"
+
+
+def test_a_do_it_to_the_scribe_prepares_and_answers_in_the_chat(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    (repo / ".kiro" / "specs" / "shop" / "tasks.md").write_text(UNPREPARED)
+    git(repo, "commit", "-qam", "unprepared tasks")
+    cloud.chat.append(human_do("scribe", message="prepare the ready tasks"))
+    host.Host(repo, slots=1, runner=Runner({"scribe": lambda cwd, prompt: (PROPOSAL, None)}), only=["scribe"]).run(once=True)
+    said = [a for a in cloud.answers if a[0] == "evt_req1"]
+    assert said[0][2] == "working" and said[1][3].startswith("Proposed for 2 task(s) on branch coven/prepare-all")
+    assert all(a[1] == "scribe" for a in said) and not cloud.claims
+
+
+def test_a_council_job_for_the_scribe_prepares_and_reports_answered(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    (repo / ".kiro" / "specs" / "shop" / "tasks.md").write_text(UNPREPARED)
+    git(repo, "commit", "-qam", "unprepared tasks")
+    view = {"notes": [], "claims": [], "specs": [{"spec": "council", "tasks": [
+        {"task_id": "rq-1", "title": "Prepare the tasks", "agent": "scribe", "source": "evt_req1", "doer_state": None, "claimed_by": None}]}]}
+    monkeypatch.setattr(board, "read", lambda root: view)
+    host.Host(repo, slots=1, runner=Runner({"scribe": lambda cwd, prompt: (PROPOSAL, None)}), only=["scribe"]).run(once=True)
+    states = [s[1] for s in cloud.statuses if s[0] == "council#rq-1"]
+    assert states == ["working", "answered"] and "coven/prepare-all" in [s for s in cloud.statuses if s[0] == "council#rq-1"][-1][3]
+
+
+def test_the_chair_prefers_online_witches_and_says_when_a_job_waits(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do(None, message="review it"))
+    reply = json.dumps({"answer": "Two reviews.", "jobs": [{"agent": "black-hat", "title": "Break it"}, {"agent": "imp", "title": "Cross-review"}]})
+    runner = Runner({"grey-witch": lambda cwd, prompt: (reply, None)})
+    host.Host(repo, slots=1, runner=runner, only=["grey-witch", "black-hat"]).run(once=True)
+    prompt = runner.calls[0]["prompt"]
+    assert "Prefer witches marked [online now]" in prompt and "a job for scribe prepares them" in prompt
+    assert "scribe (Scribe, Steward): prepares tasks" in prompt
+    said = " ".join(a[3] for a in cloud.answers if a[2] == "answer")
+    assert "Black Hat Witch — Red Team: Break it" in said and "Break it (no host" not in said
+    assert "Imp — Cross-reviewer: Cross-review (no host runs her now: it waits until one does)" in said
+
+
+# ------------------------------------------------------------------ Kiro Web (FR-H11)
+
+
+class CloudSession:
+    """A fake Kiro Web session: clones origin elsewhere, does `change`, pushes the task's branch (or not)."""
+
+    cloud = True
+
+    def __init__(self, origin, tmp, change=None, push=True):
+        self.origin, self.tmp, self.change, self.push, self.calls = origin, tmp, change, push, []
+
+    def __call__(self, cwd, agent, prompt, env, timeout):
+        self.calls.append({"agent": agent, "prompt": prompt, "env": env})
+        if not self.push:
+            return "nothing to push", None
+        box = self.tmp / f"sandbox{len(self.calls)}"
+        git(self.tmp, "clone", "-q", "-b", "main", str(self.origin), str(box))
+        git(box, "config", "user.email", "k@example.com"), git(box, "config", "user.name", "K")
+        git(box, "checkout", "-q", "-b", "coven/shop-1")
+        for name, text in (self.change or {"src/cart/total.py": "def total(xs):\n    return sum(xs)\n"}).items():
+            (box / name).parent.mkdir(parents=True, exist_ok=True)
+            (box / name).write_text(text)
+        git(box, "add", "."), git(box, "commit", "-q", "-m", "cart totals"), git(box, "push", "-q", "origin", "coven/shop-1")
+        return "added total", None
+
+
+@pytest.fixture()
+def origin(repo, tmp_path):
+    bare = tmp_path / "origin.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    git(repo, "remote", "add", "origin", str(bare))
+    git(repo, "push", "-q", "origin", "main")
+    return bare
+
+
+def task_one(repo):
+    return specmap.load(repo)["shop#1"]
+
+
+def test_kiro_web_branch_is_fetched_checked_and_submitted(repo, origin, tmp_path, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    session = CloudSession(origin, tmp_path)
+    result = host.execute(repo, task_one(repo), "green-witch", session)
+    assert result["action"] == "submitted" and result["via"] == "kiro-web" and result["branch"] == "coven/shop-1"
+    assert "push that branch" in session.calls[0]["prompt"] and "never merge" in session.calls[0]["prompt"]
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "submitted" and record["via"] == "kiro-web"
+    assert git(repo, "branch", "--list", "coven/shop-1"), "the branch exists locally like a local build"
+    assert any(n["kind"] == "review-wanted" and "Kiro Web" in n["note"] for n in cloud.notes)
+
+
+def test_kiro_web_branch_outside_the_paths_is_refused(repo, origin, tmp_path, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    session = CloudSession(origin, tmp_path, change={"src/other/x.py": "x = 1\n"})
+    result = host.execute(repo, task_one(repo), "green-witch", session)
+    assert result["action"] == "failed" and "outside the task's paths" in result["error"]
+    assert len(session.calls) == 1, "a cloud run is never retried by the host"
+
+
+def test_kiro_web_without_a_pushed_branch_fails(repo, origin, tmp_path, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    result = host.execute(repo, task_one(repo), "green-witch", CloudSession(origin, tmp_path, push=False))
+    assert result["action"] == "failed" and "did not push" in result["error"]
+
+
+def test_kiro_web_runner_uses_cloud_flags_for_builders_only(tmp_path, monkeypatch):
+    seen = []
+
+    def fake_run(command, **kwargs):
+        seen.append(command)
+        out = json.dumps({"type": "runFinished", "data": {"status": "success", "finalText": "ok"}})
+        return subprocess.CompletedProcess(command, 0, out, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    local = Runner()
+    runner = host.run_cloud_agent("acme/shop", local)
+    assert runner(tmp_path, "green-witch", "go", {}, 5) == ("ok", None)
+    assert seen[0][:7] == ["kiro-cli", "chat", "--agent-engine", "v3", "--cloud", "--repo", "acme/shop"] and "--no-interactive" in seen[0]
+    assert runner(tmp_path, "elf", "think", {}, 5) == ("elf says hello", None) and len(seen) == 1, "thinkers stay on this machine"
+    with pytest.raises(host.HostError):
+        host.run_cloud_agent("not a repo")
+
+
+def dispatched(cloud, task_id="1"):
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": task_id, "dispatch_via": "kiro-web", "dispatch_by": "duy"}]}]
+
+
+def test_only_a_task_a_person_dispatched_goes_to_kiro_web(repo, origin, tmp_path, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    monkeypatch.setattr(host, "run_cloud_agent", lambda repo_name, local: CloudSession(origin, tmp_path))
+    local = Runner({"green-witch": builds_cart})
+    h = host.Host(repo, slots=2, runner=local, only=["green-witch"], kiro_web="acme/shop")
+    assert h.cloud_runner is not None
+    dispatched(cloud, "1")
+    h.run(once=True)
+    assert host.load(repo)["shop#1"]["via"] == "kiro-web", "the dispatched task ran in Kiro Web"
+    assert "via" not in host.load(repo).get("shop#5", {}), "the others ran here"
+    assert all("shop#1" != c["env"]["COVEN_TASK"] for c in local.calls)
+
+
+def test_a_host_without_kiro_web_leaves_a_dispatched_task_alone(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    dispatched(cloud, "1")
+    local = Runner({"green-witch": builds_cart})
+    host.Host(repo, slots=4, runner=local, only=["green-witch"]).run(once=True)
+    assert "shop#1" not in host.load(repo) and all(k["task_id"] != "1" for k in cloud.claims), "never run here instead of in Kiro Web"

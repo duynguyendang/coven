@@ -13,5 +13,7 @@ build/
 .wrangler/
 .dev.vars
 worker-configuration.d.ts
+# internal working designs (detailed, versioned drafts); the public design is docs/ADD.md and docs/requirements.md
+docs/internal/
+# editor and tool backups (Kiro writes <agent>.json.bak when it upgrades an agent)
 *.bak
-vendor/

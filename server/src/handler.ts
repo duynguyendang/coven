@@ -1,5 +1,5 @@
 /**
- * Coven Cloud HTTP API (docs/design/coven-data-contract-v1.md §8–§9), as a fetch-style handler.
+ * Coven Cloud HTTP API (docs/ADD.md §6.3), as a fetch-style handler.
  *
  * Three jobs, in order of importance:
  *   1. take batches of events from relays and de-duplicate them by `event_id`;
@@ -14,7 +14,7 @@
  */
 
 import { authorised, type Env, type Scope } from "./auth.ts";
-import { chatProblems, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES } from "./events.ts";
+import { chatProblems, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES, WEB_ONLY_TYPES } from "./events.ts";
 import { redactEvent } from "./redact.ts";
 import { type MemoryStore, now } from "./store.ts";
 
@@ -257,6 +257,7 @@ export function createHandler(options: HandlerOptions): Handler {
         }
         const problems = validateEvent(event);
         if (CLOUD_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is made by the cloud only (POST /v1/claims)`);
+        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch), not a relay's`);
         if (event.type === "task_status" && (event.payload || {}).state === "done") {
           problems.push("done is people's word (POST /v1/board/done), not a doer's report");
         }
@@ -383,6 +384,21 @@ export function createHandler(options: HandlerOptions): Handler {
       const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_status", ts: now(), payload });
       if (problems.length) throw validation("task", problems.join("; "));
       const event = await store.postWebStatus(projectId, redactEvent({ payload }).payload);
+      return json(201, { event_id: event.event_id });
+    }
+
+    if (method === "POST" && path === "/v1/board/dispatch") {
+      // A person decides that a task runs in Kiro Web, or takes that back. A read token may, like Mark done.
+      // The body names the task only: the repository belongs to the host that runs it, never to the browser.
+      need(request, url, "read");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = idField(body, "project_id");
+      const payload = { task: optionalString(body, "task") ?? "", via: optionalString(body, "via") ?? "kiro-web",
+        state: optionalString(body, "state") ?? "requested", author: (optionalString(body, "author") ?? "someone").slice(0, 40) };
+      const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_dispatch", ts: now(), payload });
+      if (problems.length) throw validation("task", problems.join("; "));
+      const event = await store.postWebDispatch(projectId, redactEvent({ payload }).payload);
       return json(201, { event_id: event.event_id });
     }
 

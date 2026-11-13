@@ -264,6 +264,56 @@ def tick(path: Path, task: dict) -> bool:
     return True
 
 
+ANNOTATION_ORDER = ("paths", "verify", "agent")
+
+
+def _annotation_line(indent: str, key: str, value) -> str:
+    if key == "paths":
+        return f"{indent}- _Paths: {', '.join(f'`{p}`' for p in value)}_"
+    if key == "verify":
+        return f"{indent}- _Verify: `{value}`_"
+    return f"{indent}- _Agent: {value}_"
+
+
+def annotate(path: Path, task: dict, fields: dict) -> list[str]:
+    """Add the missing `_Paths:_`, `_Verify:_`, `_Agent:_` lines to one task in its `tasks.md`.
+
+    Only keys the task does not already declare itself are added; nothing else in the file
+    changes. The lines go at the end of the task's own content, before its sub-tasks or the next
+    task. Returns the keys added ([] when the file or the task's line no longer match).
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    lines = text.split("\n")
+    index = int(task.get("line") or 0) - 1
+    if not 0 <= index < len(lines):
+        return []
+    info = _line(lines[index].rstrip("\r"))
+    if info is None or info["text"] != task.get("text"):
+        return []
+    end = index + 1
+    while end < len(lines) and not _line(lines[end].rstrip("\r")) and not HEADING.match(lines[end]):
+        end += 1
+    own = _annotations([line[info["indent"] + 2:] for line in lines[index + 1:end]])
+    while end > index + 1 and not lines[end - 1].strip():
+        end -= 1  # keep the blank lines that separate it from what follows
+    indent = " " * (info["indent"] + 2)
+    added, new_lines = [], []
+    for key in ANNOTATION_ORDER:
+        value = fields.get(key)
+        if not value or own.get(key):
+            continue
+        new_lines.append(_annotation_line(indent, key, value))
+        added.append(key)
+    if not added:
+        return []
+    lines[end:end] = new_lines
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return added
+
+
 def load(root: Path) -> dict[str, dict]:
     """All specs in the repository, keyed by `spec#task_id`; specs do not collide."""
     merged: dict[str, dict] = {}

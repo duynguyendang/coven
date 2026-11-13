@@ -298,6 +298,13 @@ def cmd_host(args: argparse.Namespace) -> int:
             print(f"coven host retry: {exc}", file=sys.stderr)
             return 1
         return 0
+    if command == "prepare":
+        try:
+            print(json.dumps(host.prepare(root, only=args.only, guidance=args.note), indent=2))
+        except (host.HostError, board.BoardError) as exc:
+            print(json.dumps({"action": "refused", "error": str(exc)}, indent=2))
+            return 1
+        return 0
     if command == "agents":
         for slug in agents.AGENTS:
             info = agents.info(slug)
@@ -314,7 +321,12 @@ def cmd_host(args: argparse.Namespace) -> int:
     if unknown or (args.agents is not None and not only):
         print(f"coven host run: unknown agent(s) {", ".join(unknown) or args.agents}; run `coven host agents` for the names", file=sys.stderr)
         return 2
-    runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=lambda line: print(line, flush=True))
+    try:
+        runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=lambda line: print(line, flush=True),
+                           kiro_web=args.kiro_web or os.environ.get("COVEN_KIRO_WEB_REPO"))
+    except host.HostError as exc:
+        print(f"coven host run: {exc}", file=sys.stderr)
+        return 2
     print(f"host: {board.member(root)} runs {', '.join(runner.can_run) or 'no agents'} in {runner.slots} slot(s) for project "
           f"{config.project_id(root)!r}{'' if args.once else ' (Ctrl-C to stop)'}", flush=True)
     try:
@@ -636,9 +648,13 @@ def build_parser() -> argparse.ArgumentParser:
     host_run.add_argument("--slots", type=int, default=2, help="agents that may run at once (default 2)")
     host_run.add_argument("--review-limit", type=int, default=3, help="submitted tasks that may wait for review before this host takes no more (default 3)")
     host_run.add_argument("--agents", help="comma-separated agents this host may run (default: every installed agent)")
+    host_run.add_argument("--kiro-web", metavar="OWNER/NAME", help="run the build tasks a person dispatched to Kiro Web (cloud sessions on this GitHub repository) (or set COVEN_KIRO_WEB_REPO)")
     host_run.add_argument("--interval", type=float, default=15.0)
     host_run.add_argument("--once", action="store_true", help="one pass, wait for the agents it started, then exit")
     host_sub.add_parser("status", help="this host's agents and the tasks it runs")
+    host_prepare = host_sub.add_parser("prepare", help="the Scribe proposes the witch, paths and verify for tasks that lack them, on a branch to merge")
+    host_prepare.add_argument("--only", help="one spec, or one <spec>#<task>")
+    host_prepare.add_argument("--note", help="guidance for the Scribe")
     host_sub.add_parser("agents", help="the eleven agents and which are installed here")
     host_retry = host_sub.add_parser("retry", help="let this host take a failed task again")
     host_retry.add_argument("task", help="<spec>#<task>")

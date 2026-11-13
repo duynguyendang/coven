@@ -7,12 +7,7 @@ as two `kiro-cli` sessions on two machines would, through the real Python client
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import socket
-import subprocess
-import time
-import urllib.request
 from pathlib import Path
 
 import pytest
@@ -39,35 +34,8 @@ TASKS = """# Implementation Plan
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="needs node for the cloud")
 
-# Point the suite at an already running cloud (for example the Cloudflare Worker) instead of
-# starting the Node one. The token must be valid for both scopes, as a member's token is.
-EXTERNAL_URL = os.environ.get("COVEN_TEST_CLOUD_URL")
-EXTERNAL_TOKEN = os.environ.get("COVEN_TEST_CLOUD_TOKEN", "dev")
-
-
-@pytest.fixture(scope="module")
-def cloud():
-    if EXTERNAL_URL:
-        yield EXTERNAL_URL.rstrip("/")
-        return
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    env = {"PATH": os.environ["PATH"], "PORT": str(port), "HOST": "127.0.0.1", "COVEN_STORE": "memory"}
-    process = subprocess.Popen(["node", "src/main.ts"], cwd=REPO / "server", env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    url = f"http://127.0.0.1:{port}"
-    for _ in range(100):
-        try:
-            urllib.request.urlopen(url + "/healthz", timeout=1)
-            break
-        except OSError:
-            time.sleep(0.1)
-    else:  # pragma: no cover
-        process.kill()
-        raise RuntimeError(process.stdout.read().decode())
-    yield url
-    process.terminate()
-    process.wait(5)
+# The cloud fixture (a real Node cloud, or COVEN_TEST_CLOUD_URL) lives in conftest.py.
+from conftest import EXTERNAL_TOKEN  # noqa: E402
 
 
 @pytest.fixture()

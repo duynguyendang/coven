@@ -75,7 +75,7 @@
 
   .nav-h { margin: 16px 8px 6px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
   .nav-list { list-style: none; margin: 0; padding: 0; }
-  .nav-item { display: flex; align-items: center; gap: 8px; color: var(--muted); border-radius: 7px; padding: 6px 8px; font-size: 13.5px; border-left: 2px solid transparent; }
+  .nav-item { display: flex; align-items: center; gap: 8px; color: var(--muted); border-radius: 6px; padding: 6px 8px; font-size: 13.5px; border-left: 2px solid transparent; }
   .nav-item:hover { background: var(--hover); color: var(--text); text-decoration: none; }
   .nav-item[aria-current="page"] { background: var(--selected); color: var(--text); border-left-color: var(--blue); }
   .nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -115,16 +115,16 @@
   .page-h { margin-bottom: 14px; }
   .crumbs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
   .crumbs .sep { color: var(--faint); }
-  .page-h h1 { margin: 0; font-size: 21px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .page-h h1 { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
   .page-h .lede { margin: 3px 0 0; color: var(--muted); font-size: 13.5px; }
 
   /* toolbar */
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 12px; }
-  .toolbar input[type="search"], .toolbar select { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
+  .toolbar input[type="search"], .toolbar select { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
   .toolbar input[type="search"] { flex: 1 1 220px; min-width: 160px; max-width: 420px; }
   .toolbar input::placeholder { color: var(--faint); }
   .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; cursor: pointer; }
-  .seg { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
   .seg .filter { border: 0; border-radius: 0; border-right: 1px solid var(--line); padding: 5px 12px; }
   .seg .filter:last-child { border-right: 0; }
   .result-n { color: var(--muted); font-size: 12.5px; margin-left: auto; }
@@ -132,12 +132,13 @@
   h2 { margin: 18px 0 8px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   h3 { margin: 0; font-size: 14px; font-weight: 600; }
 
-  .banner { border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
+  .banner { border-radius: var(--radius-element); padding: 9px 14px; margin-bottom: 14px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
   .banner.demo, .banner.replay { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn-ink); }
   .banner.replay { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; }
   .note { color: var(--muted); font-size: 12.5px; margin: 8px 0 12px; }
 
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 14px; }
   .stat .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .stat .v { font-family: var(--mono); font-size: 22px; line-height: 1.25; }
@@ -207,7 +208,8 @@
   /* the coven board: members, task columns, whiteboard */
   .witches { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .witch { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 10px; align-items: center; }
-  .witch .av { grid-row: 1 / span 3; width: 40px; height: 40px; margin: 0; }
+  .witch .av { grid-row: 1 / span 4; align-self: start; width: 40px; height: 40px; margin: 2px 0 0; }
+  .witch .where { grid-column: 2; }
   .witch .nm { font-weight: 600; line-height: 1.2; }
   .witch .rl { font-size: 11.5px; color: var(--muted); }
   .witch .st { font-size: 12.5px; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
@@ -229,23 +231,27 @@
   @media (max-width: 560px) { .columns { grid-template-columns: 1fr; } }
   .column { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; min-height: 80px; }
   .column h3 { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; display: flex; justify-content: space-between; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
   @media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .tile { font: inherit; color: var(--text); text-align: left; cursor: pointer; background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
   .tile:hover { border-color: var(--line-strong); background: var(--hover); }
   .tile[aria-expanded="true"] { border-color: var(--blue); background: var(--selected); }
-  .tile .n { font-size: 34px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile .n { font-family: var(--mono); font-size: 22px; font-weight: 400; line-height: 1.25; font-variant-numeric: tabular-nums; }
   .tile .l { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .tile .go { font-size: 11.5px; color: var(--muted); }
   .column-detail { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; margin-bottom: 18px; }
   .column-detail h3 { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; }
   .column-detail .tlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
   .column-detail .tcard { margin: 0; }
-  .tcard { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
+  .tcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
   .tcard .id { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
   .tcard .who { font-size: 12px; margin-top: 4px; color: var(--muted); }
   .tcard.mine { border-color: var(--blue); }
   .tcard.waiting { opacity: 0.6; border-style: dashed; }
+  .tcard.stuck { border-color: var(--warn-line); background: var(--warn-soft); }
+  .tcard .stuck-why { font-size: 12px; margin-top: 4px; color: var(--warn-ink); }
+  .tcard .stuck-why code { white-space: nowrap; font-size: 11.5px; }
+  .tile .go.warn { color: var(--warn-ink); font-weight: 600; }
   [data-board-project] { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
   .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   .sticky { border-radius: 4px 4px 4px 14px; padding: 10px 12px; font-size: 13.5px; line-height: 1.4; box-shadow: var(--shadow-low); overflow-wrap: anywhere; }
@@ -256,7 +262,7 @@
   .sticky a { color: inherit; text-decoration: underline; }
   .compose { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 8px; margin-bottom: 14px; align-items: center; }
   @media (max-width: 760px) { .compose { grid-template-columns: 1fr 1fr; } .compose textarea { grid-column: 1 / -1; } }
-  .compose textarea, .compose select, .compose input { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; }
+  .compose textarea, .compose select, .compose input { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
   .compose textarea { min-height: 40px; resize: vertical; }
   .gate { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: var(--radius-element); padding: 12px 16px; margin-bottom: 14px; }
   /* council chat: the page fills the window; only the conversation scrolls; people right, the council left */
@@ -390,7 +396,7 @@
   .checks { list-style: none; margin: 8px 0; padding: 0; }
   .checks li { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; font-size: 13px; }
   .checks .pass .m { color: var(--green); } .checks .fail .m { color: var(--red); } .checks .unknown .m { color: var(--yellow); }
-  .disagree { border: 1px solid var(--bad-line); background: var(--bad-soft); border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
+  .disagree { border: 1px solid var(--bad-line); background: var(--bad-soft); border-radius: var(--radius-element); padding: 9px 12px; margin-top: 8px; font-size: 13px; }
 
   .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: var(--chrome); border-left: 1px solid var(--line); z-index: 40; display: none; flex-direction: column; box-shadow: var(--shadow-high); }
   .drawer.open { display: flex; }
@@ -405,7 +411,7 @@
   .login input { background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 9px 10px; border-radius: 6px; font-family: var(--mono); font-size: 13px; }
   .login button { background: var(--color-accent); color: var(--color-on-accent); border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
   .login .error { color: var(--red); font-size: 12.5px; }
-  .toast { position: fixed; bottom: 16px; right: 16px; background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--bad-ink); padding: 9px 12px; border-radius: 7px; font-size: 12.5px; display: none; z-index: 70; }
+  .toast { position: fixed; bottom: 16px; right: 16px; background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--bad-ink); padding: 9px 12px; border-radius: 6px; font-size: 12.5px; display: none; z-index: 70; }
   .toast.show { display: block; }
 </style>
 </head>
@@ -495,15 +501,34 @@
     expandDeviations: false,
     boardOpen: null,
     chatError: "",       // the chat form's message stays across a redraw
-    chatStick: false,     // after you send, the chat scrolls to your message even if you had scrolled up
+    chatStick: false,
+    cloudReady: false,   // some online host can run tasks in Kiro Web (the board offers the button only then)
+    runnable: null,      // the witches some online host runs (the board marks tasks nobody can take)     // after you send, the chat scrolls to your message even if you had scrolled up
     refreshTimer: null,
     source: null,
   };
 
   const WRITE_TOOL = /(write|edit|append|replace|delete|create)/i;
-  const PERSONAS = { "elder-witch": "Elder Witch", "green-witch": "Green Witch", "white-hat": "White Hat Witch", "black-hat": "Black Hat Witch", "elf": "Elf", "grey-witch": "Grey Witch" };
+  /* The witches: one table (mirrors src/coven/agents.py; tests/test_harness.py keeps them equal).
+     slug: [name, role, council role tag or null]. The order is the roster's. */
+  const WITCHES = {
+    "green-witch": ["Green Witch", "Dev", "dev"], "white-hat": ["White Hat Witch", "Tester", "tester"],
+    "black-hat": ["Black Hat Witch", "Red Team", "red-team"], "elder-witch": ["Elder Witch", "SA", "sa"],
+    "grey-witch": ["Grey Witch", "Senior Kiro · Chair", "chair"], elf: ["Elf", "Brainstorm", "brainstorm"],
+    imp: ["Imp", "Cross-reviewer", null], raven: ["Raven", "Watcher", null], scribe: ["Scribe", "Steward", null],
+    herald: ["Herald", "Reporter", null], weaver: ["Weaver", "Conductor", null],
+  };
+  const witchEntries = Object.entries(WITCHES);
+  const AGENT_NAME = Object.fromEntries(witchEntries.map(([slug, [name]]) => [slug, name]));
+  const AGENT_ROLE = Object.fromEntries(witchEntries.map(([slug, [, role]]) => [slug, role]));
+  const PERSONA_OF = { ...Object.fromEntries(witchEntries.map(([slug, [name, role]]) => [slug, `${name} — ${role}`])), coven: "Coven (no model)" };
+  const ROLE_SLUG = Object.fromEntries(witchEntries.filter(([, w]) => w[2]).map(([slug, w]) => [w[2], slug]));
+  /** Council role tag -> role (`sa` -> "SA"), the tags events carry. */
+  const ROLE = Object.fromEntries(witchEntries.filter(([, w]) => w[2]).map(([, w]) => [w[2], w[1]]));
+  /** Whom a person can address in the chat: the council's roles first (Chair first), then the other witches. */
+  const CHAT_ROLE_NAME = Object.fromEntries(["chair", "sa", "dev", "tester", "red-team", "brainstorm"].map((tag) => [tag, PERSONA_OF[ROLE_SLUG[tag]]]));
+  const OTHER_WITCHES = witchEntries.filter(([, w]) => !w[2]).map(([slug]) => slug);
   /* The Kiro ghost, one outfit per persona. Decorative: the name always sits next to it. */
-  const ROLE_SLUG = { sa: "elder-witch", dev: "green-witch", tester: "white-hat", "red-team": "black-hat", brainstorm: "elf", chair: "grey-witch" };
   const hat = (c, extra = "") => `<ellipse cx="16" cy="8.6" rx="9.5" ry="2" fill="${c}"/><path d="M10.5 8.6 L16.5 -2.5 L21.5 8.6Z" fill="${c}"/>${extra}`;
   const OUTFIT = {
     "elder-witch": { body: "#e9e4f5", eye: "#241a3d", art: hat("#6d4bc1", '<rect x="10.8" y="6" width="10.4" height="1.6" fill="#f2c94c"/>') + '<path d="M11 21 Q16 33 21 21 Q16 23.5 11 21Z" fill="#fff" stroke="#b9b3c9" stroke-width=".6"/>' },
@@ -524,12 +549,7 @@
     if (!o) return "";
     return `<svg class="av ${cls}" viewBox="-1 -5 34 38" aria-hidden="true" focusable="false"><g transform="translate(0 3)"><path d="M16 3C9.2 3 6 8 6 14.5V28l3.6-3 3.2 3 3.2-3 3.2 3 3.2-3 3.6 3V14.5C26 8 22.8 3 16 3Z" fill="${o.body}" stroke="#7c5cd6" stroke-width="1.2" stroke-linejoin="round"/><ellipse cx="12.4" cy="14" rx="1.7" ry="2.4" fill="${o.eye}"/><ellipse cx="19.6" cy="14" rx="1.7" ry="2.4" fill="${o.eye}"/></g><g transform="translate(0 3)">${o.art}</g></svg>`;
   }
-  const AGENT_NAME = { "green-witch": "Green Witch", "white-hat": "White Hat Witch", "black-hat": "Black Hat Witch", "elder-witch": "Elder Witch", "grey-witch": "Grey Witch",
-    elf: "Elf", imp: "Imp", raven: "Raven", scribe: "Scribe", herald: "Herald", weaver: "Weaver" };
   const agentName = (slug) => AGENT_NAME[slug] || AGENT_NAME[ROLE_SLUG[slug]] || String(slug || "");
-  const AGENT_ROLE = { "green-witch": "Dev", "white-hat": "Tester", "black-hat": "Red Team", "elder-witch": "SA", "grey-witch": "Chair", elf: "Brainstorm",
-    imp: "Cross-reviewer", raven: "Watcher", scribe: "Steward", herald: "Reporter", weaver: "Conductor" };
-  const ROLE = { sa: "SA", dev: "Dev", tester: "Tester", "red-team": "Red Team", brainstorm: "Brainstorm", chair: "Senior Kiro · Chair" };
   const COUNCIL_TYPES = new Set(["council_opened", "claim_proposed", "claim_challenged", "test_result", "verify_result", "chair_summary", "chair_proposal", "guard_verdict", "council_closed"]);
 
   /* ---------------------------------------------------------------- helpers */
@@ -1074,6 +1094,32 @@
   }
   const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"]];
   const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed" };
+  /** The witches some online host can run now; a host from before hosts (no list) can still run the Dev. */
+  function runnableWitches(b) {
+    const out = new Set();
+    for (const h of b.hosts || b.members || []) {
+      if (secondsSince(h.last_seen) === null || secondsSince(h.last_seen) >= ONLINE_SECONDS) continue;
+      if ((h.agents || []).length) h.agents.forEach((a) => out.add(a));
+      else out.add("green-witch");
+    }
+    return out;
+  }
+  /** Some online host is set up to run tasks in Kiro Web (it names the repository it may use). */
+  function cloudHostOnline(b) {
+    return (b.hosts || b.members || []).some((h) => (h.cloud || []).length && secondsSince(h.last_seen) !== null && secondsSince(h.last_seen) < ONLINE_SECONDS);
+  }
+  /** The person's Kiro Web decision on a task nobody has taken: a button to dispatch it, or the request and a way to take it back. */
+  function dispatchLine(t, need) {
+    if (need !== "green-witch" || t.claimed_by || t.waits_for || t.status === "completed" || ["done", "failed", "working", "submitted", "answered"].includes(t.doer_state)) return "";
+    if (t.dispatch_via) {
+      return `<div class="who"><span class="badge working">Kiro Web requested</span> <span class="hint">by ${esc(t.dispatch_by || "someone")}</span> <button class="act" type="button" data-undispatch="${esc(t.ref)}" data-key="undispatch-${esc(t.ref)}">Cancel</button></div>`;
+    }
+    const ok = state.cloudReady;
+    return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>Run in Kiro Web</button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
+  }
+  /** Ready and its turn has come, but no online host runs the witch it needs: it would wait for ever, unseen. */
+  const isStuck = (t, runnable) => !t.claimed_by && !t.waits_for && t.status !== "completed" && !["done", "failed"].includes(t.doer_state)
+    && !runnable.has(t.agent || "green-witch");
   function taskCard(t) {
     const who = [t.waits_for && !t.claimed_by ? `waits for ${esc(t.waits_for)}` : "", t.claimed_by ? `${esc(t.claimed_agent ? agentName(t.claimed_agent) : t.claimed_by)} is on it` : "", (t.reviewers || []).length ? `reviewing: ${(t.reviewers).map(esc).join(", ")}` : "",
       t.notes ? `${plural(t.notes, "note")}` : ""].filter(Boolean).join(" · ");
@@ -1082,7 +1128,9 @@
     const stateLine = t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
       ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "";
     const agentLine = `<div class="agent">${avatar(holder || need)}<span>${esc(agentName(holder || need))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : " needed"}</span></div>`;
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${stateLine}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
+    const stuck = state.runnable && isStuck(t, state.runnable);
+    const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${stuckLine}${stateLine}${dispatchLine(t, need)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -1124,9 +1172,12 @@
     const picker = names.length > 1 ? `<label class="hint">Project <select data-board-project aria-label="Board project">${names.map((p) => `<option ${p === project ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
     const members = witchRoster(b);
     const cols = boardColumns(b);
+    state.runnable = runnableWitches(b);
+    state.cloudReady = cloudHostOnline(b);
+    const stuckCount = cols.ready.filter((t) => isStuck(t, state.runnable)).length;
     // The board shows numbers only; a click on a number opens that column's tasks below.
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : null;
-    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go">${open === key ? "Hide tasks" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
+    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host · ` : ""}${open === key ? "Hide tasks" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
     const detail = open ? `<section class="column-detail" id="col-detail" aria-label="${COLUMNS.find(([k]) => k === open)[1]}"><h3>${COLUMNS.find(([k]) => k === open)[1]} · ${plural(cols[open].length, "task")}</h3>${cols[open].length ? `<div class="tlist">${cols[open].map(taskCard).join("")}</div>` : '<div class="hint" style="padding:4px">No tasks here.</div>'}</section>` : "";
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
@@ -1147,11 +1198,8 @@
   }
 
   /* ------------------------------------------------------------- council chat */
-  const CHAT_ROLE_NAME = { chair: "Grey Witch — Senior Kiro · Chair", sa: "Elder Witch — SA", dev: "Green Witch — Dev",
-    tester: "White Hat Witch — Tester", "red-team": "Black Hat Witch — Red Team", brainstorm: "Elf — Brainstorm" };
   const CHAT_KIND_LABEL = { ask: "Ask", idea: "Idea", suggestion: "Suggestion", reject: "Reject", do: "Do it", answer: "Answer", working: "Working", error: "Could not answer" };
   const personaTitle = (key) => CHAT_ROLE_NAME[key] || PERSONA_OF[key] || null;
-  const OTHER_WITCHES = ["raven", "imp", "scribe", "herald", "weaver"];
   const KIND_HELP = { ask: "A question: answered from the code, read-only", idea: "An idea: the council says whether and how, and what it costs",
     suggestion: "A suggestion on how something is done", reject: "Reject a task: binding, pick the task under About",
     do: "Work to be done: the Chair (or the witch you name) takes it and answers here" };
@@ -1251,9 +1299,6 @@
   }
 
   /* ------------------------------------------------------------------- flows */
-  const PERSONA_OF = { "green-witch": "Green Witch — Dev", "white-hat": "White Hat Witch — Tester", "black-hat": "Black Hat Witch — Red Team",
-    "elf": "Elf — Brainstorm", "grey-witch": "Grey Witch — Senior Kiro · Chair", "elder-witch": "Elder Witch — SA",
-    "weaver": "Weaver — Conductor", "scribe": "Scribe — Steward", "raven": "Raven — Watcher", "herald": "Herald — Reporter", "coven": "Coven (no model)" };
   const STEP_MARK = { pending: "·", running: "▶", "waiting for you": "⏸", done: "✓", failed: "✗" };
   const flowState = (f) => (f.status === "finished" ? `finished · ${f.outcome || "—"}` : f.waiting_for ? `waiting for you at ${f.waiting_for}` : f.step ? `running: ${f.step}` : "started");
   function flowCard(f) {
@@ -1581,8 +1626,8 @@
   /* ------------------------------------------------------------- council tab */
   function personaLabel(e) {
     const slug = (e.payload || {}).persona;
-    if (e.role === "chair") return `${PERSONAS[slug] || "Grey Witch"} — Senior Kiro · Chair`;
-    return PERSONAS[slug] ? `${PERSONAS[slug]} — ${ROLE[e.role] || e.role}` : (ROLE[e.role] || String(e.role || "member"));
+    if (e.role === "chair") return `${AGENT_NAME[slug] || "Grey Witch"} — Senior Kiro · Chair`;
+    return AGENT_NAME[slug] ? `${AGENT_NAME[slug]} — ${ROLE[e.role] || e.role}` : (ROLE[e.role] || String(e.role || "member"));
   }
   function evidenceLabel(item) {
     switch (item.kind) {
@@ -1726,6 +1771,15 @@
       el.disabled = true;
       try {
         await api("/v1/board/done", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.done, author: localStorage.getItem("coven_author") || undefined }) });
+        await loadBoard();
+        render({ keepScroll: true });
+      } catch (error) { el.disabled = false; quiet(error); }
+    }));
+    root.querySelectorAll("[data-dispatch], [data-undispatch]").forEach((el) => el.addEventListener("click", async () => {
+      el.disabled = true;
+      try {
+        await api("/v1/board/dispatch", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.dispatch || el.dataset.undispatch,
+          via: "kiro-web", state: el.dataset.dispatch ? "requested" : "cancelled", author: localStorage.getItem("coven_author") || undefined }) });
         await loadBoard();
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }

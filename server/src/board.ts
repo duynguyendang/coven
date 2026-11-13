@@ -16,7 +16,7 @@
  * lives until its recorded lease ends, and a running member renews it within a minute.
  */
 
-import { PEOPLE_STATES, type Json } from "./events.ts";
+import { DISPATCH_STATES, DISPATCH_VIA, PEOPLE_STATES, type Json } from "./events.ts";
 
 export const DEFAULT_LEASE_SECONDS = 15 * 60;
 export const MAX_LEASE_SECONDS = 60 * 60;
@@ -71,6 +71,7 @@ export class Board {
   chat = new Map<string, Json[]>();          // project -> council chat, oldest first
   listeners = new Map<string, Map<string, Json>>(); // project -> member -> its council listener
   statuses = new Map<string, Map<string, Json>>(); // project -> "<spec>#<task>" -> where its doer says it stands
+  dispatches = new Map<string, Map<string, Json>>(); // project -> task -> the latest decision of a person (task_dispatch)
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
 
   /** Fold one stored event into the board. */
@@ -136,6 +137,13 @@ export class Board {
         });
       }
       this.statuses.set(project, all);
+    } else if (event.type === "task_dispatch" && typeof p.task === "string" && DISPATCH_STATES.has(p.state) && DISPATCH_VIA.has(p.via)) {
+      const all = this.dispatches.get(project) ?? new Map<string, Json>();
+      const known = all.get(p.task);
+      if (!known || (event.ts || "") >= known.ts) {
+        all.set(p.task, { via: p.via, state: p.state, by: String(p.author ?? "someone").slice(0, 40), ts: event.ts });
+      }
+      this.dispatches.set(project, all);
     } else if (event.type === "host_online" && typeof event.member === "string" && event.member) {
       const all = this.hosts.get(project) ?? new Map<string, Json>();
       const known = all.get(event.member);
@@ -145,6 +153,7 @@ export class Board {
           agents: Array.isArray(p.agents) ? p.agents.slice(0, 12).map(String) : [],
           slots: Number.isInteger(p.slots) ? Math.min(16, Math.max(1, p.slots)) : 1,
           running: Array.isArray(p.running) ? p.running.slice(0, 16).map(String) : [],
+          cloud: Array.isArray(p.cloud) ? p.cloud.slice(0, 4).map((x: unknown) => String(x).slice(0, 80)) : [],
         });
       }
       this.hosts.set(project, all);
@@ -219,7 +228,7 @@ export class Board {
         ...m, host: m.member, claims: mine.map((c) => `${c.spec}#${c.task_id}`),
         // Who is working on this host right now: one entry per claim, with the agent that holds it.
         working: mine.filter((c) => c.kind === "task").map((c) => ({ agent: c.agent ?? null, task: `${c.spec}#${c.task_id}` })),
-        agents: h?.agents ?? [], slots: h?.slots ?? null, announced_at: h?.last_seen ?? null,
+        agents: h?.agents ?? [], cloud: h?.cloud ?? [], slots: h?.slots ?? null, announced_at: h?.last_seen ?? null,
       };
     }).sort((a: Json, b: Json) => ((a.last_seen || "") < (b.last_seen || "") ? 1 : -1));
     const specs = [...(this.tasks.get(projectId)?.entries() ?? [])].map(([spec, tasks]) => ({
@@ -228,7 +237,9 @@ export class Board {
         const held = active.filter((c) => c.spec === spec && c.task_id === t.task_id);
         const owner = held.find((c) => c.kind === "task");
         const doing = this.statuses.get(projectId)?.get(`${spec}#${t.task_id}`);
-        return { ...t, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
+        const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
+        const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
+        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
           reviewers: held.filter((c) => c.kind === "review").map((c) => c.member) };
       }),
     }));

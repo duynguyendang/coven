@@ -56,7 +56,9 @@ def test_the_prompt_names_the_role_the_persons_words_the_task_and_marks_the_rest
 
 
 def test_the_answer_is_the_runs_final_text_and_failures_are_errors():
-    assert council.final_text(stream("Not yet:  ttlDays=0\nwould delete everything.")) == ("Not yet: ttlDays=0 would delete everything.", None)
+    assert council.final_text(stream("Not yet:  ttlDays=0\n\nwould delete everything.")) == ("Not yet: ttlDays=0\nwould delete everything.", None), \
+        "lines are kept (a host splits steps on them); spaces inside a line are tidied"
+    assert council.clip("Not yet: ttlDays=0\nwould delete everything.") == "Not yet: ttlDays=0 would delete everything.", "the listener's one message is one line"
     assert council.final_text(stream(status="error")) == (None, "the run ended: error")
     assert council.final_text(stream("")) == (None, "the run gave no answer")
     assert council.final_text(stream()) == (None, "the run did not finish")

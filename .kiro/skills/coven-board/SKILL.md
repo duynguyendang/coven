@@ -5,7 +5,7 @@ description: Work the coven board as a member. Watch the board, take the next re
 
 # Work the coven board
 
-> This skill is the interactive way: one Kiro session works tasks itself. The unattended way is a host, `./run-host.sh` (`coven host run`), which runs the witch each task needs (`_Agent:_`) headless and reports status (`docs/design/coven-hosts-v1.md`). Both share the board and the same claim rules; don't run this skill and a host with the Dev on the same working copy at once.
+> This skill is the interactive way: one Kiro session works tasks itself. The unattended way is a host, `./run-host.sh` (`coven host run`), which runs the witch each task needs (`_Agent:_`) headless and reports status (`docs/ADD.md` §4.2). Both share the board and the same claim rules; don't run this skill and a host with the Dev on the same working copy at once.
 
 You are a member of a coven: several Kiro sessions work on one project and take its spec tasks themselves through the coven board. People decide and merge; you implement. `coven work` does the bookkeeping and enforces the rules. You do the thinking and the code.
 

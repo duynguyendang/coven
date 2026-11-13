@@ -268,9 +268,14 @@ def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, det
     return _member_event(root, "task_created", payload)
 
 
-def host_online(root: Path, agents: list[str], slots: int, running: list[str] | None = None) -> dict:
-    """Tell the coven this host is up: the agents it can run and how many at once (sent every minute)."""
-    return _member_event(root, "host_online", {"agents": list(agents)[:12], "slots": int(slots), "running": list(running or [])[:16]})
+def host_online(root: Path, agents: list[str], slots: int, running: list[str] | None = None, cloud: list[str] | None = None) -> dict:
+    """Tell the coven this host is up: the agents it can run and how many at once (sent every minute).
+
+    `cloud` names the repositories it may run Kiro Web sessions on; the dashboard offers "Run in Kiro Web" only when a host has one."""
+    payload = {"agents": list(agents)[:12], "slots": int(slots), "running": list(running or [])[:16]}
+    if cloud:
+        payload["cloud"] = [str(x)[:80] for x in cloud][:4]
+    return _member_event(root, "host_online", payload)
 
 
 def listening(root: Path, roles: tuple[str, ...] = CHAT_ROLES) -> dict:

@@ -134,8 +134,10 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven hooks check` / `install [--portable]` | Run the Kiro hooks like Kiro does and say what fails; write PATH-independent hook commands |
 | `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
+| `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
 | `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too) |
-| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once |
+| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch, which the host fetches and checks) |
+| `coven host prepare [--only <spec>] [--note …]` | The Scribe proposes the witch, paths and verify for tasks that lack them; the host writes them on branch `coven/prepare-all` for you to merge |
 | `coven host status \| agents \| retry <task>` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again |
 | `coven council listen [--once]` | Answer chat messages addressed to one witch (advice, read-only); everything when no host runs the Chair |
 | `coven board read \| ready \| next \| claim \| review \| release \| post \| sync` | The coven board: who holds what, take or give back a task, join a review, post a note |
@@ -175,7 +177,7 @@ done out of total, read from `tasks.md` when Kiro starts or finishes a task
 A flow carries one spec task from *ready* to *delivered*. **Kiro runs it**: its
 workflow engine starts each step as its own session with its own agent. Coven
 ships the agents and the recipe, records every step, and checks the result
-with no model. Design: CSD v1.3 §3.5 and §4.10.
+with no model. Design: `docs/ADD.md` §4.5.
 
 | Step | Agent | What it does |
 | :--- | :--- | :--- |
@@ -232,17 +234,22 @@ which witch it needs; a host that runs her and has a free slot takes it and runs
 | White Hat, Black Hat, Imp | read the code and run commands in a throw-away checkout; answer with findings |
 | Elder Witch, Elf, Grey Witch (Chair), Raven, Scribe, Herald, Weaver | read only; answer with a plan, an idea or a note |
 
+Tasks without `_Agent:_`, `_Paths:_` or `_Verify:_`? Ask the **Scribe** (`coven host prepare`,
+or **Do it** to the Scribe in the chat): she proposes them, and the host writes them into
+`tasks.md` on a branch you review and merge. The board marks any ready task whose witch no
+online host runs (*N need a host*).
+
 The doer reports where a task stands (**working → submitted / answered**, or **failed** with
 why), and the board follows. You merge the branch, or click **Mark done** on the card, to
-make it done. Design: `docs/design/coven-hosts-v1.md`.
+make it done. Design: `docs/ADD.md` §4.2–§4.4.
 
 ## The coven board: many kiro-cli, one project
 
 Several hosts, in terminals or on machines, run witches that contribute to the
 whole project. Hosts **take tasks themselves** (the cloud assigns nothing); the
 cloud refuses only collisions (a task a witch holds, or declared paths that
-overlap a held task). The web board is the shared whiteboard. Design: CSD v1.3
-§4.11 and `docs/design/coven-hosts-v1.md`.
+overlap a held task). The web board is the shared whiteboard. Design: `docs/ADD.md`
+§4.2 and `docs/requirements.md` §4.5.
 
 The rest of this section is the older, manual way: a person's Kiro session as
 one member that claims tasks itself. It still works beside hosts.
@@ -410,7 +417,10 @@ server/src/                  app (HTTP), store (memory / DynamoDB), redact, even
 server/test/                 node:test suites, including the jsdom dashboard test
 web/                         single-file dashboard (fleet, run room, council replay, board, council chat)
 run-host.sh                  run this machine as a host (witches take tasks and chat requests)
-docs/design/                 CSD, UX design, telemetry design & data contract
+AGENTS.md                    how to work on this repo (coding agents and people); rules the harness checks
+docs/ADD.md                  architecture design (the contract is §6)
+docs/requirements.md         what Coven must do (FR-*, NFR-*)
+docs/DESIGN.md               the dashboard's visual system (DESIGN.md format)
 infra/                       AWS deploy notes (ECR + App Runner + DynamoDB)
 tests/                       relay: event mapping, redaction, event log, relay push logic, redaction parity
 ```
@@ -418,11 +428,23 @@ tests/                       relay: event mapping, redaction, event log, relay p
 ## Tests
 
 ```bash
+make verify        # before a commit: types, the harness, then every test
 make test          # relay (pytest) and cloud (node --test)
 make test-relay    # Python only
 make test-cloud    # Node only: API, council, DynamoDB store (fake table), entrypoint, dashboard in jsdom
+make harness       # the cross-file rules (tests/test_harness.py), under a second
+make test-e2e      # a real cloud and a real host with a fake kiro-cli on PATH (no credits)
 make check         # tsc --noEmit on the server
 ```
+
+**The harness** (`tests/test_harness.py`) checks what no single suite can: the eleven witches
+are the same in `agents.py`, the cloud, the dashboard and `.kiro/agents/`; agent files are
+safe (no pre-approved write or shell, the council's hard constraints kept, secrets forbidden,
+the listener's agent read-only); the recipe and hooks only call what exists; every file the
+dashboard loads is in git; the data contract lists every event type and the README every
+command; the Makefile has each target once. **The live host suite** (`tests/test_host_live.py`)
+runs a real host against a real cloud with a fake `kiro-cli` that asserts the exact flags a host
+uses, then reads the board and chat back over HTTP. Rules for changes: `AGENTS.md`.
 
 Redaction exists in both languages (the relay redacts first, the cloud again as defence in
 depth). `tests/fixtures/redaction_parity.json` is generated from the Python implementation and

@@ -1,5 +1,5 @@
 /**
- * Event validation and council flags (docs/design/coven-data-contract-v1.md §4, §5).
+ * Event validation and council flags (docs/ADD.md §6).
  *
  * Normalising Kiro hook payloads stays in the Python relay on the developer
  * machine; the cloud only validates what the relay sends.
@@ -50,6 +50,8 @@ export const EVENT_TYPES = new Set([
   "task_status",
   // the Chair splits a request into jobs for witches; they appear on the board as tasks of the spec `council`
   "task_created",
+  // a person decides a task runs in Kiro Web (or takes that back) — contract §5.6, web only
+  "task_dispatch",
   // council chat — contract §5.7
   "chat_message",
   "council_listening",
@@ -59,6 +61,10 @@ export const EVENT_TYPES = new Set([
 
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
+/** People's word, made by the cloud from the web (POST /v1/board/dispatch); a relay may not send it. */
+export const WEB_ONLY_TYPES = new Set(["task_dispatch"]);
+export const DISPATCH_VIA = new Set(["kiro-web"]);
+export const DISPATCH_STATES = new Set(["requested", "cancelled"]);
 const NOTE_KINDS = new Set(["idea", "question", "answer", "review", "note", "review-wanted"]);
 /** Where a task stands as its doer reports it. `done` is not here: only the spec's tick (a merge) makes a task done. */
 export const TASK_STATES = new Set(["working", "submitted", "answered", "failed"]);
@@ -154,6 +160,12 @@ export function validateEvent(event: Json): string[] {
     const p = isObject(payload) ? payload : {};
     if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_status needs task as <spec>#<task>");
     if (!PEOPLE_STATES.has(p.state)) errors.push(`task_status state must be one of ${[...PEOPLE_STATES].join(", ")}`);
+  }
+  if (event.type === "task_dispatch") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_dispatch needs task as <spec>#<task>");
+    if (!DISPATCH_VIA.has(p.via)) errors.push(`task_dispatch via must be one of ${[...DISPATCH_VIA].join(", ")}`);
+    if (!DISPATCH_STATES.has(p.state)) errors.push(`task_dispatch state must be one of ${[...DISPATCH_STATES].join(", ")}`);
   }
   if (event.type === "task_created") {
     const p = isObject(payload) ? payload : {};
