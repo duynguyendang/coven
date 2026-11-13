@@ -270,6 +270,82 @@ def cmd_member(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_host(args: argparse.Namespace) -> int:
+    from . import agents, board, host
+
+    root = _root()
+    command = args.host_command
+    if command == "join":
+        try:
+            name = board.join(root, args.name)
+        except ValueError as exc:
+            print(f"coven host join: {exc}", file=sys.stderr)
+            return 2
+        print(f"this working copy is host {name!r} of project {config.project_id(root)!r}")
+        have = agents.installed(root)
+        print(f"it can run {len(have)} agent(s): {', '.join(have) or 'none (add .kiro/agents/<name>.json)'}")
+        specs = board.sync(root)
+        if specs:
+            print(f"published the task list of {', '.join(specs)} to the coven board")
+        return 0
+    if command == "status":
+        print(json.dumps(host.host_status(root), indent=2))
+        return 0
+    if command == "retry":
+        try:
+            print(json.dumps(host.retry(root, args.task), indent=2))
+        except host.HostError as exc:
+            print(f"coven host retry: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if command == "agents":
+        for slug in agents.AGENTS:
+            info = agents.info(slug)
+            print(f"{slug:<12} {info['label']:<34} {info['kind']:<8} {'installed' if slug in agents.installed(root) else 'missing'}")
+        return 0
+    try:
+        board._cloud(root)
+    except board.BoardError as exc:
+        print(f"coven host run: {exc}", file=sys.stderr)
+        return 2
+    asked = [x.strip() for x in (args.agents or "").split(",") if x.strip()]
+    only = [a for a in (agents.resolve(x) for x in asked) if a]
+    unknown = [x for x in asked if not agents.resolve(x)]
+    if unknown or (args.agents is not None and not only):
+        print(f"coven host run: unknown agent(s) {", ".join(unknown) or args.agents}; run `coven host agents` for the names", file=sys.stderr)
+        return 2
+    runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=lambda line: print(line, flush=True))
+    print(f"host: {board.member(root)} runs {', '.join(runner.can_run) or 'no agents'} in {runner.slots} slot(s) for project "
+          f"{config.project_id(root)!r}{'' if args.once else ' (Ctrl-C to stop)'}", flush=True)
+    try:
+        result = runner.run(once=args.once, interval=args.interval)
+    except KeyboardInterrupt:
+        return 0
+    if args.once:
+        print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_council(args: argparse.Namespace) -> int:
+    from . import board, council
+
+    root = _root()
+    try:
+        board._cloud(root)
+    except board.BoardError as exc:
+        print(f"coven council listen: {exc}", file=sys.stderr)
+        return 2
+    print(f"council: {board.member(root)} answers the council chat of {config.project_id(root)!r}"
+          f"{'' if args.once else ' (Ctrl-C to stop)'}", flush=True)
+    try:
+        answered = council.listen(root, once=args.once, interval=args.interval, out=lambda line: print(line, flush=True))
+    except KeyboardInterrupt:
+        return 0
+    if args.once:
+        print(f"council: answered {len(answered)} message(s)")
+    return 0
+
+
 def _print_board(view: dict, me: str) -> None:
     print(f"project {view.get('project_id')} · you are {me}")
     members = view.get("members") or []
@@ -354,6 +430,31 @@ def cmd_board(args: argparse.Namespace) -> int:
         print(f"coven board {action}: {exc}", file=sys.stderr)
         return 2
     return 2
+
+
+def cmd_work(args: argparse.Namespace) -> int:
+    from . import board, work
+
+    root = _root()
+    action = args.work_command
+    try:
+        if action == "poll":
+            result = work.wait(root, args.wait, limit=args.limit) if args.wait else work.poll(root, limit=args.limit)
+        elif action == "start":
+            result = work.start(root, args.task)
+        elif action == "submit":
+            result = work.submit(root, args.task)
+        elif action == "resume":
+            result = work.resume(root, args.task)
+        elif action == "drop":
+            result = work.drop(root, args.task, reason=args.reason)
+        else:
+            result = work.status(root)
+    except (work.WorkError, board.BoardError) as exc:
+        print(json.dumps({"action": "refused", "error": str(exc)}, indent=2))
+        return 1
+    print(json.dumps(result, indent=2))
+    return 0
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -527,11 +628,34 @@ def build_parser() -> argparse.ArgumentParser:
     flow_step.add_argument("step", choices=["verify", "guard", "close"])
     flow_parser.set_defaults(func=cmd_flow)
 
-    member_parser = sub.add_parser("member", help="this working copy's name on the coven board")
+    host_parser = sub.add_parser("host", help="this machine as a host: it runs agents (personas) for the tasks that need them")
+    host_sub = host_parser.add_subparsers(dest="host_command", required=True)
+    host_join = host_sub.add_parser("join", help="name this host")
+    host_join.add_argument("name")
+    host_run = host_sub.add_parser("run", help="take ready tasks and run the agent each one needs, up to --slots at once")
+    host_run.add_argument("--slots", type=int, default=2, help="agents that may run at once (default 2)")
+    host_run.add_argument("--review-limit", type=int, default=3, help="submitted tasks that may wait for review before this host takes no more (default 3)")
+    host_run.add_argument("--agents", help="comma-separated agents this host may run (default: every installed agent)")
+    host_run.add_argument("--interval", type=float, default=15.0)
+    host_run.add_argument("--once", action="store_true", help="one pass, wait for the agents it started, then exit")
+    host_sub.add_parser("status", help="this host's agents and the tasks it runs")
+    host_sub.add_parser("agents", help="the eleven agents and which are installed here")
+    host_retry = host_sub.add_parser("retry", help="let this host take a failed task again")
+    host_retry.add_argument("task", help="<spec>#<task>")
+    host_parser.set_defaults(func=cmd_host)
+
+    member_parser = sub.add_parser("member", help="old name of `host`: this working copy's name on the coven board")
     member_sub = member_parser.add_subparsers(dest="member_command")
     member_join = member_sub.add_parser("join", help="name this working copy (one per kiro-cli)")
     member_join.add_argument("name")
     member_parser.set_defaults(func=cmd_member, member_command=None)
+
+    council_parser = sub.add_parser("council", help="the council chat: answer people from this working copy")
+    council_sub = council_parser.add_subparsers(dest="council_command", required=True)
+    council_listen = council_sub.add_parser("listen", help="answer waiting chat messages with the read-only council-chat agent")
+    council_listen.add_argument("--once", action="store_true", help="answer what waits now, then exit")
+    council_listen.add_argument("--interval", type=float, default=10.0, help="seconds between checks (default 10)")
+    council_parser.set_defaults(func=cmd_council)
 
     board_parser = sub.add_parser("board", help="the coven board: claim tasks, read and post to the whiteboard")
     board_sub = board_parser.add_subparsers(dest="board_command", required=True)
@@ -552,6 +676,23 @@ def build_parser() -> argparse.ArgumentParser:
     board_post.add_argument("--task", help="<spec>#<task> the note is about")
     board_post.add_argument("--reply-to")
     board_parser.set_defaults(func=cmd_board)
+
+    work_parser = sub.add_parser("work", help="work the coven board: ready tasks on their own branch, handed to people (JSON)")
+    work_sub = work_parser.add_subparsers(dest="work_command", required=True)
+    work_poll = work_sub.add_parser("poll", help="what to do next: continue, rework, start, wait or idle")
+    work_poll.add_argument("--wait", type=float, default=0, help="keep checking up to this many seconds until there is something to do")
+    work_poll.add_argument("--limit", type=int, default=2, help="submitted tasks that may wait for review at once (default 2)")
+    work_start = work_sub.add_parser("start", help="claim the next ready task (or one) and switch to its branch")
+    work_start.add_argument("task", nargs="?", help="<spec>#<task>; default: the next ready task")
+    for name, text in (("submit", "verify, check paths, commit locally, back to the base branch, ask for review"),
+                       ("resume", "back to a submitted task's branch to rework it")):
+        p = work_sub.add_parser(name, help=text)
+        p.add_argument("task", help="<spec>#<task>")
+    work_drop = work_sub.add_parser("drop", help="give a task up: release it; its branch stays")
+    work_drop.add_argument("task", help="<spec>#<task>")
+    work_drop.add_argument("--reason", default="dropped")
+    work_sub.add_parser("status", help="the tasks this working copy works on")
+    work_parser.set_defaults(func=cmd_work)
 
     verifier = sub.add_parser("verify", help="run a task's `_Verify:_` command and record the outcome")
     verifier.add_argument("task", help="<spec>#<task>, e.g. coven-relay#9")

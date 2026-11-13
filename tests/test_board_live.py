@@ -39,9 +39,17 @@ TASKS = """# Implementation Plan
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="needs node for the cloud")
 
+# Point the suite at an already running cloud (for example the Cloudflare Worker) instead of
+# starting the Node one. The token must be valid for both scopes, as a member's token is.
+EXTERNAL_URL = os.environ.get("COVEN_TEST_CLOUD_URL")
+EXTERNAL_TOKEN = os.environ.get("COVEN_TEST_CLOUD_TOKEN", "dev")
+
 
 @pytest.fixture(scope="module")
 def cloud():
+    if EXTERNAL_URL:
+        yield EXTERNAL_URL.rstrip("/")
+        return
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -78,7 +86,7 @@ def coven(cloud, tmp_path, monkeypatch):
         (root / ".kiro" / "workflows").mkdir(parents=True)
         shutil.copy(REPO / ".kiro/workflows/coven-task-flow.workflow.json", root / ".kiro/workflows/")
         (root / ".coven").mkdir()
-        (root / ".coven" / "config.json").write_text(json.dumps({"project_id": project, "cloud_url": cloud, "token": "dev"}))
+        (root / ".coven" / "config.json").write_text(json.dumps({"project_id": project, "cloud_url": cloud, "token": EXTERNAL_TOKEN}))
         board.join(root, name)
         copies[name] = root
     return copies

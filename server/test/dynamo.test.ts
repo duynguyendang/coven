@@ -138,7 +138,7 @@ describe("rehydration", () => {
 
       const runs = (await getJson(s.base, "/v1/runs")).body.runs;
       assert.equal(runs.length, 3, "council role runs must stay hidden after a redeploy");
-      assert.equal((await getJson(s.base, "/v1/projects")).body.projects.find((p: any) => p.project_id === "coven").runs, 2);
+      assert.equal((await getJson(s.base, "/v1/projects")).body.projects.find((p: any) => p.project_id === "coven-demo").runs, 2);
 
       const before = (await getJson(s.base, "/v1/runs")).body.runs.reduce((n: number, r: any) => n + r.credits, 0);
       assert.ok(before > 0);

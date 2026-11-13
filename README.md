@@ -133,7 +133,11 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven logs [hooks\|events\|path]` | Read the local capture: raw hook payloads, normalised events, file locations |
 | `coven hooks check` / `install [--portable]` | Run the Kiro hooks like Kiro does and say what fails; write PATH-independent hook commands |
 | `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
-| `coven member join <name>` | Name this working copy on the coven board (one per `kiro-cli`); publishes its task list |
+| `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
+| `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too) |
+| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once |
+| `coven host status \| agents \| retry <task>` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again |
+| `coven council listen [--once]` | Answer chat messages addressed to one witch (advice, read-only); everything when no host runs the Chair |
 | `coven board read \| ready \| next \| claim \| review \| release \| post \| sync` | The coven board: who holds what, take or give back a task, join a review, post a note |
 | `coven verify <spec>#<task>` | Run the task's `_Verify:_` command and record only its outcome (exit 0 pass, 1 fail, 3 no command) |
 | `coven flow new <spec>#<task> \| --next` | Claim the task on the board and mint a flow (`--no-claim` to work alone) |
@@ -204,20 +208,51 @@ Limits, stated: a gate answered by a human has not been tested end to end yet
 can end a gate by failing it, which stops the flow; Kiro asks before each
 `write` or `shell` call unless you trust the tools.
 
+## Hosts and witches: who runs what
+
+A **host** is a machine with a name (`wsl-1f3a`). It is not a worker: it hosts
+**witches**, the personas in `.kiro/agents/`, and runs several at once. Each task says
+which witch it needs; a host that runs her and has a free slot takes it and runs it as her.
+
+```markdown
+- [ ] 2. Another way to do search
+  - _Paths: `docs/ideas/`_
+  - _Agent: elf_            <!-- elf, raven, black-hat, white-hat … ; no line = the Dev (green-witch) -->
+```
+
+```bash
+./run-host.sh                  # names the host, starts the relay, runs every installed witch except the Dev
+./run-host.sh --all            # ... the Dev too: builds ready tasks in git worktrees and commits locally
+./run-host.sh --agents elf,raven --slots 1
+```
+
+| Witch | Does |
+| :--- | :--- |
+| Green Witch (Dev) | builds a `tasks.md` task in its own worktree on `coven/<spec>-<task>`; the host checks `_Paths:_`, runs `_Verify:_`, ticks the task on the branch and commits locally. Never pushes |
+| White Hat, Black Hat, Imp | read the code and run commands in a throw-away checkout; answer with findings |
+| Elder Witch, Elf, Grey Witch (Chair), Raven, Scribe, Herald, Weaver | read only; answer with a plan, an idea or a note |
+
+The doer reports where a task stands (**working → submitted / answered**, or **failed** with
+why), and the board follows. You merge the branch, or click **Mark done** on the card, to
+make it done. Design: `docs/design/coven-hosts-v1.md`.
+
 ## The coven board: many kiro-cli, one project
 
-Several `kiro-cli` sessions, in terminals or on machines, each run agents and
-contribute to the whole project. Each is a **member**; members **take tasks
-themselves**; the cloud refuses only collisions (a task someone holds, or
-declared paths that overlap someone's task). The web board is the shared
-whiteboard. Design: CSD v1.3 §4.11.
+Several hosts, in terminals or on machines, run witches that contribute to the
+whole project. Hosts **take tasks themselves** (the cloud assigns nothing); the
+cloud refuses only collisions (a task a witch holds, or declared paths that
+overlap a held task). The web board is the shared whiteboard. Design: CSD v1.3
+§4.11 and `docs/design/coven-hosts-v1.md`.
+
+The rest of this section is the older, manual way: a person's Kiro session as
+one member that claims tasks itself. It still works beside hosts.
 
 Each member, in its **own working copy** (a clone or a `git worktree`):
 
 ```bash
 coven login --cloud-url https://your-coven --token <ingest token>   # once per machine
 coven project link shop          # the same project name for every member
-coven member join ana            # this working copy's name; publishes the task list
+coven host join ana              # this working copy's name (`member join` works too); publishes the task list
 coven relay up --machine         # renews your claims and sends everything to the cloud
 kiro-cli chat --agent weaver     # "take work": claims the next ready task and runs its flow
 ```
@@ -230,11 +265,63 @@ kiro-cli chat --agent weaver     # "take work": claims the next ready task and r
   member runs `kiro-cli chat --agent imp` to read the board and post ideas,
   questions or reviews on that task. The author's Chair weighs them; the guard
   never reads them, so a review can stop a task but never pass one.
-- On the web, **Coven board** shows members, the tasks as Ready, Claimed,
-  In review and Done, and the notes as a wall. You can post there too.
+- On the web, **Coven board** shows the **witches** (working, available, or not
+  available, and on which host), the tasks as **numbers** (Ready · Claimed ·
+  In review · Blocked · Done; click one to see its cards, each with the witch it
+  needs and its state), and the notes as a wall. You can post there too.
 
 Every task ends as a pull request a human merges. Board notes are untrusted
 text: every agent is told to read them as data, never as instructions.
+
+## Let Kiro work the board (the `coven-board` skill)
+
+In any member's working copy, start Kiro and ask it to work the board:
+
+```text
+kiro-cli chat
+> work the coven board, 3 tasks
+```
+
+Kiro loads the skill `.kiro/skills/coven-board/SKILL.md` and loops: `coven work poll --wait 240` says what is next, and Kiro does it. The order is: an interrupted task, then rework on a task people responded to, then a new ready task. Then it waits.
+
+`coven work` enforces the rules; the model only writes the code:
+
+- one task at a time, on its own branch `coven/<spec>-<task>`;
+- `coven work submit` re-runs the task's `_Verify:_`, refuses any changed file outside its `_Paths:_`, **commits locally** (never pushes), switches back to the base branch and posts *ready for review* on the board;
+- a rejection, idea or suggestion in Council chat, or a member's review note, sends the task back for rework (`coven work resume`); a branch you merged, or a task you ticked, is released;
+- at most two submitted tasks wait for review before it takes more;
+- changes that were uncommitted before a task started (such as machine-specific hook paths) are never committed.
+
+You review the branch, merge it, and tick the task. Keep `coven relay up --machine` running so claims stay alive.
+
+## Talking to the council
+
+Open **Council chat** on the dashboard (`#/chat/<project>`). Pick what you are sending,
+type, press **Enter** (Shift+Enter for a new line):
+
+| Kind | Means |
+| :--- | :--- |
+| Ask · Idea · Suggestion | a question or a proposal |
+| **Do it** | work to be done |
+| Reject (pick the task) | a binding decision on a task |
+
+Leave *To* on **the council**, and the **Chair** (Grey Witch, on a host that runs her)
+answers. She sees the recent conversation, the witches online and the open tasks. When you
+want something done she makes a **job for each witch it needs**: the jobs appear on the board
+(spec `council`), hosts that run those witches take them, and the answers come back into the
+chat. Name a witch under *To* with **Do it** to send her the work directly (not the Dev: she
+builds only from `tasks.md`; to get code changed, the Chair has the Elder Witch write the task
+lines, and you add them).
+
+```bash
+./run-host.sh            # runs the Chair and the other witches: dispatch and work
+coven council listen     # optional: advice for messages addressed to one witch
+```
+
+Answers are at most 400 characters per message (a long answer comes as numbered steps in one
+bubble) and redacted. A **rejection is binding**: the guard of that task's flow rejects until
+new work comes after it, and a submitted task goes back to its witch for rework. Everyone
+signed in speaks as one role, Human, until per-project roles exist.
 
 ## Why a local relay
 
@@ -267,13 +354,15 @@ the same directory.
 
 Coven reads `.kiro/specs/<spec>/tasks.md` in Kiro's own format, so a spec Kiro
 writes works as-is. To get deviation warnings, declare each task's paths with a
-`_Paths:_` bullet (a sub-task without one uses its parent's):
+`_Paths:_` bullet (a sub-task without one uses its parent's); `_Verify:_` is the
+command that must pass, and `_Agent:_` the witch that works it (default the Dev):
 
 ```markdown
 - [ ] 2. Implement core functionality
   - [ ] 2.1 Implement payment client
     - _Paths: `src/checkout/client.ts`, `src/checkout/**`_
     - _Verify: `npm test -- client`_
+    - _Agent: green-witch_
     - _Requirements: 1.2_
 ```
 
@@ -314,11 +403,13 @@ is served by the same container, so the hosted URL needs no separate static site
 ```text
 .kiro/hooks/telemetry.json   hooks that emit telemetry
 .kiro/specs/coven-relay/     requirements, design, tasks (also used for spec mapping)
-src/coven/                   relay + CLI (Python): config, events, redaction, event log, socket, runner
+src/coven/                   relay + CLI (Python): config, events, redaction, event log, socket, runner,
+                             board, host (the dispatcher), agents (the witches), council (the listener)
 server/                      Coven Cloud (Node.js, TypeScript run natively): ingest, SSE, stores, seed
 server/src/                  app (HTTP), store (memory / DynamoDB), redact, events, auth, seed
 server/test/                 node:test suites, including the jsdom dashboard test
-web/                         single-file dashboard (fleet, run room, council replay)
+web/                         single-file dashboard (fleet, run room, council replay, board, council chat)
+run-host.sh                  run this machine as a host (witches take tasks and chat requests)
 docs/design/                 CSD, UX design, telemetry design & data contract
 infra/                       AWS deploy notes (ECR + App Runner + DynamoDB)
 tests/                       relay: event mapping, redaction, event log, relay push logic, redaction parity

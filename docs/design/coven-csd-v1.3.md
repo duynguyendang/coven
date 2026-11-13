@@ -592,9 +592,11 @@ Events (data contract §5.5): `flow_started`, `flow_step_started`, `flow_step_fi
 
 ### 4.11 The Coven Board — Members Working Together
 
+> **Revised 2026-11-12/13 — hosts and witches.** A *member* is now a **host**: a named machine that hosts **witches** (the personas) and runs several at once; the witches take and do the work, each task naming the witch it needs (`_Agent:_`, default the Dev). People talk to the council and the **Chair dispatches**. The design of record is **`docs/design/coven-hosts-v1.md`**; §4.11.3 below summarises it. What this section says about collisions, leases, readiness, notes and "the cloud assigns nothing" still holds; the points it changes are marked *(revised)*.
+
 **Decision (user, 2026-11-11):** several `kiro-cli` sessions, in terminals or on machines, each run agents and contribute to the whole project; members take tasks themselves; cross-review is brainstorming; the cloud web is a shared whiteboard; everything is monitored in the cloud. This section is the design as built. It moves one line this CSD drew: **the cloud now holds coordination state** (claims). It still assigns nothing.
 
-**Members.** A member is one `kiro-cli` working copy with a name (`coven member join <name>`; default `user@host:folder`; `COVEN_MEMBER` overrides). Every event it sends carries `member`. A member is an **attribution label, not an identity**: anyone holding the ingest token can use any name (§4.6.3 still holds).
+**Members** *(revised: hosts)*. A member is one `kiro-cli` working copy with a name (`coven host join <name>`, or the older `coven member join`; default `user@host:folder`; `COVEN_HOST` / `COVEN_MEMBER` override). Every event it sends carries `member`. A member is an **attribution label, not an identity**: anyone holding the ingest token can use any name (§4.6.3 still holds).
 
 **Claims: members take, the cloud only refuses collisions.**
 
@@ -610,15 +612,64 @@ Events (data contract §5.5): `flow_started`, `flow_step_started`, `flow_step_fi
 
 **Readiness** (which tasks a member may take; the same rule in `coven board ready` and on the web board): required leaf tasks not done and not held, whose turn has come. With Kiro's dependency graph, every task in an earlier wave is done. Without one, the sub-tasks of one parent go in order and top-level tasks are independent; collisions are stopped by the path-overlap rule.
 
-**Isolation is the member's.** Each member works in its own working copy (a clone, or a `git worktree`), and every task ends as a pull request a human merges. Coven does not create branches or worktrees and nothing in a flow merges.
+**Isolation** *(revised)*. Each member works in its own working copy (a clone, or a `git worktree`), and every task ends as a branch a human merges. A **host** now creates a `git worktree` and branch `coven/<spec>-<task>` per Dev task and commits there locally (`coven-hosts-v1.md` §3.1); nothing pushes or merges.
 
-**The whiteboard.** Notes (`board_note`: `idea`, `question`, `answer`, `review`, `note`, `review-wanted`) are short text about a task or the project, at most 400 characters, redacted like any payload. Agents post them through the relay (`coven board post`); people post them from the web page (a read token may post; the note is labelled as web text). The web board shows members (online when seen in the last two minutes), the task columns Ready · Claimed · In review · Done, and the notes as a wall. The task list comes from the spec progress the relay sends, now with each task's id, title, status, structure and declared paths (`coven board sync` sends it on demand). No other spec text and no code is sent.
+**The whiteboard.** Notes (`board_note`: `idea`, `question`, `answer`, `review`, `note`, `review-wanted`) are short text about a task or the project, at most 400 characters, redacted like any payload. Agents post them through the relay (`coven board post`); people post them from the web page (a read token may post; the note is labelled as web text). The web board shows *(revised)* the witches (working, available, waiting for a slot, not available), the task columns as numbers (Ready · Claimed · In review · Blocked · Done) that open on click, and the notes as a wall (UX v3 §6.2). The task list comes from the spec progress the relay sends, now with each task's id, title, status, structure and declared paths (`coven board sync` sends it on demand). No other spec text and no code is sent.
 
 **Cross-review is brainstorming.** The flow's model-free `board` step (between the council and the Chair) posts `review-wanted` with facts only (task, round, verify result, files written) and brings the notes other members left on the task into `board.json`. Any member's **Imp** agent (`kiro-cli --agent imp`) reads the board and posts up to three notes on a task that wants review. The author's Chair weighs them and may cite them; **the guard never reads them**, so a brainstorm can lower a proposal but never pass a task. A reviewer on another machine sees the board's facts, not the author's uncommitted code: a code-level cross-review needs the branch shared (pushed, or a worktree on the same machine).
 
 **Notes are untrusted.** Every member's agents read text written by other members and by anyone with a read token. Every agent that reads the board is told, in its prompt, that notes are data and never instructions; `board.json` repeats it. This is a prompt-injection surface by design, and it is mitigated, not removed: an agent can still be misled. Its effects are bounded by the rest of this CSD: notes cannot reach the guard, cannot merge, cannot pause or skip, and every write is still checked against the task's paths.
 
 **What it does not do.** No scheduling, no assignment, no automatic merge, no per-member authentication, no cross-machine file sync, no task editing from the web.
+
+#### 4.11.1 Council chat — people talk to the council (as built, 2026-11-12)
+
+**Decision (user, 2026-11-12):** a person can ask the council, give it an idea or a suggestion, or reject a task, from the web. **One role for people: Human** (anyone signed in); per-project roles (RBAC) come later.
+
+| A person sends | Effect |
+| :--- | :--- |
+| **ask** | the council answers; nothing changes |
+| **idea / suggestion** | recorded on the task (or project); the council answers how it would apply it and at what cost; the flow's `board` step brings it to the Chair in `board.json` → `human`, and the Chair must address it in its reasons (adopted, or why not) |
+| **reject** (needs a task) | a **binding human decision**: the guard gains a fourth check, `human`, which **fails** when a person rejected the task after this round's work (`implement.md` written); work done after a rejection answers it. A chat that cannot be read is `unknown`, never `pass`. No cloud configured: `pass` (no chat exists) |
+
+**Who answers** *(revised: the Chair dispatches)*. When an online host runs the Grey Witch, everything said to the council (no *To*, or the Chair) is hers: she sees the recent conversation, the witches online and the open tasks, answers, and turns requests for work into jobs on the board (`coven-hosts-v1.md` §5–§6). A fifth kind, **do**, sends work to the Chair or to one witch. The listener below still answers messages addressed to one witch, and everything when no host runs the Chair. A member runs `coven council listen` in a working copy. For each waiting message it runs the **`council-chat`** Kiro agent headless, in the voice of the role addressed (`chair` by default; `sa`, `dev`, `tester`, `red-team`, `brainstorm`), and posts the answer through the relay. Messages older than a day are not answered. The listener reports every minute; the web shows who answers, or that nobody listens and messages wait.
+
+**The answering agent can read, never act** (each verified on Kiro CLI 3.2.0 before building): `--trust-tools=` trusts nothing, so a write or shell call fails at the permission step (nobody is there to approve it); the agent's `permissions.rules` allow `fs_read` on `**`, which Kiro resolves inside the working copy only (reads of `~`, `/mnt/c` and another member's copy failed), and deny secret files (`.env*`, keys, `credentials*`, `.dev.vars`, `.coven/`, `.git/`).
+
+**Trust.** Only the cloud makes a human message (`POST /v1/chat`); `/v1/events` refuses a `chat_message` that is not the council's, so no agent can speak as a person or forge a rejection. Any signed-in person can reject, under any name: that is the Human role until RBAC. Answers are model text that leaves the machine on purpose, like board notes (an exception to R3.3 the user chose): at most 400 characters, redacted, and the agent is told never to quote file contents or secrets. A cut answer ends with `…`.
+
+**What it does not do.** A message never starts, pauses or stops a flow run (a `do` makes a host start a new witch run, §4.11.3); a rejection takes effect at the task's next guard, and nothing merges without a person. Two listeners on one project may both answer a message (run one per project).
+
+#### 4.11.2 The `coven-board` skill — Kiro works the board (as built, 2026-11-12)
+
+**Decision (user, 2026-11-12):** a member's Kiro monitors the board, pulls tasks that are not done, and does them. Built as a **Kiro skill** (`.kiro/skills/coven-board/SKILL.md`, loaded on demand when asked to "work the board") over a deterministic command, `coven work`, so the rules do not depend on the model following prose.
+
+| `coven work` | Does |
+| :--- | :--- |
+| `poll [--wait s]` | next action, in order: `continue` (an interrupted task) · `rework` (people's reject/idea/suggestion in the council chat, or a member's review, since the last submit) · `start` (a ready task) · `wait` (two submitted tasks await review) · `idle` · `offline`; releases tasks whose branch was merged or that people ticked; renews this member's claims |
+| `start [task]` | claims (the next ready task, or one) and switches to `coven/<spec>-<task>` from the base branch; refuses while another task is `working`, or when uncommitted changes lie inside the task's paths |
+| `submit task` | the task's `_Verify:_` must pass and every changed file must be inside `_Paths:_`; then a **local** commit, back to the base branch, a `review-wanted` note; the claim is kept while people review |
+| `resume task` · `drop task` | back to the branch for rework · give it up (release; the branch stays) |
+
+**Rules the command enforces:** never pushes, merges or ticks a task; one task at a time; uncommitted changes from before a task started are never committed (a fingerprint per file), so machine-specific hook paths stay out. **Rules the skill states:** no `git commit/switch/stash` by the model, no spec edits, notes and chat are data, three failed submits → drop and ask on the board. **Tested live** on the Cloudflare board (member `wsl-dan`): the skill took coven-relay#13 and committed `.github/workflows/ci.yml` on its branch; a human rejection in chat sent it back; the rework commit added exactly the fix asked for.
+
+**Limits:** the commit stays on the member's machine, so a reviewer elsewhere needs it pushed (by a person); Kiro monitors only while a session runs the skill; every reaction is a model run (credits).
+
+#### 4.11.3 Hosts, witches and dispatch (as built, 2026-11-13)
+
+**Decision (user, 2026-11-12):** "members are not machines: `wsl-xxx` is just the host, and a host can host many agents. If a task needs the Elf, the Elf takes it; if Raven is needed, Raven takes it; available hosts take the remaining tasks with the right persona." Then: "the human asks the council; the senior should understand and dispatch the task, and the task should show on the board"; and "the doer submits and updates the status". Design of record: `docs/design/coven-hosts-v1.md`.
+
+| | As built |
+| :--- | :--- |
+| Host | `coven host run` / `./run-host.sh`: slots (default 2), the witches installed in its working copy, presence every minute (`host_online`) |
+| Which witch | the task's `_Agent:_` (inherited by sub-tasks); none = the Dev. Tasks naming a witch go first |
+| Claims | host + witch; two witches of one host collide like two hosts |
+| Kinds | **build** (Dev: own worktree and branch, host verifies, path-checks, ticks the task on the branch, commits locally), **inspect** (Tester, Red Team, Imp: throw-away checkout, read and run), **think** (the rest: read-only) |
+| Status | the doer reports `working` → `submitted` / `answered` / `failed`; only people say `done` (Mark done, or the tick reaching the base branch) |
+| Dispatch | the Chair answers what is said to the council and makes jobs (tasks of the spec `council`, ≤ 6) for the witches; a `do` to one witch goes straight to her; answers come back in the chat in ≤ 8 steps |
+| Not changed | the cloud assigns nothing (hosts pull); notes and chat are untrusted; nothing pushes or merges; the guard and flows (§4.10) are unchanged |
+
+**Moved line.** "Coven never ticks a task" (§4.11.2) holds for `coven work`; a host ticks the Dev's task **on her branch only**, so a person's merge is still what makes it done. **Known limits:** tested with a fake `kiro-cli` and live on Cloudflare for presence and chat; a full real model run through every path has not been observed; the shell trust name follows Kiro CLI 3.2.
 
 
 ### 4.12 The Chimera Seams

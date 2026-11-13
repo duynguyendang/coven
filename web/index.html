@@ -1,17 +1,39 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-astryx-theme="neutral">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
 <title>Coven — Kiro sessions</title>
+<script>
+  // Apply the reader's theme before the first paint. No choice (or "system") follows the OS.
+  try { const t = localStorage.getItem("coven_theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch { /* storage off */ }
+</script>
+<link rel="stylesheet" href="vendor/astryx/theme-neutral.css" />
 <style>
-  /* UX design v2. Colour means state only: green ok, yellow attention/stale, red failure, grey unknown. */
+  /* UX design v2. Colour means state only: green ok, yellow attention/stale, red failure, grey unknown.
+     Every colour, the type families, radii and shadows come from the Astryx neutral theme
+     (vendor/astryx, MIT, github.com/meta/astryx). Its tokens are light-dark() pairs: the page follows
+     the system's colour scheme unless the reader picks one, which sets html[data-theme]. */
   :root {
-    --bg: #0f1115; --panel: #171a21; --panel-2: #1c212b; --line: #262b36;
-    --text: #e6e9ef; --muted: #a3acbb; --faint: #8b94a3;
-    --green: #3fb950; --yellow: #d29922; --red: #f85149; --grey: #8b949e; --blue: #79a8ff;
-    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    --bg: var(--color-background-body); --chrome: var(--color-background-card);
+    --panel: var(--color-background-surface); --panel-2: color-mix(in srgb, var(--color-text-primary) 4%, var(--panel));
+    --well: var(--color-background-muted); --code-bg: var(--color-background-muted); --button: var(--color-background-muted);
+    --hover: var(--color-overlay-hover); --selected: color-mix(in srgb, var(--color-info) 10%, transparent);
+    --line: var(--color-border); --line-strong: var(--color-border-emphasized); --track: var(--color-background-gray);
+    --text: var(--color-text-primary); --muted: var(--color-text-secondary); --faint: var(--color-text-secondary);
+    --green: var(--color-text-success); --yellow: var(--color-text-warning); --red: var(--color-text-error);
+    --grey: var(--color-text-secondary); --blue: var(--color-text-info);
+    /* state tints: a background, its border and the ink that reads on it (AA in both schemes) */
+    --ok-bg: var(--color-background-green); --ok-line: var(--color-border-green); --ok-ink: var(--color-text-green);
+    --warn-bg: var(--color-background-yellow); --warn-line: var(--color-border-yellow); --warn-ink: var(--color-text-yellow);
+    --bad-bg: var(--color-background-red); --bad-line: var(--color-border-red); --bad-ink: var(--color-text-red);
+    --info-bg: var(--color-background-blue); --info-line: var(--color-border-blue); --info-ink: var(--color-text-blue);
+    --warn-soft: color-mix(in srgb, var(--color-background-yellow) 40%, var(--panel));
+    --bad-soft: color-mix(in srgb, var(--color-background-red) 40%, var(--panel));
+    --info-soft: color-mix(in srgb, var(--color-background-blue) 35%, var(--panel));
+    --bad-line-soft: color-mix(in srgb, var(--color-border-red) 45%, transparent);
+    --mono: var(--font-family-code); --sans: var(--font-family-body);
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
@@ -28,9 +50,9 @@
   .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
   .app.nav-closed { grid-template-columns: minmax(0, 1fr); }
   .app.nav-closed .sidebar { display: none; }
-  .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: #12151b; border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 14px 10px; z-index: 30; }
+  .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--chrome); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 14px 10px; z-index: 30; }
   .col { min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
-  .topbar { display: flex; align-items: center; gap: 12px; padding: 9px 22px; border-bottom: 1px solid var(--line); background: #12151b; position: sticky; top: 0; z-index: 20; }
+  .topbar { display: flex; align-items: center; gap: 12px; padding: 9px 22px; border-bottom: 1px solid var(--line); background: var(--chrome); position: sticky; top: 0; z-index: 20; }
   .brand { display: flex; align-items: baseline; gap: 10px; color: var(--text); padding: 2px 8px 12px; }
   .brand:hover { text-decoration: none; }
   .brand b { font-size: 17px; letter-spacing: 0.22em; font-weight: 600; }
@@ -38,24 +60,31 @@
   .brand.mini { display: none; padding: 0; }
   .app.nav-closed .brand.mini { display: flex; }
   .spacer { flex: 1; }
+  /* persona avatars: the Kiro ghost, dressed for each role */
+  .av { width: 1.7em; height: 1.7em; flex: none; vertical-align: -0.45em; margin-right: 6px; overflow: visible; }
+  .av.lg { width: 34px; height: 34px; }
+  .brand .av { width: 26px; height: 26px; align-self: center; margin-right: 0; }
+  .persona { display: inline-flex; align-items: center; }
+  .persona .av { margin-right: 5px; width: 1.9em; height: 1.9em; vertical-align: middle; }
+  .meta .av { vertical-align: -0.5em; }
   .icon { font: inherit; font-size: 16px; line-height: 1; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; }
-  .icon:hover { color: var(--text); border-color: #3a4252; }
-  .pill { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
-  .pill.ok { color: var(--green); border-color: #1d4a2a; background: #0e2015; }
-  .pill.bad { color: var(--red); border-color: #55211f; background: #231112; }
+  .icon:hover { color: var(--text); border-color: var(--line-strong); }
+  .pill { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; padding: 3px 9px; border-radius: var(--radius-full); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.ok { color: var(--ok-ink); border-color: var(--ok-line); background: var(--ok-bg); }
+  .pill.bad { color: var(--bad-ink); border-color: var(--bad-line); background: var(--bad-bg); }
 
   .nav-h { margin: 16px 8px 6px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
   .nav-list { list-style: none; margin: 0; padding: 0; }
   .nav-item { display: flex; align-items: center; gap: 8px; color: var(--muted); border-radius: 7px; padding: 6px 8px; font-size: 13.5px; border-left: 2px solid transparent; }
-  .nav-item:hover { background: #181c24; color: var(--text); text-decoration: none; }
-  .nav-item[aria-current="page"] { background: #141c2b; color: var(--text); border-left-color: var(--blue); }
+  .nav-item:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+  .nav-item[aria-current="page"] { background: var(--selected); color: var(--text); border-left-color: var(--blue); }
   .nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .count { font-family: var(--mono); font-size: 11px; color: var(--muted); }
   .count.warn { color: var(--yellow); } .count.bad { color: var(--red); }
   .nav-row { display: flex; align-items: center; }
   .nav-row .nav-item { flex: 1; min-width: 0; }
   .caret-btn { font: inherit; color: var(--muted); background: transparent; border: 0; width: 22px; height: 26px; cursor: pointer; border-radius: 5px; flex: none; }
-  .caret-btn:hover { color: var(--text); background: #181c24; }
+  .caret-btn:hover { color: var(--text); background: var(--hover); }
   .caret-btn[hidden], .caret-btn.none { visibility: hidden; }
   .nav-sub { margin: 0 0 4px 22px; padding: 0 0 0 6px; list-style: none; border-left: 1px solid var(--line); }
   .nav-sub .nav-item { font-size: 12.5px; padding: 4px 8px; }
@@ -63,12 +92,16 @@
   .dot.mini { width: 7px; height: 7px; }
   .side-foot { margin-top: auto; padding-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); }
   .side-foot .act { flex: 1; }
+  .theme-switch { display: flex; width: 100%; border: 1px solid var(--line); border-radius: var(--radius-inner); overflow: hidden; }
+  .theme-switch .act { border: 0; border-radius: 0; background: transparent; color: var(--muted); border-right: 1px solid var(--line); }
+  .theme-switch .act:last-child { border-right: 0; }
+  .theme-switch .act[aria-pressed="true"] { background: var(--button); color: var(--text); font-weight: 600; }
   .scrim { display: none; }
   @media (max-width: 900px) {
     .app, .app.nav-closed { grid-template-columns: minmax(0, 1fr); }
-    .sidebar, .app.nav-closed .sidebar { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: min(280px, 86vw); transform: translateX(-102%); transition: transform 0.16s ease; box-shadow: 12px 0 30px rgba(0,0,0,0.45); }
+    .sidebar, .app.nav-closed .sidebar { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: min(280px, 86vw); transform: translateX(-102%); transition: transform 0.16s ease; box-shadow: var(--shadow-high); }
     .app.nav-open .sidebar { transform: none; }
-    .app.nav-open .scrim { display: block; position: fixed; inset: 0; background: rgba(8, 10, 13, 0.6); z-index: 25; }
+    .app.nav-open .scrim { display: block; position: fixed; inset: 0; background: var(--color-overlay); z-index: 25; }
     .brand.mini, .app.nav-closed .brand.mini { display: flex; }
     .topbar { padding: 9px 14px; }
   }
@@ -100,20 +133,20 @@
   h3 { margin: 0; font-size: 14px; font-weight: 600; }
 
   .banner { border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
-  .banner.demo, .banner.replay { border-color: #55421a; background: #211b0d; color: var(--yellow); }
+  .banner.demo, .banner.replay { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn-ink); }
   .banner.replay { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; }
   .note { color: var(--muted); font-size: 12.5px; margin: 8px 0 12px; }
 
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
-  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 14px; }
   .stat .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .stat .v { font-family: var(--mono); font-size: 22px; line-height: 1.25; }
   .stat .v.warn { color: var(--yellow); } .stat .v.bad { color: var(--red); }
   .stat .f { font-size: 11px; color: var(--muted); }
 
   .filters { display: flex; gap: 6px; margin: 4px 0 10px; flex-wrap: wrap; }
-  .filter { font: inherit; font-size: 12.5px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
-  .filter[aria-pressed="true"] { color: var(--text); border-color: var(--blue); background: #141c2b; }
+  .filter { font: inherit; font-size: 12.5px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--radius-full); padding: 3px 12px; cursor: pointer; }
+  .filter[aria-pressed="true"] { color: var(--text); border-color: var(--blue); background: var(--selected); }
 
   /* project and spec cards */
   .proj { padding: 12px 16px; margin-bottom: 14px; }
@@ -121,16 +154,16 @@
   .specs { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .specs li { display: grid; grid-template-columns: minmax(110px, 200px) minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 12.5px; }
   @media (max-width: 640px) { .specs li { grid-template-columns: 1fr; gap: 4px; } }
-  progress { width: 100%; height: 8px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 4px; background: #232936; overflow: hidden; }
-  progress::-webkit-progress-bar { background: #232936; border-radius: 4px; }
+  progress { width: 100%; height: 8px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 4px; background: var(--track); overflow: hidden; }
+  progress::-webkit-progress-bar { background: var(--track); border-radius: 4px; }
   progress::-webkit-progress-value { background: var(--green); border-radius: 4px; }
   progress::-moz-progress-bar { background: var(--green); }
   h2 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 8px; }
 
   /* session cards */
   .sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-  .scard { display: block; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
-  .scard:hover { text-decoration: none; border-color: #3a4252; background: var(--panel-2); }
+  .scard { display: block; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 12px 16px; }
+  .scard:hover { text-decoration: none; border-color: var(--line-strong); background: var(--panel-2); }
   .scard.attn { border-left: 3px solid var(--yellow); }
   .scard.attn.red { border-left-color: var(--red); }
   .scard .l1 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -139,21 +172,21 @@
   .health { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--grey); flex: none; }
   .dot.live { background: var(--green); } .dot.stale { background: var(--yellow); } .dot.disconnected, .dot.failed { background: var(--red); }
-  .chip { font-family: var(--mono); font-size: 10.5px; padding: 1px 7px; border-radius: 4px; border: 1px solid #55421a; color: var(--yellow); background: #211b0d; }
-  .chip.red { border-color: #55211f; color: var(--red); background: #231112; }
+  .chip { font-family: var(--mono); font-size: 10.5px; padding: 1px 7px; border-radius: 4px; border: 1px solid var(--warn-line); color: var(--warn-ink); background: var(--warn-bg); }
+  .chip.red { border-color: var(--bad-line); color: var(--bad-ink); background: var(--bad-bg); }
 
   .badge { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
-  .badge.live, .badge.pass, .badge.accept { color: var(--green); border-color: #1d4a2a; background: #0e2015; }
-  .badge.stale, .badge.unknown, .badge.warn, .badge.no-consensus { color: var(--yellow); border-color: #55421a; background: #211b0d; }
-  .badge.disconnected, .badge.failed, .badge.fail, .badge.reject { color: var(--red); border-color: #55211f; background: #231112; }
+  .badge.live, .badge.pass, .badge.accept { color: var(--ok-ink); border-color: var(--ok-line); background: var(--ok-bg); }
+  .badge.stale, .badge.unknown, .badge.warn, .badge.no-consensus { color: var(--warn-ink); border-color: var(--warn-line); background: var(--warn-bg); }
+  .badge.disconnected, .badge.failed, .badge.fail, .badge.reject { color: var(--bad-ink); border-color: var(--bad-line); background: var(--bad-bg); }
   .badge.finished, .badge.grey { color: var(--grey); }
   .ok { color: var(--green); } .bad { color: var(--red); }
 
-  .deviation { border: 1px solid #66302d; border-left: 4px solid var(--red); background: #1f1213; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
+  .deviation { border: 1px solid var(--bad-line); border-left: 4px solid var(--red); background: var(--bad-soft); border-radius: var(--radius-element); padding: 12px 16px; margin-bottom: 14px; }
   .deviation .dev-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .deviation .label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); }
-  .deviation ul { margin: 10px 0 0; padding: 0; list-style: none; border-top: 1px solid #3a2022; }
-  .deviation li { padding: 6px 0; border-bottom: 1px solid #2c1a1c; font-size: 12.5px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .deviation ul { margin: 10px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--bad-line-soft); }
+  .deviation li { padding: 6px 0; border-bottom: 1px solid var(--bad-line-soft); font-size: 12.5px; display: flex; gap: 10px; flex-wrap: wrap; }
 
   .devlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .devlist > .card { margin: 0; }
@@ -165,22 +198,49 @@
   .flow-card.waiting { border-left-color: var(--yellow); }
   .flow-card.done { border-left-color: var(--green); }
   .stepper { list-style: none; margin: 0; padding: 0; }
-  .stepper li { display: grid; grid-template-columns: 26px minmax(130px, 200px) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 16px; border-bottom: 1px solid #1d222b; }
+  .stepper li { display: grid; grid-template-columns: 26px minmax(130px, 200px) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 16px; border-bottom: 1px solid var(--line); }
   .stepper li:last-child { border-bottom: 0; }
   .stepper .m { font-family: var(--mono); text-align: center; }
-  .stepper .waiting { background: #1f1a10; }
+  .stepper .waiting { background: var(--warn-soft); }
   .stepper .pending { color: var(--muted); }
   @media (max-width: 640px) { .stepper li { grid-template-columns: 22px minmax(0, 1fr); } .stepper li > :nth-child(n+3) { grid-column: 2; } }
   /* the coven board: members, task columns, whiteboard */
-  .members { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-  .member { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 170px; }
-  .member .name { display: flex; align-items: center; gap: 7px; font-weight: 600; }
-  .member .what { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .witches { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .witch { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 10px; align-items: center; }
+  .witch .av { grid-row: 1 / span 3; width: 40px; height: 40px; margin: 0; }
+  .witch .nm { font-weight: 600; line-height: 1.2; }
+  .witch .rl { font-size: 11.5px; color: var(--muted); }
+  .witch .st { font-size: 12.5px; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+  .witch.working { border-color: var(--blue); background: var(--selected); }
+  .witch.available { border-color: var(--ok-line); }
+  .witch.full .av, .witch.offline .av { filter: grayscale(0.7); opacity: 0.55; }
+  .witch.offline { background: transparent; border-style: dashed; }
+  .witch.offline .nm, .witch.offline .st { color: var(--muted); }
+  .witch .where { font-size: 11.5px; color: var(--muted); }
+  .tcard .state { font-size: 12px; margin-top: 4px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .tcard .state .badge.working { color: var(--info-ink); border-color: var(--info-line); background: var(--info-bg); }
+  .tcard .state .badge.submitted, .tcard .state .badge.answered { color: var(--ok-ink); border-color: var(--ok-line); background: var(--ok-bg); }
+  .tcard .state .badge.failed { color: var(--bad-ink); border-color: var(--bad-line); background: var(--bad-bg); }
+  .tcard .agent { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: 4px; }
+  .tcard .agent .av { margin: 0; width: 20px; height: 20px; }
+  .sticky .kind .av { width: 18px; height: 18px; margin: 0 4px 0 0; vertical-align: middle; }
   .columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
   @media (max-width: 980px) { .columns { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 560px) { .columns { grid-template-columns: 1fr; } }
-  .column { background: #13161c; border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-height: 80px; }
+  .column { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; min-height: 80px; }
   .column h3 { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; display: flex; justify-content: space-between; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .tile { font: inherit; color: var(--text); text-align: left; cursor: pointer; background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+  .tile:hover { border-color: var(--line-strong); background: var(--hover); }
+  .tile[aria-expanded="true"] { border-color: var(--blue); background: var(--selected); }
+  .tile .n { font-size: 34px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile .l { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .tile .go { font-size: 11.5px; color: var(--muted); }
+  .column-detail { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; margin-bottom: 18px; }
+  .column-detail h3 { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; }
+  .column-detail .tlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+  .column-detail .tcard { margin: 0; }
   .tcard { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
   .tcard .id { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
   .tcard .who { font-size: 12px; margin-top: 4px; color: var(--muted); }
@@ -188,26 +248,84 @@
   .tcard.waiting { opacity: 0.6; border-style: dashed; }
   [data-board-project] { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
   .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-  .sticky { border-radius: 4px 4px 4px 14px; padding: 10px 12px; font-size: 13.5px; line-height: 1.4; box-shadow: 0 3px 10px rgba(0,0,0,0.35); color: #1a1a1a; overflow-wrap: anywhere; }
+  .sticky { border-radius: 4px 4px 4px 14px; padding: 10px 12px; font-size: 13.5px; line-height: 1.4; box-shadow: var(--shadow-low); overflow-wrap: anywhere; }
   .sticky .meta { font-size: 11px; opacity: 0.75; margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
   .sticky .kind { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
-  .sticky.idea { background: #f6e58d; } .sticky.question { background: #9fd8f4; } .sticky.answer { background: #b8f2c4; }
-  .sticky.review { background: #f5b7b1; } .sticky.note { background: #e5e7eb; } .sticky.review-wanted { background: #d7bde2; }
-  .sticky a { color: #12355b; }
+  .sticky.idea { background: var(--color-background-yellow); color: var(--color-text-yellow); } .sticky.question { background: var(--color-background-blue); color: var(--color-text-blue); } .sticky.answer { background: var(--color-background-green); color: var(--color-text-green); }
+  .sticky.review { background: var(--color-background-red); color: var(--color-text-red); } .sticky.note { background: var(--color-background-gray); color: var(--color-text-gray); } .sticky.review-wanted { background: var(--color-background-purple); color: var(--color-text-purple); }
+  .sticky a { color: inherit; text-decoration: underline; }
   .compose { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 8px; margin-bottom: 14px; align-items: center; }
   @media (max-width: 760px) { .compose { grid-template-columns: 1fr 1fr; } .compose textarea { grid-column: 1 / -1; } }
   .compose textarea, .compose select, .compose input { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; }
   .compose textarea { min-height: 40px; resize: vertical; }
-  .gate { border: 1px solid #55421a; background: #211b0d; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; }
+  .gate { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: var(--radius-element); padding: 12px 16px; margin-bottom: 14px; }
+  /* council chat: the page fills the window; only the conversation scrolls; people right, the council left */
+  body.chat-mode .col { height: 100vh; min-height: 0; overflow: hidden; }
+  body.chat-mode main { display: flex; flex-direction: column; min-height: 0; padding-bottom: 14px; }
+  body.chat-mode footer { display: none; }
+  .chat-page { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
+  .chat-page .page-h { margin-bottom: 0; }
+  .chat-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+  .chat-head .who-on { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--panel); }
+  .chat-head .who-on .av { width: 22px; height: 22px; margin: 0; }
+  .chat-head .who-on.off { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn-ink); }
+  .chat-head select { font: inherit; font-size: 12.5px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+  .thread { flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; border: 1px solid var(--line); border-radius: var(--radius-element); background: var(--well); }
+  .chat { list-style: none; margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .thread .empty { text-align: center; }
+  .msg { max-width: min(680px, 86%); border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px 9px; background: var(--panel); overflow-wrap: anywhere; box-shadow: var(--shadow-low); }
+  .msg.human { align-self: flex-end; background: var(--info-soft); border-color: var(--info-line); border-bottom-right-radius: 4px; }
+  .msg.human.reject { background: var(--bad-soft); border-color: var(--bad-line); }
+  .msg.human.do { background: color-mix(in srgb, var(--color-background-purple) 55%, var(--panel)); border-color: var(--color-border-purple); }
+  .msg.council { align-self: flex-start; border-bottom-left-radius: 4px; display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 10px; }
+  .msg.council > .av { grid-row: 1 / span 9; width: 34px; height: 34px; margin: 2px 0 0; }
+  .msg.council.error { border-style: dashed; color: var(--muted); }
+  .msg.working { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); background: transparent; border: 0; box-shadow: none; padding: 0 4px; }
+  .msg.working .av { width: 22px; height: 22px; margin: 0; }
+  .msg.working .dots::after { content: "…"; animation: dots 1.2s steps(3, end) infinite; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; }
+  @keyframes dots { from { width: 0; } to { width: 1.2em; } }
+  @media (prefers-reduced-motion: reduce) { .msg.working .dots::after { animation: none; } }
+  .msg .meta { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  .msg .meta b { color: var(--text); font-weight: 600; }
+  .msg .meta .badge { align-self: center; }
+  .msg .body { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+  .msg ol.steps { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.5; }
+  .msg .re { font-size: 12px; color: var(--muted); margin: 0 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .msg .status { font-size: 12px; color: var(--muted); margin-top: 5px; font-style: italic; }
+  .msg .status b { font-style: normal; }
+  .chat-compose { flex: none; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 8px 10px 8px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-low); }
+  .chat-compose:focus-within { border-color: var(--blue); }
+  .chat-compose .crow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chat-compose .kinds { border: 0; margin: 0; padding: 2px; display: inline-flex; gap: 2px; background: var(--well); border-radius: 8px; }
+  .chat-compose .kind { display: inline-flex; align-items: center; font-size: 12.5px; padding: 3px 10px; border-radius: 6px; cursor: pointer; color: var(--muted); user-select: none; }
+  .chat-compose .kind input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  .chat-compose .kind:hover { color: var(--text); }
+  .chat-compose .kind:has(input:checked) { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: var(--shadow-low); }
+  .chat-compose .kind:has(input[value="reject"]:checked) { color: var(--bad-ink); }
+  .chat-compose .kind:has(input[value="do"]:checked) { color: var(--color-text-purple); }
+  .chat-compose .kind:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .chat-compose .pick { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+  .chat-compose .pick select, .chat-compose .pick input { field-sizing: content; font: inherit; font-size: 12.5px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 2px 4px; max-width: 260px; }
+  .chat-compose .pick select:hover, .chat-compose .pick input:hover, .chat-compose .pick select:focus, .chat-compose .pick input:focus { border-color: var(--line); background: var(--bg); }
+  .chat-compose .pick input { width: 9ch; }
+  .chat-compose .write { display: flex; align-items: flex-end; gap: 8px; }
+  .chat-compose textarea { flex: 1; font: inherit; font-size: 14px; line-height: 1.45; color: var(--text); background: transparent; border: 0; padding: 6px 2px; resize: none; min-height: 1.45em; max-height: 9em; overflow-y: auto; outline: none; }
+  .chat-compose textarea:focus-visible { outline: none; }
+  .chat-compose .send { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 0; cursor: pointer; background: var(--color-accent); color: var(--color-on-accent); font-size: 16px; }
+  .chat-compose .send:disabled { opacity: 0.4; cursor: default; }
+  .chat-compose .foot { display: flex; gap: 10px; align-items: center; font-size: 11.5px; color: var(--muted); min-height: 16px; }
+  .chat-compose #chat-error { color: var(--red); }
+  .chat-compose #chat-error:empty { display: none; }
+  @media (max-width: 640px) { .chat-compose .keys { display: none; } .msg { max-width: 94%; } .chat-page .page-h .lede, .chat-page .crumbs { display: none; } .chat-page .page-h h1 { font-size: 18px; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); margin-bottom: 14px; }
   .card > .body { padding: 14px 16px; }
   .card > .head { padding: 11px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .empty { padding: 26px 16px; color: var(--muted); font-size: 13px; }
   .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
-  .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 12.5px; background: #12151b; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 12.5px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 
-  button.act { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--text); background: #1f2530; border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
-  button.act:hover { border-color: #3c4658; }
+  button.act { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--text); background: var(--button); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
+  button.act:hover { border-color: var(--line-strong); }
   button.act:disabled { opacity: 0.45; cursor: default; }
   button.link { font: inherit; color: var(--blue); background: none; border: 0; padding: 0; cursor: pointer; }
 
@@ -220,7 +338,7 @@
   .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--blue); }
 
   .turns { list-style: none; margin: 0; padding: 0; }
-  .turn { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+  .turn { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); margin-bottom: 10px; overflow: hidden; }
   .turn.failed { border-left: 3px solid var(--red); }
   .turn-head { width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; border: 0; padding: 10px 16px; cursor: pointer; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
   .turn-head:hover { background: var(--panel-2); }
@@ -229,7 +347,7 @@
   .turn-head .title { color: var(--muted); font-size: 12.5px; flex-basis: 100%; }
   .turn-head .caret { margin-left: auto; color: var(--muted); }
   .rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-  .row { display: grid; grid-template-columns: 66px 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 7px 16px; border-bottom: 1px solid #1d222b; width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; border-left: 0; border-right: 0; border-top: 0; cursor: pointer; }
+  .row { display: grid; grid-template-columns: 66px 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 7px 16px; border-bottom: 1px solid var(--line); width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; border-left: 0; border-right: 0; border-top: 0; cursor: pointer; }
   .rows li:last-child .row { border-bottom: 0; }
   .rows > li { position: relative; }
   .row-act { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
@@ -239,55 +357,55 @@
   .row .what { min-width: 0; overflow-wrap: anywhere; }
   .row .what .sub { display: block; font-size: 12px; color: var(--muted); }
   .row .side { display: flex; gap: 8px; align-items: baseline; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .row.fail { background: #1d1213; }
-  .row.dev { background: #1f1a10; }
+  .row.fail { background: var(--bad-soft); }
+  .row.dev { background: var(--warn-soft); }
   .row.fresh { animation: fresh 1.6s ease-out; }
-  @keyframes fresh { from { background: #1d2c40; } to { background: transparent; } }
+  @keyframes fresh { from { background: var(--info-bg); } to { background: transparent; } }
   @media (prefers-reduced-motion: reduce) { .row.fresh { animation: none; } }
   @media (max-width: 640px) { .row { grid-template-columns: 56px 18px minmax(0, 1fr); } .row .side { grid-column: 3; } }
 
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
-  td { padding: 8px 12px; border-bottom: 1px solid #1d222b; font-size: 13px; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
   tr:last-child td { border-bottom: 0; }
   td.num { font-family: var(--mono); text-align: right; }
 
   /* council (kept from v1.1) */
   .round { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-  .claim { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 6px 16px; padding: 12px 16px; border-bottom: 1px solid #1d222b; }
+  .claim { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 6px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   .claim:last-child { border-bottom: 0; }
   @media (max-width: 760px) { .claim { grid-template-columns: 1fr; } }
   .claim.uncounted { opacity: 0.65; }
   .claim .who { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
-  .persona { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line); background: #1d222b; }
-  .persona.sa { border-color: #4a3f66; color: #c8b8f5; } .persona.dev { border-color: #2f4864; color: #a7c7f5; }
-  .persona.tester { border-color: #2c5a3a; color: #9ae0ae; } .persona.red-team { border-color: #66302d; color: #f5a8a3; }
-  .persona.brainstorm { border-color: #66511f; color: #f0cd8a; } .persona.chair { border-color: #4a505c; }
+  .persona { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); }
+  .persona.sa { border-color: var(--color-border-purple); color: var(--color-text-purple); background: var(--color-background-purple); } .persona.dev { border-color: var(--color-border-blue); color: var(--color-text-blue); background: var(--color-background-blue); }
+  .persona.tester { border-color: var(--color-border-green); color: var(--color-text-green); background: var(--color-background-green); } .persona.red-team { border-color: var(--color-border-red); color: var(--color-text-red); background: var(--color-background-red); }
+  .persona.brainstorm { border-color: var(--color-border-orange); color: var(--color-text-orange); background: var(--color-background-orange); } .persona.chair { border-color: var(--color-border-gray); color: var(--color-text-gray); background: var(--color-background-gray); }
   .evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .ev-link { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--blue); background: #131820; border: 1px solid #243044; border-radius: 4px; padding: 2px 7px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+  .ev-link { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--blue); background: var(--info-soft); border: 1px solid var(--info-line); border-radius: 4px; padding: 2px 7px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
   .note-uncounted { font-family: var(--mono); font-size: 11px; color: var(--grey); margin-top: 4px; }
   .decision { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; }
-  .dissent { border-left: 3px solid var(--red); background: #1b1213; border-radius: 4px; padding: 8px 12px; margin-top: 10px; font-size: 13px; }
+  .dissent { border-left: 3px solid var(--red); background: var(--bad-soft); border-radius: 4px; padding: 8px 12px; margin-top: 10px; font-size: 13px; }
   .dissent .who { font-size: 11px; font-family: var(--mono); color: var(--red); margin-bottom: 3px; }
   .checks { list-style: none; margin: 8px 0; padding: 0; }
   .checks li { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; font-size: 13px; }
   .checks .pass .m { color: var(--green); } .checks .fail .m { color: var(--red); } .checks .unknown .m { color: var(--yellow); }
-  .disagree { border: 1px solid #66302d; background: #1f1213; border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
+  .disagree { border: 1px solid var(--bad-line); background: var(--bad-soft); border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
 
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: #12151b; border-left: 1px solid var(--line); z-index: 40; display: none; flex-direction: column; box-shadow: -12px 0 30px rgba(0,0,0,0.4); }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: var(--chrome); border-left: 1px solid var(--line); z-index: 40; display: none; flex-direction: column; box-shadow: var(--shadow-high); }
   .drawer.open { display: flex; }
   .drawer .dh { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   .drawer .dn { padding: 8px 16px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
   .drawer pre { margin: 0; padding: 14px 16px; overflow: auto; flex: 1; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .login { position: fixed; inset: 0; background: rgba(8, 10, 13, 0.85); display: none; place-items: center; z-index: 60; }
+  .login { position: fixed; inset: 0; background: var(--color-overlay); display: none; place-items: center; z-index: 60; }
   .login.show { display: grid; }
-  .login form { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: min(420px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+  .login form { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-container); padding: 22px; width: min(420px, 92vw); display: flex; flex-direction: column; gap: 10px; }
   .login h1 { margin: 0; font-size: 15px; letter-spacing: 0.18em; }
   .login p { margin: 0; color: var(--muted); font-size: 12.5px; }
   .login input { background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 9px 10px; border-radius: 6px; font-family: var(--mono); font-size: 13px; }
-  .login button { background: var(--green); color: #06210d; border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  .login button { background: var(--color-accent); color: var(--color-on-accent); border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
   .login .error { color: var(--red); font-size: 12.5px; }
-  .toast { position: fixed; bottom: 16px; right: 16px; background: #231112; border: 1px solid #55211f; color: var(--red); padding: 9px 12px; border-radius: 7px; font-size: 12.5px; display: none; z-index: 70; }
+  .toast { position: fixed; bottom: 16px; right: 16px; background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--bad-ink); padding: 9px 12px; border-radius: 7px; font-size: 12.5px; display: none; z-index: 70; }
   .toast.show { display: block; }
 </style>
 </head>
@@ -298,6 +416,11 @@
     <a class="brand" href="#/" aria-label="Coven, all sessions"><b>COVEN</b><span>Kiro sessions</span></a>
     <nav id="nav" aria-label="Main"></nav>
     <div class="side-foot">
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button class="act" type="button" data-theme-choice="system" aria-pressed="true">System</button>
+        <button class="act" type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button class="act" type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
       <button class="act" id="nav-hide" type="button">Hide sidebar</button>
       <button class="act" id="sign-out" type="button">Sign out</button>
     </div>
@@ -326,12 +449,12 @@
 <div class="login" id="login">
   <form id="login-form">
     <h1>COVEN</h1>
-    <p>Read token for this Coven Cloud. A development server accepts <code>dev</code>.</p>
-    <p class="error" id="login-error" hidden>Token rejected.</p>
-    <label class="sr" for="token-input">Access token</label>
-    <input id="token-input" type="password" autocomplete="off" placeholder="token" />
+    <p>Password for this Coven Cloud.<span id="dev-hint" hidden> A development server accepts <code>dev</code>.</span></p>
+    <p class="error" id="login-error" hidden>Wrong password.</p>
+    <label class="sr" for="token-input">Password</label>
+    <input id="token-input" type="password" autocomplete="current-password" placeholder="password" />
     <button type="submit">Connect</button>
-    <p>The token stays in this browser and is sent as a bearer header. The live stream carries it once as a query parameter, because a browser cannot set headers on an event stream.</p>
+    <p>The password stays in this browser and is sent as a bearer header. The live stream carries it once as a query parameter, because a browser cannot set headers on an event stream.</p>
   </form>
 </div>
 <div class="toast" id="toast" role="alert"></div>
@@ -359,6 +482,7 @@
     councils: [],
     flows: [],             // derived flows (contract §9.5); the Flows place appears only when there are some
     board: null,           // GET /v1/board for the project on screen
+    chat: null,            // GET /v1/chat for the project on screen
     boardProject: null,
     route: { view: "sessions", runId: null, tab: "turns", councilId: null, project: null, spec: null, filter: "all" },
     run: null,
@@ -369,12 +493,42 @@
     items: [],             // events behind clickable rows (drawer)
     evidence: [],          // evidence items behind council links
     expandDeviations: false,
+    boardOpen: null,
+    chatError: "",       // the chat form's message stays across a redraw
+    chatStick: false,     // after you send, the chat scrolls to your message even if you had scrolled up
     refreshTimer: null,
     source: null,
   };
 
   const WRITE_TOOL = /(write|edit|append|replace|delete|create)/i;
   const PERSONAS = { "elder-witch": "Elder Witch", "green-witch": "Green Witch", "white-hat": "White Hat Witch", "black-hat": "Black Hat Witch", "elf": "Elf", "grey-witch": "Grey Witch" };
+  /* The Kiro ghost, one outfit per persona. Decorative: the name always sits next to it. */
+  const ROLE_SLUG = { sa: "elder-witch", dev: "green-witch", tester: "white-hat", "red-team": "black-hat", brainstorm: "elf", chair: "grey-witch" };
+  const hat = (c, extra = "") => `<ellipse cx="16" cy="8.6" rx="9.5" ry="2" fill="${c}"/><path d="M10.5 8.6 L16.5 -2.5 L21.5 8.6Z" fill="${c}"/>${extra}`;
+  const OUTFIT = {
+    "elder-witch": { body: "#e9e4f5", eye: "#241a3d", art: hat("#6d4bc1", '<rect x="10.8" y="6" width="10.4" height="1.6" fill="#f2c94c"/>') + '<path d="M11 21 Q16 33 21 21 Q16 23.5 11 21Z" fill="#fff" stroke="#b9b3c9" stroke-width=".6"/>' },
+    "green-witch": { body: "#e4f5e9", eye: "#12301c", art: hat("#2e9b57", '<path d="M19.5 7.2 q3.8 -3.4 4.6 -0.4 q-2.2 2.6 -4.6 0.4Z" fill="#9be08f" stroke="#1d6b3a" stroke-width=".5"/>') },
+    "white-hat": { body: "#ffffff", eye: "#1a2a3f", art: hat("#ffffff", '<path d="M10.5 8.6 L16.5 -2.5 L21.5 8.6" fill="none" stroke="#7c8aa3" stroke-width=".8"/><ellipse cx="16" cy="8.6" rx="9.5" ry="2" fill="none" stroke="#7c8aa3" stroke-width=".8"/>') + '<circle cx="9.8" cy="22.5" r="1.4" fill="#ffb3c1"/><circle cx="22.2" cy="22.5" r="1.4" fill="#ffb3c1"/><ellipse cx="16" cy="-4.5" rx="4" ry="1" fill="none" stroke="#f2c94c" stroke-width=".9"/>' },
+    "black-hat": { body: "#d9d6e2", eye: "#111", art: hat("#17171c", '<rect x="10.8" y="6" width="10.4" height="1.6" fill="#c0392b"/>') + '<rect x="8.5" y="15" width="15" height="4.4" rx="1.6" fill="#111"/><rect x="15" y="16" width="2" height="1.2" fill="#d9d6e2"/><path d="M12 24.5 q4 3 8 0" fill="none" stroke="#111" stroke-width="1.1" stroke-linecap="round"/>' },
+    "elf": { body: "#eaf7e6", eye: "#173b1b", art: '<path d="M7 17.5 L0.8 12.5 L7.2 14.2Z" fill="#eaf7e6" stroke="#4f9c52" stroke-width=".8"/><path d="M25 17.5 L31.2 12.5 L24.8 14.2Z" fill="#eaf7e6" stroke="#4f9c52" stroke-width=".8"/><path d="M9.5 8.5 Q16 2 22.5 8.5 L24.5 5 L22 8.8Z" fill="#3f9d4a"/><circle cx="24.6" cy="4.6" r="1.4" fill="#f2c94c"/>' },
+    "grey-witch": { body: "#dcdde3", eye: "#202330", art: '<path d="M9.5 8.6 L10.5 2 L13.5 5.6 L16 0 L18.5 5.6 L21.5 2 L22.5 8.6Z" fill="#f2c94c" stroke="#b8902a" stroke-width=".7"/><circle cx="16" cy="6.4" r="1" fill="#7c5cd6"/>' + '<path d="M12.5 24.5 q3.5 2 7 0" fill="none" stroke="#202330" stroke-width="1" stroke-linecap="round"/>' },
+    "weaver": { body: "#fdeee0", eye: "#3a2410", art: '<rect x="22.5" y="19" width="7" height="9" rx="1.2" fill="#e67e22"/><rect x="21.8" y="18.2" width="8.4" height="2" rx=".8" fill="#b9560b"/><rect x="21.8" y="26.8" width="8.4" height="2" rx=".8" fill="#b9560b"/><path d="M26 22 q-8 2 -10 8" fill="none" stroke="#e67e22" stroke-width="1" stroke-linecap="round"/>' },
+    "scribe": { body: "#fbf6e1", eye: "#33290c", art: '<path d="M21 9 Q30 4 29 -3 Q21 0 19.5 9Z" fill="#f4f1ea" stroke="#9a8f6a" stroke-width=".7"/><path d="M20.5 8.5 Q25 3 28 -2" fill="none" stroke="#9a8f6a" stroke-width=".7"/><circle cx="12.5" cy="17" r="3.1" fill="none" stroke="#33290c" stroke-width=".9"/><circle cx="19.5" cy="17" r="3.1" fill="none" stroke="#33290c" stroke-width=".9"/>' },
+    "raven": { body: "#4a4a63", eye: "#ffe27a", art: '<path d="M16 19 L12.6 22 L16 27.5 L19.4 22Z" fill="#f39c12"/><path d="M11 6.5 Q16 0 21 6.5 Q16 4 11 6.5Z" fill="#2b2b3d"/><path d="M5.5 22 L1 17 L6.6 17.5Z M26.5 22 L31 17 L25.4 17.5Z" fill="#2b2b3d"/>' },
+    "herald": { body: "#fff0e0", eye: "#3b2410", art: '<path d="M9.5 8.6 Q16 1 22.5 8.6Z" fill="#c0392b"/><path d="M22 22 L30.5 17 L30.5 29 L22 25Z" fill="#f2c94c" stroke="#b8902a" stroke-width=".7"/><rect x="19.5" y="22" width="3" height="3" fill="#b8902a"/>' },
+    "imp": { body: "#ffd9d4", eye: "#3a0e0a", art: '<path d="M9.5 8 L7 0.5 L13.5 5.5Z M22.5 8 L25 0.5 L18.5 5.5Z" fill="#c0392b"/><path d="M12 22.5 q4 3.2 8 0 l-1.2 -1 -1.6 1 -1.2 -1 -1.2 1 -1.6 -1Z" fill="#fff" stroke="#3a0e0a" stroke-width=".5"/><path d="M26 28 q5 -1 4 -6" fill="none" stroke="#c0392b" stroke-width="1.3" stroke-linecap="round"/>' },
+    "coven": { body: "#f1ecff", eye: "#241a3d", art: hat("#7c5cd6") },
+  };
+  function avatar(key, cls = "") {
+    const o = OUTFIT[ROLE_SLUG[key] || key];
+    if (!o) return "";
+    return `<svg class="av ${cls}" viewBox="-1 -5 34 38" aria-hidden="true" focusable="false"><g transform="translate(0 3)"><path d="M16 3C9.2 3 6 8 6 14.5V28l3.6-3 3.2 3 3.2-3 3.2 3 3.2-3 3.6 3V14.5C26 8 22.8 3 16 3Z" fill="${o.body}" stroke="#7c5cd6" stroke-width="1.2" stroke-linejoin="round"/><ellipse cx="12.4" cy="14" rx="1.7" ry="2.4" fill="${o.eye}"/><ellipse cx="19.6" cy="14" rx="1.7" ry="2.4" fill="${o.eye}"/></g><g transform="translate(0 3)">${o.art}</g></svg>`;
+  }
+  const AGENT_NAME = { "green-witch": "Green Witch", "white-hat": "White Hat Witch", "black-hat": "Black Hat Witch", "elder-witch": "Elder Witch", "grey-witch": "Grey Witch",
+    elf: "Elf", imp: "Imp", raven: "Raven", scribe: "Scribe", herald: "Herald", weaver: "Weaver" };
+  const agentName = (slug) => AGENT_NAME[slug] || AGENT_NAME[ROLE_SLUG[slug]] || String(slug || "");
+  const AGENT_ROLE = { "green-witch": "Dev", "white-hat": "Tester", "black-hat": "Red Team", "elder-witch": "SA", "grey-witch": "Chair", elf: "Brainstorm",
+    imp: "Cross-reviewer", raven: "Watcher", scribe: "Steward", herald: "Reporter", weaver: "Conductor" };
   const ROLE = { sa: "SA", dev: "Dev", tester: "Tester", "red-team": "Red Team", brainstorm: "Brainstorm", chair: "Senior Kiro · Chair" };
   const COUNCIL_TYPES = new Set(["council_opened", "claim_proposed", "claim_challenged", "test_result", "verify_result", "chair_summary", "chair_proposal", "guard_verdict", "council_closed"]);
 
@@ -455,6 +609,7 @@
     if (parts[0] === "deviations") return { ...base, view: "deviations", filter: "all" };
     if (parts[0] === "flows") return { ...base, view: "flows", filter: "all" };
     if (parts[0] === "board") return { ...base, view: "board", project: parts[1] || null, filter: "all" };
+    if (parts[0] === "chat") return { ...base, view: "chat", project: parts[1] || null, filter: "all" };
     if (parts[0] === "flow" && parts[1]) return { ...base, view: "flow", flowId: parts[1], filter: "all" };
     if (parts[0] === "councils") return { ...base, view: "councils", filter: "all" };
     if (parts[0] === "p" && parts[1]) {
@@ -476,6 +631,7 @@
     if (route.view === "councils") return "Councils";
     if (route.view === "flows") return "Flows";
     if (route.view === "board") return "Coven board";
+    if (route.view === "chat") return "Council chat";
     if (route.view === "flow") return "Flow";
     return route.spec ? route.spec : route.project ? projectName(route.project) : "Sessions";
   }
@@ -492,6 +648,7 @@
     }
     closeNav();
     if (next.view === "board") { if (changed) state.board = null; await loadBoard(); }
+    if (next.view === "chat") { if (changed) state.chat = null; await loadChat(); }
     if (next.view === "session") {
       if (changed) { state.run = null; state.events = []; state.council = null; state.seen = new Set(); render(); }
       await loadSession();
@@ -524,7 +681,7 @@
   }
 
   function defaultBoardProject() {
-    if (state.route.view === "board" && state.route.project) return state.route.project;
+    if ((state.route.view === "board" || state.route.view === "chat") && state.route.project) return state.route.project;
     if (state.boardProject) return state.boardProject;
     const named = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
     return named[0] || null;
@@ -535,6 +692,15 @@
     try {
       state.board = await api(`/v1/board?project_id=${encodeURIComponent(project)}`);
       state.boardProject = project;
+    } catch (error) { quiet(error); }
+  }
+  async function loadChat() {
+    const project = defaultBoardProject();
+    if (!project) { state.chat = null; return; }
+    try {
+      state.chat = await api(`/v1/chat?project_id=${encodeURIComponent(project)}`);
+      state.boardProject = project;
+      if (!state.board || state.board.project_id !== project) await loadBoard(); // the task list for "About"
     } catch (error) { quiet(error); }
   }
 
@@ -569,6 +735,7 @@
       case "councils": return councilsView();
       case "flows": return flowsView();
       case "board": return boardView();
+      case "chat": return chatView();
       case "flow": return flowView();
       default: return sessionsView();
     }
@@ -581,12 +748,31 @@
       ? { key: active.dataset.key, start: active.selectionStart, end: active.selectionEnd } : null;
     state.items = [];
     state.evidence = [];
+    // A live update re-renders the page: keep whatever the reader has typed or chosen in a form.
+    const drafts = new Map([...main.querySelectorAll("input[data-key], textarea[data-key], select[data-key]")]
+      .map((el) => [el.dataset.key, { value: el.value, checked: el.checked }]));
+    // The chat sticks to its newest message, unless the reader has scrolled up to read older ones.
+    const oldChat = main.querySelector("#chat-thread");
+    const chatAt = oldChat ? { top: oldChat.scrollTop, bottom: oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 48 } : null;
     nav.innerHTML = sidebarHtml();
     main.innerHTML = viewHtml();
+    document.body.classList.toggle("chat-mode", state.route.view === "chat" && Boolean(main.querySelector(".chat-page")));
+    for (const el of main.querySelectorAll("input[data-key], textarea[data-key], select[data-key]")) {
+      const draft = drafts.get(el.dataset.key);
+      if (!draft) continue;
+      if (el.type === "radio" || el.type === "checkbox") el.checked = draft.checked;
+      else if (el.tagName !== "SELECT" || [...el.options].some((o) => o.value === draft.value)) el.value = draft.value;
+    }
     wire(nav);
     wire(main);
     side.scrollTop = sideScroll;
     if (keepScroll && window.scrollY !== scroll) window.scrollTo(0, scroll);
+    const newChat = main.querySelector("#chat-thread");
+    if (newChat) {
+      if (!chatAt || chatAt.bottom || state.chatStick) newChat.scrollTop = newChat.scrollHeight;
+      else newChat.scrollTop = chatAt.top;
+      state.chatStick = false;
+    }
     if (focus) {
       const quoted = window.CSS && CSS.escape ? CSS.escape(focus.key) : focus.key.replace(/["\\]/g, "\\$&");
       const again = document.querySelector(`[data-key="${quoted}"]`);
@@ -599,10 +785,11 @@
     }
   }
 
-  const isSeeded = () => state.councils.some((c) => c.mode === "seeded") || state.deviations.some((d) => d.source === "seed")
-    || (state.route.view === "session" && state.events.some((e) => e.source === "seed"));
-  const demoBanner = () => (isSeeded()
-    ? '<div class="banner demo">DEMO DATA — some sessions below are seeded examples, not real Kiro runs (they carry <code>source: "seed"</code>).</div>' : "");
+  /* DEMO DATA is said only where seeded data is on the page. A real project with no seeded
+     events never shows it, whatever else the fleet holds. */
+  const seededProject = (id) => Boolean(id && (state.projects.find((p) => p.project_id === id) || {}).seeded);
+  const demoBanner = (seeded) => (seeded
+    ? '<div class="banner demo">DEMO DATA — some of what is shown here is seeded example data, not real Kiro runs (it carries <code>source: "seed"</code>).</div>' : "");
 
   /* -------------------------------------------------------- screen 1: sessions */
   const isFailure = (run) => run.attention && (run.attention.includes("failing") || run.attention.includes("repeat failure"));
@@ -671,6 +858,8 @@
       <span class="label">${esc(label)}</span> ${n == null ? "" : `<span class="count ${n && tone ? tone : ""}">${n}</span>`}</a></li>`;
     const views = [
       boardProject ? item(`#/board/${encodeURIComponent(boardProject)}`, "board", "Coven board", null, "", r.view === "board") : "",
+      boardProject ? item(`#/chat/${encodeURIComponent(boardProject)}`, "chat", "Council chat",
+        state.chat && state.chat.project_id === boardProject ? state.chat.waiting.length : null, "warn", r.view === "chat") : "",
       item("#/", "all", "All sessions", runs.length, "", onList && r.filter === "all"),
       item("#/?f=live", "live", "Live", live, "", onList && r.filter === "live"),
       item("#/?f=attention", "attention", "Needs attention", attention, "warn", onList && r.filter === "attention"),
@@ -770,7 +959,7 @@
 
   function sessionsView() {
     const everything = state.runs;
-    if (!everything.length) return `${demoBanner()}${firstRun()}`;
+    if (!everything.length) return `${demoBanner(false)}${firstRun()}`;
     const r = state.route, project = r.project, spec = r.spec;
     const scope = scopeRuns();
     const list = visibleRuns();
@@ -779,7 +968,7 @@
 
     const known = project && (everything.some((x) => x.project_id === project) || specsOf(project).length);
     if (project && !known) {
-      return `${demoBanner()}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: project }], title: project })}
+      return `${demoBanner(false)}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: project }], title: project })}
         <div class="card"><div class="empty">No sessions for project <b>${esc(project)}</b>. <a href="#/">Show all projects</a></div></div>`;
     }
 
@@ -816,7 +1005,7 @@
         <span class="result-n" id="result-n" aria-live="polite">${list.length} of ${scope.length}</span>
       </div>`;
 
-    return `${demoBanner()}
+    return `${demoBanner(scope.some((x) => x.seeded) || seededProject(project))}
       ${head}
       <section class="stats" aria-label="Summary">
         <div class="stat"><div class="k">Live</div><div class="v">${live}</div><div class="f">heartbeat under 15 s</div></div>
@@ -845,7 +1034,7 @@
   }
   function deviationsView() {
     const list = state.deviations;
-    return `${demoBanner()}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Deviations" }], title: "Possible spec deviations",
+    return `${demoBanner(list.some((d) => d.source === "seed"))}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Deviations" }], title: "Possible spec deviations",
       lede: "Writes outside the declared paths of the current task. Advisory: Coven cannot know if the write was right. Dismiss what you have read." })}
       ${list.length
         ? `<ul class="devlist">${list.map(deviationCard).join("")}</ul>`
@@ -856,7 +1045,7 @@
   const ONLINE_SECONDS = 120;
   const KIND_LABEL = { idea: "idea", question: "question", answer: "answer", review: "review", note: "note", "review-wanted": "review wanted" };
   function boardColumns(b) {
-    const cols = { ready: [], claimed: [], review: [], done: [] };
+    const cols = { ready: [], claimed: [], review: [], failed: [], done: [] };
     const wanted = new Set((b.notes || []).filter((n) => n.kind === "review-wanted" && n.task).map((n) => n.task));
     for (const spec of b.specs || []) {
       const leaves = spec.tasks.filter((t) => t.leaf && !t.optional);
@@ -873,8 +1062,9 @@
         const ref = `${spec.spec}#${t.task_id}`;
         const card = { ...t, spec: spec.spec, ref, waits_for: leaves.includes(t) ? waitsFor(t) : null,
           notes: (b.notes || []).filter((n) => n.task === ref && n.kind !== "review-wanted").length };
-        if (t.status === "completed") cols.done.push(card);
-        else if ((t.reviewers || []).length || (wanted.has(ref) && t.claimed_by)) cols.review.push(card);
+        if (t.status === "completed" || t.doer_state === "done") cols.done.push(card);
+        else if (t.doer_state === "failed" && !t.claimed_by) cols.failed.push(card);
+        else if ((t.reviewers || []).length || (wanted.has(ref) && t.claimed_by) || ["submitted", "answered"].includes(t.doer_state)) cols.review.push(card);
         else if (t.claimed_by) cols.claimed.push(card);
         else if (!t.optional) cols.ready.push(card);
       }
@@ -882,15 +1072,47 @@
     cols.ready.sort((a, b) => (a.waits_for ? 1 : 0) - (b.waits_for ? 1 : 0)); // what can start now comes first
     return cols;
   }
+  const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"]];
+  const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed" };
   function taskCard(t) {
-    const who = [t.waits_for && !t.claimed_by ? `waits for ${esc(t.waits_for)}` : "", t.claimed_by ? `${esc(t.claimed_by)} is on it` : "", (t.reviewers || []).length ? `reviewing: ${(t.reviewers).map(esc).join(", ")}` : "",
+    const who = [t.waits_for && !t.claimed_by ? `waits for ${esc(t.waits_for)}` : "", t.claimed_by ? `${esc(t.claimed_agent ? agentName(t.claimed_agent) : t.claimed_by)} is on it` : "", (t.reviewers || []).length ? `reviewing: ${(t.reviewers).map(esc).join(", ")}` : "",
       t.notes ? `${plural(t.notes, "note")}` : ""].filter(Boolean).join(" · ");
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${who ? `<div class="who">${who}</div>` : ""}</div>`;
+    const need = t.agent || "green-witch";
+    const holder = t.claimed_agent || (t.claimed_by ? null : need);
+    const stateLine = t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
+      ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "";
+    const agentLine = `<div class="agent">${avatar(holder || need)}<span>${esc(agentName(holder || need))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : " needed"}</span></div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${stateLine}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
-      <div class="kind">${esc(KIND_LABEL[n.kind] || n.kind)}</div><div>${esc(n.note)}</div>
-      <div class="meta">${[`<b>${esc(n.author)}</b>`, n.task ? `<span>on ${esc(n.task)}</span>` : "", `<span>${agoTag(n.ts)}</span>`].filter(Boolean).join(" · ")}</div></article>`;
+      <div class="kind">${n.agent ? avatar(n.agent) : ""}${esc(KIND_LABEL[n.kind] || n.kind)}</div><div>${esc(n.note)}</div>
+      <div class="meta">${[n.agent ? `<b>${esc(agentName(n.agent))}</b> on ${esc(n.author)}` : `<b>${esc(n.author)}</b>`, n.task ? `<span>on ${esc(n.task)}</span>` : "", `<span>${agoTag(n.ts)}</span>`].filter(Boolean).join(" · ")}</div></article>`;
+  }
+  /* Who can take work: the witches, not the machines. A host only shows as "where". */
+  function witchRoster(b) {
+    const hosts = (b.hosts || b.members || []).filter((h) => secondsSince(h.last_seen) !== null && secondsSince(h.last_seen) < ONLINE_SECONDS);
+    if (!hosts.length) return { html: "", available: 0, working: 0 };
+    const roster = Object.keys(AGENT_NAME).map((slug) => {
+      const jobs = [], offers = [];
+      for (const h of hosts) {
+        const working = h.working || (h.claims || []).map((task) => ({ agent: null, task }));
+        for (const w of working) if ((w.agent || "green-witch") === slug) jobs.push({ task: w.task, host: h.member });
+        if ((h.agents || []).includes(slug)) offers.push({ host: h.member, free: working.length < (h.slots || 1) });
+      }
+      const state = jobs.length ? "working" : offers.some((o) => o.free) ? "available" : offers.length ? "full" : "offline";
+      return { slug, jobs, offers, state };
+    });
+    const order = { working: 0, available: 1, full: 2, offline: 3 };
+    roster.sort((x, y) => order[x.state] - order[y.state]);
+    const text = { working: "Working", available: "Available", full: "Waiting for a slot", offline: "Not available" };
+    const html = roster.map((w) => {
+      const where = w.state === "working" ? w.jobs.map((j) => `${j.task.startsWith("chat#") ? "on a chat request" : "on " + esc(j.task)} · ${esc(j.host)}`).join("; ")
+        : w.offers.length ? `on ${w.offers.map((o) => esc(o.host)).join(", ")}` : "no host runs it";
+      return `<div class="witch ${w.state}" data-key="witch-${w.slug}">${avatar(w.slug)}<div class="nm">${esc(agentName(w.slug))}</div><div class="rl">${esc(AGENT_ROLE[w.slug])}</div>
+        <div class="st"><span class="dot ${w.state === "working" ? "live" : w.state === "available" ? "live" : ""}" aria-hidden="true"></span>${text[w.state]}</div><div class="where">${where}</div></div>`;
+    }).join("");
+    return { html, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
   }
   function boardView() {
     const project = defaultBoardProject();
@@ -900,29 +1122,132 @@
     if (!b) return `${pageHeader({ crumbs, title: `Coven board · ${project}` })}<div class="card"><div class="empty">Loading the board…</div></div>`;
     const names = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
     const picker = names.length > 1 ? `<label class="hint">Project <select data-board-project aria-label="Board project">${names.map((p) => `<option ${p === project ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
-    const members = (b.members || []).map((m) => {
-      const online = secondsSince(m.last_seen) !== null && secondsSince(m.last_seen) < ONLINE_SECONDS;
-      return `<div class="member"><div class="name"><span class="dot ${online ? "live" : ""}" aria-hidden="true"></span>${esc(m.member)}<span class="sr">${online ? "online" : "away"}</span></div>
-        <div class="what">${(m.claims || []).length ? `on ${(m.claims).map(esc).join(", ")}` : "no task"} · seen ${agoTag(m.last_seen)}</div></div>`;
-    }).join("");
+    const members = witchRoster(b);
     const cols = boardColumns(b);
-    const column = (key, label) => `<section class="column" aria-label="${label}"><h3><span>${label}</span><span>${cols[key].length}</span></h3>${cols[key].map(taskCard).join("") || '<div class="hint" style="padding:4px">—</div>'}</section>`;
+    // The board shows numbers only; a click on a number opens that column's tasks below.
+    const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : null;
+    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go">${open === key ? "Hide tasks" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
+    const detail = open ? `<section class="column-detail" id="col-detail" aria-label="${COLUMNS.find(([k]) => k === open)[1]}"><h3>${COLUMNS.find(([k]) => k === open)[1]} · ${plural(cols[open].length, "task")}</h3>${cols[open].length ? `<div class="tlist">${cols[open].map(taskCard).join("")}</div>` : '<div class="hint" style="padding:4px">No tasks here.</div>'}</section>` : "";
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
     const compose = `<form class="compose" id="note-form" aria-label="Post a note">
         <label class="sr" for="note-text">Note</label><textarea id="note-text" data-key="note-text" maxlength="400" placeholder="An idea, a question, a review… (everyone's agents read this as untrusted text)" required></textarea>
-        <label class="sr" for="note-kind">Kind</label><select id="note-kind">${["idea", "question", "answer", "review", "note"].map((k) => `<option>${k}</option>`).join("")}</select>
-        <label class="sr" for="note-task">About</label><select id="note-task"><option value="">the whole project</option>${tasks.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
-        <label class="sr" for="note-author">Your name</label><input id="note-author" maxlength="40" placeholder="your name" value="${esc(author)}" />
+        <label class="sr" for="note-kind">Kind</label><select id="note-kind" data-key="note-kind">${["idea", "question", "answer", "review", "note"].map((k) => `<option>${k}</option>`).join("")}</select>
+        <label class="sr" for="note-task">About</label><select id="note-task" data-key="note-task"><option value="">the whole project</option>${tasks.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
+        <label class="sr" for="note-author">Your name</label><input id="note-author" data-key="note-author" maxlength="40" placeholder="your name" value="${esc(author)}" />
         <button class="act" type="submit">Post</button></form>`;
-    return `${demoBanner()}${pageHeader({ crumbs, title: `Coven board · ${project}`,
-        lede: "Every member's agents work here together: members take tasks themselves, ask for reviews, and leave notes for each other." })}
+    return `${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Coven board · ${project}`,
+        lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
       ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
-      <h2>Members</h2>${members ? `<div class="members">${members}</div>` : '<p class="hint">No member has reported yet. In each working copy: <code>coven member join &lt;name&gt;</code>.</p>'}
-      <h2>Tasks</h2>${(b.specs || []).length ? `<div class="columns">${column("ready", "Ready")}${column("claimed", "Claimed")}${column("review", "In review")}${column("done", "Done")}</div>`
+      <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? `<div class="witches">${members.html}</div>` : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
+      <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
       <h2>Whiteboard</h2>${compose}
       <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">Nothing on the board yet. Post the first note.</p>'}</div>`;
+  }
+
+  /* ------------------------------------------------------------- council chat */
+  const CHAT_ROLE_NAME = { chair: "Grey Witch — Senior Kiro · Chair", sa: "Elder Witch — SA", dev: "Green Witch — Dev",
+    tester: "White Hat Witch — Tester", "red-team": "Black Hat Witch — Red Team", brainstorm: "Elf — Brainstorm" };
+  const CHAT_KIND_LABEL = { ask: "Ask", idea: "Idea", suggestion: "Suggestion", reject: "Reject", do: "Do it", answer: "Answer", working: "Working", error: "Could not answer" };
+  const personaTitle = (key) => CHAT_ROLE_NAME[key] || PERSONA_OF[key] || null;
+  const OTHER_WITCHES = ["raven", "imp", "scribe", "herald", "weaver"];
+  const KIND_HELP = { ask: "A question: answered from the code, read-only", idea: "An idea: the council says whether and how, and what it costs",
+    suggestion: "A suggestion on how something is done", reject: "Reject a task: binding, pick the task under About",
+    do: "Work to be done: the Chair (or the witch you name) takes it and answers here" };
+  const KIND_PLACEHOLDER = { ask: "Ask the council…", idea: "Share an idea…", suggestion: "Suggest a change…",
+    reject: "Say why you reject this task…", do: "Say what you want done, e.g. review host.py and plan the fixes…" };
+  function requestStatus(m, ctx) {
+    const triage = !m.to || m.to === "chair" || m.to === "grey-witch";
+    const witch = triage ? "Grey Witch — Senior Kiro · Chair" : (personaTitle(m.to) || m.to);
+    if (ctx.final.has(m.message_id)) return "";
+    if (ctx.working.has(m.message_id)) return `<div class="status">${esc(witch)} is working on it…</div>`;
+    const key = triage ? "grey-witch" : (ROLE_SLUG[m.to] || m.to);
+    const hosts = (ctx.hosts || []).filter((h) => h.online && (h.agents || []).includes(key));
+    return hosts.length
+      ? `<div class="status">sent to ${esc(witch)}: ${hosts.map((h) => esc(h.host)).join(", ")} will take it within a few seconds…</div>`
+      : `<div class="status"><b>No online host runs ${esc(witch)}.</b> It waits until one does: <code>coven host run</code> on a machine that has her agent.</div>`;
+  }
+  /** One bubble per reply: a witch's steps that answer the same message, one after another, read as one answer. */
+  function chatGroups(messages) {
+    const out = [];
+    for (const m of messages) {
+      const last = out[out.length - 1];
+      if (m.role === "council" && m.kind === "answer" && last && last.role === "council" && last.kind === "answer"
+          && last.reply_to === m.reply_to && last.persona === m.persona) last.parts.push(m);
+      else out.push({ ...m, parts: [m] });
+    }
+    return out;
+  }
+  function chatMessage(m, byId, waiting, ctx = { final: new Set(), working: new Set(), hosts: [] }) {
+    const when = agoTag(m.ts);
+    if (m.role === "council" && m.kind === "working") {
+      // Only while the work is going on: once the answer is in, the answer says it all.
+      if (ctx.final.has(m.reply_to)) return "";
+      return `<li class="msg working" data-key="msg-${esc(m.message_id)}">${avatar(m.persona)}<span>${esc(m.message.replace(/\.$/, ""))}<span class="dots" aria-hidden="true"></span></span></li>`;
+    }
+    if (m.role === "council") {
+      const asked = byId.get(m.reply_to);
+      const parts = m.parts || [m];
+      const body = parts.length > 1
+        ? `<ol class="steps">${parts.map((x) => `<li data-key="msg-${esc(x.message_id)}">${esc(x.message)}</li>`).join("")}</ol>`
+        : `<div class="body">${esc(m.message)}</div>`;
+      return `<li class="msg council ${m.kind === "error" ? "error" : ""}" data-key="msg-${esc(m.message_id)}">${avatar(m.persona)}
+        <div class="meta"><b>${esc(personaTitle(m.persona) || "The council")}</b><span>on ${esc(m.author)}</span><span>${agoTag(parts[parts.length - 1].ts)}</span></div>
+        ${asked ? `<div class="re" title="${esc(asked.message)}">↪ ${esc(asked.author)}: “${esc(short(asked.message, 80))}”</div>` : ""}
+        ${body}</li>`;
+    }
+    const to = m.to ? `to ${esc(personaTitle(m.to) || m.to)}` : "to the council";
+    return `<li class="msg human ${esc(cls(m.kind))}" data-key="msg-${esc(m.message_id)}">
+      <div class="meta"><span class="badge ${m.kind === "reject" ? "reject" : "grey"}">${esc(CHAT_KIND_LABEL[m.kind] || m.kind)}</span>
+        <b>${esc(m.author)}</b><span>${to}</span>${m.task ? `<span class="mono">on ${esc(m.task)}</span>` : ""}<span>${when}</span></div>
+      <div class="body">${esc(m.message)}</div>
+      ${m.kind === "reject" ? '<div class="status">Binding: the guard of this task\'s flow rejects until new work comes after it.</div>' : ""}
+      ${m.kind === "do" ? requestStatus(m, ctx) : waiting.has(m.message_id) ? '<div class="status">waiting for the council…</div>' : ""}</li>`;
+  }
+  function chatView() {
+    const project = defaultBoardProject();
+    const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Council chat" }];
+    if (!project) return `${pageHeader({ crumbs, title: "Council chat" })}<div class="card"><div class="empty">No project yet. Link a repo with <code>coven project link &lt;name&gt;</code>.</div></div>`;
+    const c = state.chat;
+    if (!c) return `${pageHeader({ crumbs, title: `Council chat · ${project}` })}<div class="card"><div class="empty">Loading the chat…</div></div>`;
+    const names = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
+    const picker = names.length > 1 ? `<label>Project <select data-chat-project aria-label="Chat project">${names.map((p) => `<option ${p === project ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
+    const online = (c.listeners || []).filter((l) => l.online);
+    const chairs = (c.hosts || []).filter((h) => h.online && (h.agents || []).includes("grey-witch"));
+    const status = chairs.length
+      ? `<span class="who-on" role="status" title="What you say to the council, the Chair understands and dispatches to the witches as tasks on the board.">${avatar("grey-witch")}The Chair is on <b>${chairs.map((h) => esc(h.host)).join(", ")}</b></span>${online.length ? `<span>· one witch's questions: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} listening</span>` : ""}`
+      : online.length
+      ? `<span class="who-on" role="status">${avatar("grey-witch")}Answering: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} · listening, seen ${agoTag(online[0].last_seen)}</span><span>An answer takes a Kiro run: about a minute.</span>`
+      : `<span class="who-on off" role="status"><b>No member is listening</b>&nbsp;· messages wait. Run <code>coven council listen</code> or <code>./run-host.sh</code></span>`;
+    const byId = new Map((c.messages || []).map((m) => [m.message_id, m]));
+    const waiting = new Set(c.waiting || []);
+    const replies = (kinds) => new Set((c.messages || []).filter((m) => m.role === "council" && kinds.includes(m.kind)).map((m) => m.reply_to));
+    const ctx = { final: replies(["answer", "error"]), working: replies(["working"]), hosts: c.hosts || [] };
+    const thread = (c.messages || []).length
+      ? `<ol class="chat" aria-label="Conversation" aria-live="polite">${chatGroups(c.messages).map((m) => chatMessage(m, byId, waiting, ctx)).join("")}</ol>`
+      : '<div class="empty">No messages yet. Ask the council something, or choose Do it and say what you want done.</div>';
+    const tasks = ((state.board && state.board.project_id === project && state.board.specs) || [])
+      .flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => [`${s.spec}#${t.task_id}`, t.title || ""]));
+    const kinds = ["ask", "idea", "suggestion", "reject", "do"].map((k, i) => `<label class="kind" title="${esc(KIND_HELP[k])}"><input type="radio" name="chat-kind" value="${k}" data-key="chat-kind-${k}" ${i === 0 ? "checked" : ""} />${CHAT_KIND_LABEL[k]}</label>`).join("");
+    const compose = `<form class="chat-compose" id="chat-form" aria-label="Message the council">
+        <div class="crow">
+          <fieldset class="kinds"><legend class="sr">What you are sending</legend>${kinds}</fieldset>
+          <span class="spacer"></span>
+          <label class="pick">To <select id="chat-to" data-key="chat-to"><option value="">the council (Chair)</option>${Object.entries(CHAT_ROLE_NAME).filter(([r]) => r !== "chair").map(([r, n]) => `<option value="${r}">${esc(n)}</option>`).join("")}<optgroup label="Other witches">${OTHER_WITCHES.map((r) => `<option value="${r}">${esc(PERSONA_OF[r])}</option>`).join("")}</optgroup></select></label>
+          <label class="pick">About <select id="chat-task" data-key="chat-task"><option value="">the whole project</option>${tasks.map(([ref, title]) => `<option value="${esc(ref)}">${esc(ref)} ${esc(short(title, 40))}</option>`).join("")}</select></label>
+          <label class="pick">as <input id="chat-author" data-key="chat-author" maxlength="40" placeholder="your name" value="${esc(localStorage.getItem("coven_author") || "")}" /></label>
+        </div>
+        <div class="write">
+          <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="400" required aria-describedby="chat-keys" rows="1" placeholder="${esc(KIND_PLACEHOLDER.ask)}"></textarea>
+          <button class="send" type="submit" aria-label="Send" title="Send (Enter)">➤</button>
+        </div>
+        <div class="foot"><span id="chat-error" role="alert">${esc(state.chatError)}</span><span class="keys" id="chat-keys">Enter to send · Shift+Enter for a new line</span><span class="spacer"></span><span id="chat-count" aria-hidden="true"></span></div>
+      </form>`;
+    return `<div class="chat-page">${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Council chat · ${project}`,
+        lede: "You decide; the council advises and dispatches. Everyone signed in speaks as Human; a rejection is the one message that binds." })}
+      <div class="chat-head">${status}${picker ? `<span class="spacer"></span>${picker}` : ""}</div>
+      <div class="thread" id="chat-thread">${thread}</div>${compose}</div>`;
   }
 
   /* ------------------------------------------------------------------- flows */
@@ -958,7 +1283,7 @@
     const rows = f.steps.map((x) => `<li class="${x.state === "waiting for you" ? "waiting" : x.state === "pending" ? "pending" : ""}">
       <span class="m ${x.state === "done" ? "ok" : x.state === "failed" ? "bad" : ""}" aria-hidden="true">${STEP_MARK[x.state] || "·"}</span>
       <span><b class="mono">${esc(x.step_id)}</b>${x.gate ? ' <span class="hint">gate</span>' : ""}</span>
-      <span class="hint">${esc(PERSONA_OF[x.agent] || x.agent || "")}</span>
+      <span class="hint">${avatar(x.agent)}${esc(PERSONA_OF[x.agent] || x.agent || "")}</span>
       <span class="hint">${x.run_id ? `<a href="#/run/${encodeURIComponent(x.run_id)}" data-key="flow-step-${esc(x.step_id)}">session</a> · ` : ""}<span class="sr">${esc(x.step_id)}: </span>${esc(x.state)}${x.runs > 1 ? ` · ${x.runs} runs` : ""}</span>
     </li>`).join("");
     const facts = [`project <b>${esc(f.project_id)}</b>`, `recipe <b class="mono">${esc(f.recipe || "—")}</b>`, `round <b>${esc(f.rounds)}</b>`,
@@ -987,7 +1312,7 @@
   }
   function councilsView() {
     const list = state.councils;
-    return `${demoBanner()}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Councils" }], title: "Councils",
+    return `${demoBanner(list.some((c) => c.mode === "seeded"))}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Councils" }], title: "Councils",
       lede: "Post-task reviews: the Chair proposes, the Guard decides by its own checks. Recorded only; nothing is changed in the repo." })}
       ${list.length ? `<ul class="devlist">${list.map(councilCard).join("")}</ul>` : '<div class="card"><div class="empty">No councils yet.</div></div>'}`;
   }
@@ -1037,7 +1362,7 @@
     return `<li><a class="scard ${attn ? "attn" : ""} ${isFailure(run) ? "red" : ""}" href="#/run/${encodeURIComponent(run.run_id)}" data-key="card-${esc(run.run_id)}" aria-label="${esc(label)}">
       <div class="l1"><span class="health"><span class="dot ${cls(run.health)}" aria-hidden="true"></span>${esc(run.health)}</span>
         <span>${run.project_id === "unlinked" ? '<span class="hint">unlinked</span>' : esc(run.project_id)}</span>
-        <span class="mono hint">${esc(short(run.run_id, 16))}</span><span class="spacer"></span><span class="hint">${agoTag(run.last_event_at)}</span></div>
+        <span class="mono hint">${esc(short(run.run_id, 16))}</span>${run.seeded ? '<span class="badge warn" title="seeded example, not a real Kiro run">demo</span>' : ""}<span class="spacer"></span><span class="hint">${agoTag(run.last_event_at)}</span></div>
       <div class="l2">${a ? esc(intentOf(a)) : '<span class="hint">Waiting for the first tool call.</span>'}</div>
       ${a ? `<div class="l3">${outcome(a)}${Array.isArray(a.programs) && a.programs.length ? `<span class="mono">${esc(a.programs.join(" "))}</span>` : ""}${!a.description && a.tool ? "" : a.tool ? `<span class="mono">${esc(a.tool)}</span>` : ""}</div>` : ""}
       <div class="l4"><span>${counts.join(" · ")}</span>${chips}</div>
@@ -1122,7 +1447,7 @@
     ].filter(Boolean);
     const tabs = [["turns", "Turns"], ["files", `Files (${files.length})`]];
     if (councils.length) tabs.push(["council", `Council (${councils.length})`]);
-    return `${demoBanner()}
+    return `${demoBanner(Boolean(run.seeded) || events.some((e) => e.source === "seed"))}
       ${sessionHeader(run)}
       <p class="summary" aria-live="polite">${parts.join(" · ")}</p>
       <div class="facts">${facts.map((f) => `<span>${f}</span>`).join("")}</div>
@@ -1306,13 +1631,13 @@
       body = `<div>${esc(p.claim || "")}</div>`;
       if (p.alternative_cost) body += `<div class="hint">cost ~${num(p.alternative_cost.credits)} credits (${esc(p.alternative_cost.usage_source || "estimate")})</div>`;
     }
-    return `<div class="claim ${counted ? "" : "uncounted"}"><div class="who"><span class="persona ${esc(cls(e.role))}">${esc(personaLabel(e))}</span><span class="hint">${esc(clock(e.ts))}</span></div>
+    return `<div class="claim ${counted ? "" : "uncounted"}"><div class="who"><span class="persona ${esc(cls(e.role))}">${avatar((e.payload || {}).persona || e.role)}${esc(personaLabel(e))}</span><span class="hint">${esc(clock(e.ts))}</span></div>
       <div>${body}${evidenceLinks(evidence)}${note ? `<div class="note-uncounted">${esc(note)}</div>` : ""}</div></div>`;
   }
   function chairCard(summaries, proposal) {
     const header = proposal ? personaLabel(proposal) : (summaries[0] ? personaLabel(summaries[0]) : "Grey Witch — Senior Kiro · Chair");
     const sum = summaries[summaries.length - 1];
-    let html = `<section class="card"><div class="head"><h3>${esc(header)}</h3><span class="hint">proposes — never decides</span></div><div class="body">`;
+    let html = `<section class="card"><div class="head"><h3>${avatar("grey-witch")}${esc(header)}</h3><span class="hint">proposes — never decides</span></div><div class="body">`;
     if (!sum && !proposal) return html + '<div class="hint">Chair is summarising…</div></div></section>';
     if (sum) {
       const sp = sum.payload || {};
@@ -1396,6 +1721,15 @@
       saveUi();
       render({ keepScroll: true });
     }));
+    root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { state.boardOpen = state.boardOpen === el.dataset.col ? null : el.dataset.col; render({ keepScroll: true }); }));
+    root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
+      el.disabled = true;
+      try {
+        await api("/v1/board/done", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.done, author: localStorage.getItem("coven_author") || undefined }) });
+        await loadBoard();
+        render({ keepScroll: true });
+      } catch (error) { el.disabled = false; quiet(error); }
+    }));
     root.querySelectorAll("[data-toggle-dev]").forEach((el) => el.addEventListener("click", () => { state.expandDeviations = !state.expandDeviations; render({ keepScroll: true }); }));
     root.querySelectorAll("[data-dismiss]").forEach((el) => el.addEventListener("click", (ev) => { ev.stopPropagation(); el.disabled = true; dismiss(el.dataset.dismiss); }));
     root.querySelectorAll("[data-tab]").forEach((el) => {
@@ -1425,6 +1759,58 @@
       try { await navigator.clipboard.writeText(el.dataset.copy); el.textContent = "copied"; } catch { el.textContent = "copy failed"; }
     }));
     root.querySelectorAll("[data-board-project]").forEach((el) => el.addEventListener("change", () => { state.boardProject = el.value; go(`#/board/${encodeURIComponent(el.value)}`); }));
+    root.querySelectorAll("[data-chat-project]").forEach((el) => el.addEventListener("change", () => { state.boardProject = el.value; go(`#/chat/${encodeURIComponent(el.value)}`); }));
+    root.querySelectorAll("#chat-text").forEach((box) => {
+      const grow = () => {
+        box.style.height = "auto";
+        box.style.height = `${Math.min(box.scrollHeight, 9 * 21)}px`;
+        const n = box.value.length, count = $("chat-count"), send = box.form && box.form.querySelector(".send");
+        if (count) count.textContent = n > 300 ? `${n} / 400` : "";
+        if (send) send.disabled = !box.value.trim();
+      };
+      box.addEventListener("input", grow);
+      const kind = (box.form && box.form.querySelector('input[name="chat-kind"]:checked') || {}).value;
+      box.placeholder = KIND_PLACEHOLDER[kind] || KIND_PLACEHOLDER.ask; // a redraw keeps the chosen kind: keep its hint too
+      grow();
+    });
+    root.querySelectorAll('input[name="chat-kind"]').forEach((el) => el.addEventListener("change", () => {
+      const box = $("chat-text");
+      if (box) { box.placeholder = KIND_PLACEHOLDER[el.value] || KIND_PLACEHOLDER.ask; box.focus(); }
+    }));
+    root.querySelectorAll("#chat-text").forEach((box) => box.addEventListener("keydown", (ev) => {
+      // Enter sends; Shift+Enter is a new line; Enter while an input method is composing a character is left to it.
+      if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return;
+      ev.preventDefault();
+      const form = box.form;
+      if (!form || form.dataset.sending) return;
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    }));
+    root.querySelectorAll("#chat-form").forEach((form) => form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const message = $("chat-text").value.trim();
+      const kind = (form.querySelector('input[name="chat-kind"]:checked') || {}).value || "ask";
+      const task = $("chat-task").value || undefined;
+      const problem = !message ? "Write a message first." : kind === "reject" && !task ? "A rejection needs the task it rejects: pick it under “About”."
+        : kind === "do" && ["dev", "green-witch"].includes($("chat-to").value) ? "The Dev builds from a task in tasks.md: choose another witch, or add the task." : "";
+      state.chatError = problem;
+      $("chat-error").textContent = problem;
+      if (problem) return;
+      const author = $("chat-author").value.trim();
+      if (author) localStorage.setItem("coven_author", author);
+      const body = { project_id: defaultBoardProject(), kind, message, task, to: $("chat-to").value || undefined, author: author || undefined };
+      if (form.dataset.sending) return; // a second Enter while the first is on its way sends nothing twice
+      form.dataset.sending = "1";
+      try {
+        await api("/v1/chat", { method: "POST", body: JSON.stringify(body) });
+        state.chatError = "";
+        state.chatStick = true;
+        $("chat-text").value = "";
+        await loadChat();
+        render({ keepScroll: true });
+      } catch (error) { state.chatError = "Not sent: " + error.message; $("chat-error").textContent = state.chatError; }
+      finally { delete form.dataset.sending; }
+    }));
     root.querySelectorAll("#note-form").forEach((form) => form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const text = $("note-text").value.trim();
@@ -1449,6 +1835,7 @@
       await loadFleet();
       if (state.route.view === "session" && state.route.tab === "council") { await loadCouncil(); render({ keepScroll: true }); }
       if (state.route.view === "board") { await loadBoard(); render({ keepScroll: true }); }
+      if (state.route.view === "chat") { await loadChat(); render({ keepScroll: true }); }
     }, 400);
   }
   function onMessage(message) {
@@ -1471,10 +1858,12 @@
     const pill = $("stream-pill");
     source.onopen = () => { pill.textContent = "LIVE STREAM"; pill.className = "pill ok"; };
     source.onerror = () => { pill.textContent = "RECONNECTING"; pill.className = "pill bad"; };
-    ["event", "heartbeat", "dismiss", "board"].forEach((name) => source.addEventListener(name, onMessage));
+    ["event", "heartbeat", "dismiss", "board", "chat"].forEach((name) => source.addEventListener(name, onMessage));
   }
 
   /* -------------------------------------------------------------------- boot */
+  // Only a local development server takes the well-known `dev` token; a deployed one never does.
+  $("dev-hint").hidden = !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   async function start() {
     state.token = state.token || tokenFromUrl();
     if (!state.token) { $("login").classList.add("show"); $("token-input").focus(); return; }
@@ -1486,6 +1875,14 @@
     await onRoute();
     connectStream();
     setInterval(() => { if (!document.hidden) loadFleet(); }, 10000);
+    // A question waits for the council about a minute: look again every few seconds even if the stream is quiet.
+    setInterval(async () => {
+      if (document.hidden || state.route.view !== "chat" || !state.chat || !state.chat.waiting.length) return;
+      const seen = JSON.stringify([state.chat.messages.length, state.chat.waiting, (state.chat.hosts || []).map((h) => h.online)]);
+      await loadChat();
+      // Draw again only when something changed: a redraw would also wipe a validation message the person is reading.
+      if (state.chat && JSON.stringify([state.chat.messages.length, state.chat.waiting, (state.chat.hosts || []).map((h) => h.online)]) !== seen) render({ keepScroll: true });
+    }, 5000);
   }
 
   // Age labels tick every second, without a request.
@@ -1501,6 +1898,16 @@
     start();
   });
   $("drawer-close").addEventListener("click", closeDrawer);
+
+  /* theme: System follows the OS; Light and Dark set html[data-theme], which the Astryx tokens read */
+  function applyTheme(choice) {
+    if (choice === "light" || choice === "dark") document.documentElement.dataset.theme = choice;
+    else { delete document.documentElement.dataset.theme; choice = "system"; }
+    document.querySelectorAll("[data-theme-choice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeChoice === choice)));
+    try { localStorage.setItem("coven_theme", choice); } catch { /* storage off */ }
+  }
+  document.querySelectorAll("[data-theme-choice]").forEach((b) => b.addEventListener("click", () => applyTheme(b.dataset.themeChoice)));
+  applyTheme(document.documentElement.dataset.theme || "system");
 
   /* sidebar visibility: an overlay on narrow screens, hide/show on wide ones */
   const narrow = () => window.innerWidth <= 900;
@@ -1539,6 +1946,7 @@
     if (closeDrawer()) return;
     if (state.route.view === "session" && !typing) go(sessionsHash());
   });
+  document.querySelectorAll(".brand").forEach((el) => el.insertAdjacentHTML("afterbegin", avatar("coven")));
   window.addEventListener("hashchange", onRoute);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) { loadFleet(); if (state.route.view === "session") loadSession().then(() => render({ keepScroll: true })); } });
 

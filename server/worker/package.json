@@ -1,0 +1,17 @@
+{
+  "name": "coven-cloud-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Coven Cloud on Cloudflare Workers + a Durable Object (shares ../src with the Node server)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "check": "wrangler types && tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "wrangler": "4.160.1"
+  }
+}

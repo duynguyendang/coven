@@ -1,4 +1,4 @@
-.PHONY: install test test-relay test-cloud check relay cloud seed seed-watch doctor
+.PHONY: install test test-relay test-cloud check relay cloud seed seed-watch doctor host
 
 # Relay + CLI run on the developer machine (Python). Coven Cloud is Node.js (server/).
 install:
@@ -10,7 +10,10 @@ test: test-relay test-cloud
 test-relay:
 	PYTHONPATH=src python3 -m pytest
 
-test-cloud:
+test-host:
+	./run-host.sh
+
+cloud:
 	cd server && npm test
 
 check:

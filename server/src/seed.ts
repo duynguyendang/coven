@@ -13,6 +13,12 @@ import { fileURLToPath } from "node:url";
 import type { Json } from "./events.ts";
 
 // Interactive Kiro sessions have Kiro's own `sess_<uuid>` ids; a headless `coven run` mints `run_<hex>`.
+/**
+ * The demo fleet's own project. Never a real project's name: seeded sessions must not mix into a
+ * real project, where they would put demo runs (and the DEMO DATA banner) on its pages.
+ */
+export const DEMO_PROJECT = "coven-demo";
+
 export const RUN_IDS = {
   "coven-live": "sess_7f31c2a9-d4e6-4b1a-9c20-5e8a1f3b6d07",
   "coven-done": "sess_1a9b44e0-c712-4f5d-8e33-0b6a92d4c1e8",
@@ -85,7 +91,7 @@ function councilEvents(deviationEventId: string): Json[] {
     if (runKey === "dev") counters[run] = LIVE_EVENT_COUNT; // continues the live run's own sequence
     counters[run] = (counters[run] ?? 0) + 1;
     return event({
-      project: "coven", run, seq: counters[run], kind, secondsAgo: ago, stage: "IMPLEMENT", task: "9",
+      project: DEMO_PROJECT, run, seq: counters[run], kind, secondsAgo: ago, stage: "IMPLEMENT", task: "9",
       payload, credits, eventId: eid, councilId: COUNCIL_ID, role,
     });
   };
@@ -185,42 +191,42 @@ export function build(): Json[] {
   const SPEC = "coven-relay";
 
   const doneRun = [
-    E({ project: "coven", run: done, seq: 1, kind: "run_started", secondsAgo: 5400, stage: "START", payload: { cwd: "~/code/coven" } }),
-    E({ project: "coven", run: done, seq: 2, kind: "task_started", secondsAgo: 5390, stage: "IMPLEMENT", task: "1", payload: task("1", SPEC, "Event schema and hook normaliser") }),
-    E({ project: "coven", run: done, seq: 3, kind: "tool_call", secondsAgo: 5385, payload: read("src/coven/events.py", 9120, "Read the current normaliser") }),
-    E({ project: "coven", run: done, seq: 4, kind: "tool_call", secondsAgo: 5380, payload: write("fs_write", "src/coven/events.py", 9420, "Map Kiro hook payloads to events") }),
-    E({ project: "coven", run: done, seq: 5, kind: "tool_call", secondsAgo: 5370, payload: shell(["pytest"], "Run the event tests", 0, 1290) }),
-    E({ project: "coven", run: done, seq: 6, kind: "turn_finished", secondsAgo: 5365 }),
-    E({ project: "coven", run: done, seq: 7, kind: "task_finished", secondsAgo: 5360, stage: "IMPLEMENT", task: "1", payload: task("1", SPEC) }),
-    E({ project: "coven", run: done, seq: 8, kind: "task_started", secondsAgo: 5350, stage: "IMPLEMENT", task: "2", payload: task("2", SPEC, "Redaction and payload budget") }),
-    E({ project: "coven", run: done, seq: 9, kind: "tool_call", secondsAgo: 5340, payload: write("str_replace", "src/coven/redact.py", 4380, "Drop tool output from the payload") }),
-    E({ project: "coven", run: done, seq: 10, kind: "tool_call", secondsAgo: 5320, payload: shell(["pytest"], "Run the redaction tests", 0, 880) }),
-    E({ project: "coven", run: done, seq: 11, kind: "turn_finished", secondsAgo: 5305 }),
-    E({ project: "coven", run: done, seq: 12, kind: "task_finished", secondsAgo: 5300, stage: "IMPLEMENT", task: "2", payload: task("2", SPEC) }),
-    E({ project: "coven", run: done, seq: 13, kind: "run_finished", secondsAgo: 5280, stage: "DONE", payload: { reason: "exit" } }),
+    E({ project: DEMO_PROJECT, run: done, seq: 1, kind: "run_started", secondsAgo: 5400, stage: "START", payload: { cwd: "~/code/coven" } }),
+    E({ project: DEMO_PROJECT, run: done, seq: 2, kind: "task_started", secondsAgo: 5390, stage: "IMPLEMENT", task: "1", payload: task("1", SPEC, "Event schema and hook normaliser") }),
+    E({ project: DEMO_PROJECT, run: done, seq: 3, kind: "tool_call", secondsAgo: 5385, payload: read("src/coven/events.py", 9120, "Read the current normaliser") }),
+    E({ project: DEMO_PROJECT, run: done, seq: 4, kind: "tool_call", secondsAgo: 5380, payload: write("fs_write", "src/coven/events.py", 9420, "Map Kiro hook payloads to events") }),
+    E({ project: DEMO_PROJECT, run: done, seq: 5, kind: "tool_call", secondsAgo: 5370, payload: shell(["pytest"], "Run the event tests", 0, 1290) }),
+    E({ project: DEMO_PROJECT, run: done, seq: 6, kind: "turn_finished", secondsAgo: 5365 }),
+    E({ project: DEMO_PROJECT, run: done, seq: 7, kind: "task_finished", secondsAgo: 5360, stage: "IMPLEMENT", task: "1", payload: task("1", SPEC) }),
+    E({ project: DEMO_PROJECT, run: done, seq: 8, kind: "task_started", secondsAgo: 5350, stage: "IMPLEMENT", task: "2", payload: task("2", SPEC, "Redaction and payload budget") }),
+    E({ project: DEMO_PROJECT, run: done, seq: 9, kind: "tool_call", secondsAgo: 5340, payload: write("str_replace", "src/coven/redact.py", 4380, "Drop tool output from the payload") }),
+    E({ project: DEMO_PROJECT, run: done, seq: 10, kind: "tool_call", secondsAgo: 5320, payload: shell(["pytest"], "Run the redaction tests", 0, 880) }),
+    E({ project: DEMO_PROJECT, run: done, seq: 11, kind: "turn_finished", secondsAgo: 5305 }),
+    E({ project: DEMO_PROJECT, run: done, seq: 12, kind: "task_finished", secondsAgo: 5300, stage: "IMPLEMENT", task: "2", payload: task("2", SPEC) }),
+    E({ project: DEMO_PROJECT, run: done, seq: 13, kind: "run_finished", secondsAgo: 5280, stage: "DONE", payload: { reason: "exit" } }),
   ];
 
   const liveRun = [
-    E({ project: "coven", run: live, seq: 1, kind: "run_started", secondsAgo: 214, stage: "START", payload: { cwd: "~/code/coven" } }),
-    E({ project: "coven", run: live, seq: 2, kind: "task_started", secondsAgo: 205, stage: "IMPLEMENT", task: "9", payload: task("9", SPEC, "Fleet dashboard") }),
-    E({ project: "coven", run: live, seq: 3, kind: "tool_call", secondsAgo: 196, payload: read("web/index.html", 18420, "Read the current dashboard") }),
-    E({ project: "coven", run: live, seq: 4, kind: "tool_call", secondsAgo: 188, eventId: LIVE_WRITE_EVENT_ID, payload: write("fs_write", "web/index.html", 18420, "Rewrite the dashboard") }),
-    E({ project: "coven", run: live, seq: 5, kind: "tool_call", secondsAgo: 141, payload: write("str_replace", "server/src/app.ts", 7340, "Add the shared summary helper") }),
+    E({ project: DEMO_PROJECT, run: live, seq: 1, kind: "run_started", secondsAgo: 214, stage: "START", payload: { cwd: "~/code/coven" } }),
+    E({ project: DEMO_PROJECT, run: live, seq: 2, kind: "task_started", secondsAgo: 205, stage: "IMPLEMENT", task: "9", payload: task("9", SPEC, "Fleet dashboard") }),
+    E({ project: DEMO_PROJECT, run: live, seq: 3, kind: "tool_call", secondsAgo: 196, payload: read("web/index.html", 18420, "Read the current dashboard") }),
+    E({ project: DEMO_PROJECT, run: live, seq: 4, kind: "tool_call", secondsAgo: 188, eventId: LIVE_WRITE_EVENT_ID, payload: write("fs_write", "web/index.html", 18420, "Rewrite the dashboard") }),
+    E({ project: DEMO_PROJECT, run: live, seq: 5, kind: "tool_call", secondsAgo: 141, payload: write("str_replace", "server/src/app.ts", 7340, "Add the shared summary helper") }),
     E({
-      project: "coven", run: live, seq: 6, kind: "spec_deviation", secondsAgo: 140, stage: "IMPLEMENT", task: "9",
+      project: DEMO_PROJECT, run: live, seq: 6, kind: "spec_deviation", secondsAgo: 140, stage: "IMPLEMENT", task: "9",
       payload: {
         task_id: "9", spec: SPEC, expected: ["web/index.html", "server/test/web.test.ts"], observed: "server/src/app.ts", severity: "possible",
         rule: "PATH_DRIFT", reason: "write outside the current task's declared paths",
       },
     }),
-    E({ project: "coven", run: live, seq: 7, kind: "tool_call", secondsAgo: 110, payload: shell(["npm"], "Run the dashboard tests", 1, 2310) }),
-    E({ project: "coven", run: live, seq: 8, kind: "tool_call", secondsAgo: 96, payload: shell(["npm"], "Run the dashboard tests again", 0, 1870) }),
-    E({ project: "coven", run: live, seq: 9, kind: "turn_finished", secondsAgo: 90 }),
-    E({ project: "coven", run: live, seq: 10, kind: "task_finished", secondsAgo: 84, stage: "IMPLEMENT", task: "9", payload: task("9", SPEC) }),
-    E({ project: "coven", run: live, seq: 11, kind: "task_started", secondsAgo: 61, stage: "IMPLEMENT", task: "10", payload: task("10", SPEC, "Tests and demo seed") }),
-    E({ project: "coven", run: live, seq: 12, kind: "tool_call", secondsAgo: 12, payload: write("str_replace", "server/test/api.test.ts", 5210, "Add the project progress tests") }),
+    E({ project: DEMO_PROJECT, run: live, seq: 7, kind: "tool_call", secondsAgo: 110, payload: shell(["npm"], "Run the dashboard tests", 1, 2310) }),
+    E({ project: DEMO_PROJECT, run: live, seq: 8, kind: "tool_call", secondsAgo: 96, payload: shell(["npm"], "Run the dashboard tests again", 0, 1870) }),
+    E({ project: DEMO_PROJECT, run: live, seq: 9, kind: "turn_finished", secondsAgo: 90 }),
+    E({ project: DEMO_PROJECT, run: live, seq: 10, kind: "task_finished", secondsAgo: 84, stage: "IMPLEMENT", task: "9", payload: task("9", SPEC) }),
+    E({ project: DEMO_PROJECT, run: live, seq: 11, kind: "task_started", secondsAgo: 61, stage: "IMPLEMENT", task: "10", payload: task("10", SPEC, "Tests and demo seed") }),
+    E({ project: DEMO_PROJECT, run: live, seq: 12, kind: "tool_call", secondsAgo: 12, payload: write("str_replace", "server/test/api.test.ts", 5210, "Add the project progress tests") }),
     E({
-      project: "coven", run: live, seq: LIVE_EVENT_COUNT, kind: "spec_artifact_updated", secondsAgo: 60, stage: "IMPLEMENT",
+      project: DEMO_PROJECT, run: live, seq: LIVE_EVENT_COUNT, kind: "spec_artifact_updated", secondsAgo: 60, stage: "IMPLEMENT",
       payload: { artifact: "tasks", path: ".kiro/specs/coven-relay/tasks.md", spec: SPEC, total: 10, done: 9, in_progress: 1, queued: 0, optional: 0 },
     }),
   ];
@@ -312,7 +318,7 @@ export async function seed(base: string, token: string, keepAliveSeconds = 0): P
   }
   await seedBoard(base, token);
   const beat = () => post(base, token, "/v1/heartbeat", {
-    project_id: "coven", run_id: RUN_IDS["coven-live"], status: "running", stage: "IMPLEMENT", task_id: "10", active_agents: 1,
+    project_id: DEMO_PROJECT, run_id: RUN_IDS["coven-live"], status: "running", stage: "IMPLEMENT", task_id: "10", active_agents: 1,
   });
   await beat();
   const deadline = Date.now() + keepAliveSeconds * 1000;
@@ -331,12 +337,25 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   };
   const base = flag("--url", "http://127.0.0.1:8787").replace(/\/$/, "");
   const token = flag("--token", "dev");
+  const purge = args.includes("--purge") ? flag("--purge", "") : null;
   try {
     const health = await fetch(base + "/healthz");
     if (!health.ok) throw new Error(String(health.status));
   } catch (error) {
     console.error(`cloud not reachable at ${base}: ${(error as Error).message}\nstart it with: make cloud`);
     process.exit(1);
+  }
+  if (purge !== null) {
+    // `--purge <project>`: take seeded demo events out of that project; real events stay.
+    if (!purge) { console.error("usage: node src/seed.ts --purge <project> [--url <url>] [--token <token>]"); process.exit(2); }
+    try {
+      const result = await post(base, token, "/v1/seed/purge", { project_id: purge });
+      console.log(`removed ${result.removed} seeded events from ${purge}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(String((error as Error).message).includes("401") ? "token rejected; pass --token <token>" : `purge failed: ${(error as Error).message}`);
+      process.exit(1);
+    }
   }
   try {
     const totals = await seed(base, token, Number(flag("--keep-alive", "0")));

@@ -107,7 +107,7 @@ describe("seeded council over the API", () => {
   });
 
   test("councils filter by project and task", async () => {
-    assert.equal((await getJson(s.base, "/v1/councils?project_id=coven&task_id=9")).body.councils.length, 1);
+    assert.equal((await getJson(s.base, "/v1/councils?project_id=coven-demo&task_id=9")).body.councils.length, 1);
     assert.equal((await getJson(s.base, "/v1/councils?project_id=atlas-api")).body.councils.length, 0);
     assert.equal((await getJson(s.base, "/v1/councils?task_id=T-99")).body.councils.length, 0);
   });
@@ -117,7 +117,7 @@ describe("seeded council over the API", () => {
     assert.ok(!ids.includes(COUNCIL_RUNS["red-team"]));
     assert.ok(!ids.includes(COUNCIL_RUNS.chair));
     assert.ok(ids.includes(RUN_IDS["coven-live"]));
-    const coven = (await getJson(s.base, "/v1/projects")).body.projects.find((p: any) => p.project_id === "coven");
+    const coven = (await getJson(s.base, "/v1/projects")).body.projects.find((p: any) => p.project_id === "coven-demo");
     assert.equal(coven.runs, 2);
     assert.equal((await getJson(s.base, `/v1/runs/${COUNCIL_RUNS["red-team"]}`)).status, 200);
   });

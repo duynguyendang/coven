@@ -1,15 +1,18 @@
 /** Token scopes (contract §2, §8): `read` for dashboards, `ingest` for relays. */
 
 import { timingSafeEqual } from "node:crypto";
-import type { IncomingMessage } from "node:http";
 
 export const DEV_TOKEN = "dev";
 export type Scope = "read" | "ingest" | "any";
+/** Token configuration: `process.env` in Node, the Worker's bindings and secrets in Cloudflare. */
+export type Env = Record<string, string | undefined>;
+
+const processEnv = (): Env => (globalThis as any).process?.env ?? {};
 
 const split = (value: string | undefined): string[] =>
   (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 
-export function tokens(scope: Scope, env: NodeJS.ProcessEnv = process.env): Set<string> {
+export function tokens(scope: Scope, env: Env = processEnv()): Set<string> {
   const shared = split(env.COVEN_TOKENS);
   const read = new Set([...split(env.COVEN_READ_TOKEN), ...shared]);
   const ingest = new Set([...split(env.COVEN_INGEST_TOKEN), ...shared]);
@@ -18,13 +21,15 @@ export function tokens(scope: Scope, env: NodeJS.ProcessEnv = process.env): Set<
 }
 
 /** True when no real token is configured, so the development token is accepted. */
-export function usingDevToken(env: NodeJS.ProcessEnv = process.env): boolean {
+export function usingDevToken(env: Env = processEnv()): boolean {
   return !(env.COVEN_TOKENS || env.COVEN_INGEST_TOKEN || env.COVEN_READ_TOKEN);
 }
 
+const bytes = new TextEncoder();
+
 function equal(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
+  const left = bytes.encode(a);
+  const right = bytes.encode(b);
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
@@ -33,21 +38,20 @@ function equal(a: string, b: string): boolean {
  * accepted only where the caller opts in (the event stream), because a browser
  * cannot set headers on an EventSource and URLs end up in access logs.
  */
-export function presented(req: IncomingMessage, url: URL, allowQuery: boolean): string | null {
-  const header = req.headers.authorization;
+export function presented(header: string | null | undefined, url: URL, allowQuery: boolean): string | null {
   if (header && header.toLowerCase().startsWith("bearer ")) return header.slice(7).trim() || null;
   if (allowQuery) return url.searchParams.get("token") || null;
   return null;
 }
 
 export function authorised(
-  req: IncomingMessage,
+  header: string | null | undefined,
   url: URL,
   scope: Scope,
   allowQuery = false,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Env = processEnv(),
 ): boolean {
-  const token = presented(req, url, allowQuery);
+  const token = presented(header, url, allowQuery);
   if (!token) return false;
   let ok = false;
   for (const allowed of tokens(scope, env)) if (equal(token, allowed)) ok = true; // no early exit

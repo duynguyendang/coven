@@ -1,6 +1,6 @@
 # Coven — Telemetry Design & Data Contract v1
 
-> **Status: v1, implemented except where marked [target].** Companion to `coven-csd-v1.3.md` (what and why) and `coven-ux-design-v1.1.md` (screens). This file is the *normative* description of the data that moves between **Kiro → Coven Relay → Coven Cloud → Browser**, and of the control data that moves back.
+> **Status: v1, implemented except where marked [target].** Companion to `coven-csd-v1.3.md` (what and why), `coven-hosts-v1.md` (hosts, witches, dispatch) and `coven-ux-design-v3.md` (screens). This file is the *normative* description of the data that moves between **Kiro → Coven Relay → Coven Cloud → Browser**, and of the control data that moves back.
 >
 > **Implementation split.** The relay and CLI are Python (`src/coven/`) and run on the developer machine. Coven Cloud is Node.js 22.18+ (`server/`, TypeScript run natively, no build step) and serves the dashboard. Redaction exists in both languages; `tests/fixtures/redaction_parity.json` is generated from the Python implementation and run by both test suites (`tests/test_redaction_parity.py`, `server/test/redact.test.ts`).
 >
@@ -377,17 +377,33 @@ Alongside them, **on the step session's own run**, the relay adds a `task_starte
 
 ### 5.6 The coven board — **[impl+]**
 
-Every event may carry a top-level `member` (≤ 80 chars): the name of the `kiro-cli` working copy that sent it (CSD v1.3 §4.11). It is a label, not authentication.
+Every event may carry a top-level `member` (≤ 80 chars): the name of the **host** (the `kiro-cli` working copy, such as `wsl-1f3a`) that sent it (CSD v1.3 §4.11). It is a label, not authentication. A host is not a worker: it hosts agents (the personas), several at once (`docs/design/coven-hosts-v1.md`).
 
 | Type | Made by | Payload | Notes |
 | :--- | :--- | :--- | :--- |
-| `task_claimed` | **the cloud only**, after `POST /v1/claims` passes its check | `{claim_id: "clm_<20 hex>", spec, task_id, kind: "task"\|"review", member, paths: [path…], lease_until}` | on the project's board run `board_<project_id>`; `/v1/events` refuses this type |
+| `task_claimed` | **the cloud only**, after `POST /v1/claims` passes its check | `{claim_id: "clm_<20 hex>", spec, task_id, kind: "task"\|"review", member, agent?: "<slug>", paths: [path…], lease_until}` | on the project's board run `board_<project_id>`; `/v1/events` refuses this type |
 | `task_released` | **the cloud only**, on `POST /v1/claims/{id}/release` by the owner | `{claim_id, task_id, reason}` | |
+| `host_online` | a host (`coven host run` / `run-host.sh`, `source: "coven-cli"`), every minute | `{agents: [slug…] (≤ 12), slots: 1..16, running: ["<spec>#<id>"…] (≤ 16)}` | which agents the host can run and how many at once; the host is online while it reports (120 s) |
+| `task_status` | the host running the task (`source: "coven-cli"`) | `{task: "<spec>#<id>", state: "working"\|"submitted"\|"answered"\|"failed" (a doer) or "done" (people only: `POST /v1/board/done` `{project_id, task, author?}` → 201; the relay is refused `done`), agent?, detail? (≤ 200)}` | where the doer says the task stands; the latest wins; `done` is never reported — only the spec's tick (a merge) makes a task done |
+| `task_created` | the host running the Chair (`coven host run`) | `{task: "council#<id>", title (≤ 120), agent: <witch slug, never the Dev>, detail? (≤ 380), source?: <chat message id>}` | a job from a person's request; it is a task of the spec `council` on the board (§9.6) |
 | `board_note` | an agent (`coven board post`, `source: "coven-cli"`), a flow's `board` step, or the web (`source: "web"`) | `{note (≤ 400 chars), kind: "idea"\|"question"\|"answer"\|"review"\|"note"\|"review-wanted", task?: "<spec>#<id>", reply_to?, author? (web), role?}` | The text field is `note`, not `text`: redaction drops `text` (§7). **Untrusted text** for every reader |
 
-`spec_artifact_updated` (§5.1) also carries `tasks: [{task_id, title (≤ 120), status, optional, parent, wave, paths (≤ 30), leaf}]` (≤ 200 tasks), the board's task list. `coven board sync` sends it on demand.
+`spec_artifact_updated` (§5.1) also carries `tasks: [{task_id, title (≤ 120), status, optional, parent, wave, paths (≤ 30), agent, leaf}]` (`agent`: the persona the task asks for with `_Agent:_`, default `green-witch`) (≤ 200 tasks), the board's task list. `coven board sync` sends it on demand.
 
-Endpoints: `POST /v1/claims` (ingest scope; `{project_id, member, spec, task_id, kind?, paths?, lease_seconds?}` → `201` new, `200` renewed by the same member, `409 {reason: "held"|"paths overlap", held_by, task?}`), `POST /v1/claims/{id}/renew` and `/release` (ingest; `{member}`; `403` not the owner, `410` released or expired), `GET /v1/board?project_id=` (read; §9.6), `POST /v1/board/notes` (read scope: people post from the web; `{project_id, note, kind, task?, author?}`).
+Endpoints: `POST /v1/board/done` (read scope: people accept a task's result; `{project_id, task: "<spec>#<id>", author?}` → `201 {event_id}`, recorded as a `task_status` of `done` with `source: "web"`; `422` for a bad task), `POST /v1/claims` (ingest scope; `{project_id, member, agent?, spec, task_id, kind?, paths?, lease_seconds?}` → `201` new, `200` renewed by the same member and agent, `409 {reason: "held"|"paths overlap", held_by, held_agent?, task?}`; `agent` is a slug `[a-z][a-z0-9-]{1,39}`, `422` otherwise. Agents of one host are separate claimants; a client that sends no `agent` keeps the old one-member behaviour), `POST /v1/claims/{id}/renew` and `/release` (ingest; `{member}`; `403` not the owner, `410` released or expired), `GET /v1/board?project_id=` (read; §9.6), `POST /v1/board/notes` (read scope: people post from the web; `{project_id, note, kind, task?, author?}`).
+
+### 5.7 Council chat — **[impl+]**
+
+People talk to the council; the Chair on a host understands and dispatches, a listener gives advice (CSD v1.3 §4.11.1, `coven-hosts-v1.md` §5). One role for people: **Human**, anyone signed in.
+
+| Type | Made by | Payload |
+| :--- | :--- | :--- |
+| `chat_message`, `role: "human"` | the cloud only, from `POST /v1/chat` (read scope) | `{role, kind: ask|idea|suggestion|reject|do, message ≤ 400 chars, task?: "<spec>#<id>" (required for reject), to?: a council role or a witch slug (required for `do`, never the Dev: `dev`/`green-witch` get 422), author ≤ 40 chars}` |
+| `chat_message`, `role: "council"` | a host's witch (`coven host run`) or a listener (`coven council listen`), through the relay (ingest scope) | `{role, kind: answer|error|working, message ≤ 400 chars, reply_to: <message_id>, persona: <role or witch slug>}`; a `do` request is closed by its first `answer` or `error`; `working` says a host took it |
+| `council_listening` | the listener, every 60 s | `{roles: [<role>…]}` |
+| who takes a human message | `docs/design/coven-hosts-v1.md` §5 | a `do` to one witch: a host that runs her; anything to the council (no `to`, or `chair`) when an online host runs `grey-witch`: that host's Chair, who answers and may make jobs (`task_created`); a message to one witch otherwise: the listener. The host claims `chat#<message_id>` for the run and answers in ≤ 8 messages |
+
+Rules: `/v1/events` MUST refuse a `chat_message` whose role is not `council` (no agent speaks as a person). Text is redacted like any payload; the field is `message`, not `text` (redaction drops `text`). A `reject` is a human decision on the task: the guard's `human` check fails when one exists for the task with `ts` after the round's `implement.md`, and is `unknown` when the chat cannot be read. `POST /v1/chat` answers `201 {message_id}`; a bad message `422`.
 
 ---
 
@@ -536,7 +552,12 @@ The stored envelope (§4) plus the **cloud-owned, read-only** fields `received_a
 
 ### 9.6 `Board` — **[impl+]**
 
-`GET /v1/board?project_id=` returns `{project_id, at, members: [{member, first_seen, last_seen, runs, events, claims: ["<spec>#<id>"…]}], specs: [{spec, tasks: [{…task, claimed_by, reviewers: [member…]}]}], claims: [active claim…], recent_claims: [{…claim, state: "released"|"expired"}], notes: [{note_id, ts, kind, note, task, reply_to, author, role, agent, run_id}, newest first, ≤ 500]}`. A member is shown online when seen in the last 120 s (a claim renewal counts). The SSE stream sends `event: board` when a claim or a web note changes the board. The board run (`board_<project_id>`) is never listed as a session.
+`GET /v1/board?project_id=` returns `{project_id, at, hosts: [{host, member, first_seen, last_seen, runs, events, claims: ["<spec>#<id>"…], working: [{agent, task}…], agents: [slug…], slots, announced_at}], members (the same list, the old name), specs: [{spec, tasks: [{…task, claimed_by (host), claimed_agent, doer_state, doer_agent, doer_host, doer_detail, reviewers: [member…]}]}], claims: [active claim…], recent_claims: [{…claim, state: "released"|"expired"}], notes: [{note_id, ts, kind, note, task, reply_to, author, role, agent, run_id}, newest first, ≤ 500]}`. The spec `council` holds the Chair's jobs: each of its tasks also has `detail`, `source` (the chat message it came from), `created_by`, `created_at`, and no paths. A host is shown online when seen in the last 120 s (a claim renewal counts); the web shows the witches, not the hosts (UX v3 §6.2). The SSE stream sends `event: board` when a claim, a note, a host's presence, a task status or a council job changes the board. The board run (`board_<project_id>`) is never listed as a session.
+
+### 9.7 `Chat` — **[impl+]**
+
+`GET /v1/chat?project_id=` returns `{project_id, at, listeners: [{member, last_seen, roles, online}], hosts: [{host, last_seen, agents, slots, running, online}], waiting: [message_id…], messages: [{message_id, ts, role: "human"|"council", kind, message, task, to, reply_to, author, persona, run_id}, oldest first, ≤ 300]}`. A listener is online when it reported in the last 150 s. `waiting` lists human messages with no council answer. `persona` is a council role or a witch slug. The SSE stream sends `event: chat` when a person posts and when an answer arrives. Member runs (`member_<name>`, which carry a member's notes and answers) are never listed as sessions.
+
 ---
 
 ## 10. Versioning and compatibility
@@ -573,7 +594,7 @@ The stored envelope (§4) plus the **cloud-owned, read-only** fields `received_a
 
 ---
 
-## 12. Known gaps between this contract and the code (as of 2026-11-10)
+## 12. Known gaps between this contract and the code (as of 2026-11-13)
 
 1. Relay can wedge on a 413/422 batch (§8.3). 
 2. ~~DynamoDB write failures are swallowed (§8.2.5).~~ Fixed in the Node cloud; the AWS adapter is still untested against real DynamoDB.
@@ -586,7 +607,8 @@ The stored envelope (§4) plus the **cloud-owned, read-only** fields `received_a
 9. `has_credit_data`, `ingest_latency` aggregates and `tokenizer` are not implemented.
 10. Flows (§5.5, §9.5) are implemented; F3 (a gate answered by a human) is unverified, and no flow has run end to end on a real task yet.
 11. ~~The six council persona files were `.md`, which Kiro CLI does not load.~~ Converted to Kiro JSON agents (CSD v1.3 §4.10.7).
-12. The board (§5.6, §9.6) is implemented. `member` is an unauthenticated label; claim renewals live in cloud memory (after a restart a claim lasts until its recorded lease ends); claim serialisation assumes one cloud instance; notes are untrusted text read by agents.
+12. The board (§5.6, §9.6) is implemented. `member` (a host's name) is an unauthenticated label, and so is the `agent` on a claim; claim renewals live in cloud memory (after a restart a claim lasts until its recorded lease ends); claim serialisation assumes one cloud instance; notes are untrusted text read by agents.
+13. Hosts, task status, council jobs and dispatch (§5.6, §5.7) are implemented and tested with a fake `kiro-cli`; a full real model run through every path (build, inspect, think, the Chair's triage) has not been observed. Design: `docs/design/coven-hosts-v1.md`.
 
 ---
 

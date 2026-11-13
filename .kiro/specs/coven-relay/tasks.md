@@ -71,8 +71,20 @@ The relay and CLI run on the developer machine (Python); Coven Cloud and the das
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_board.py tests/test_board_live.py`_
   - _Requirements: 4.1_
 
+- [ ] 13. Restore CI
+  - A GitHub Actions workflow on push and pull request: the Python suite, the Node cloud suite and its type check, and the Worker type check. The old workflow tested the removed Python cloud.
+  - _Paths: `.github/workflows/`_
+  - _Verify: `python3 -c "import sys; t=open('.github/workflows/ci.yml').read(); sys.exit(0 if all(k in t for k in ('pytest', 'node --test', 'tsc --noEmit', 'server/worker')) else 1)"`_
+  - _Requirements: 2.3_
+
+- [ ] 14. Expire old events in the Durable Object store
+  - SqlStore keeps every event forever; DynamoStore expires them after `COVEN_TTL_DAYS` (default 30). Give SqlStore the same rule: a `ttlDays` option, events older than it are not replayed on hydrate and are deleted, with tests on `node:sqlite`.
+  - _Paths: `server/src/sqlstore.ts`, `server/test/sqlstore.test.ts`_
+  - _Verify: `cd server && node --test test/sqlstore.test.ts`_
+  - _Requirements: 2.1_
+
 ## Notes
 
 - Requirement references `X.Y` are requirement `RX.Y` in `requirements.md`
 - `_Paths:_` and `_Verify:_` are Coven annotations; Kiro keeps them as task details
-- All tasks are complete, so there is no Task Dependency Graph (it lists incomplete leaf tasks only)
+- Tasks 13 and 14 are independent (no shared paths), so two members can take them at once

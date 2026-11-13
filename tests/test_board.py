@@ -63,7 +63,7 @@ def test_member_names(root, monkeypatch):
 def test_the_whiteboard_task_list_carries_ids_status_and_paths_only(root):
     snapshot = board.tasks_snapshot(specmap.load(repo_with(root, WITHOUT_GRAPH)), "demo")
     assert [(t["task_id"], t["status"], t["leaf"]) for t in snapshot][:4] == [("1", "completed", True), ("2", "not_started", True), ("3", "not_started", False), ("3.1", "completed", True)]
-    assert set(snapshot[0]) == {"task_id", "title", "status", "optional", "parent", "wave", "paths", "leaf"}
+    assert set(snapshot[0]) == {"task_id", "title", "status", "optional", "parent", "wave", "paths", "agent", "leaf"}
 
 
 def test_a_note_needs_text_and_a_known_kind(root):
@@ -84,3 +84,36 @@ def test_sync_publishes_each_specs_task_list(root):
     assert event["payload"]["spec"] == "demo" and [t["task_id"] for t in event["payload"]["tasks"]][:2] == ["1", "2"]
     assert event["member"] == board.member(root)
 
+
+
+def test_cloud_calls_name_coven_as_the_client(root, monkeypatch):
+    # Cloudflare refuses urllib's default "Python-urllib/x.y" User-Agent with error 1010.
+    import json as _json
+    import urllib.request
+
+    from coven import config
+
+    (root / ".coven").mkdir(exist_ok=True)
+    (root / ".coven" / "config.json").write_text(_json.dumps({"project_id": "shop", "cloud_url": "https://cloud.example", "token": "t"}))
+    seen = {}
+
+    class Answer:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        seen["agent"] = request.get_header("User-agent")
+        return Answer()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert config.cloud_settings(root)[0] == "https://cloud.example"
+    board._call(root, "GET", "/v1/board?project_id=shop")
+    assert seen["agent"] == board.USER_AGENT and seen["agent"].startswith("coven/")

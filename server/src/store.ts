@@ -135,6 +135,8 @@ export class MemoryStore {
         last_action: null as Json | null,
         failure_streak: null as Json | null,
         open_deviations: 0,
+        // True once any of its events is seeded demo data (`source: "seed"`): the dashboard labels it.
+        seeded: false,
       };
       this.runs.set(runId, run);
     }
@@ -159,6 +161,7 @@ export class MemoryStore {
     this.events.set(eventId, event);
     this.push(this.order, event.run_id, eventId);
     run.events += 1;
+    if (event.source === "seed") run.seeded = true;
     run.last_event_at = event.ts || now();
     if (event.stage) run.stage = event.stage;
     // A council reviews finished work; its events must not move the session's current task.
@@ -185,7 +188,12 @@ export class MemoryStore {
       this.push(this.councilOrder, councilId, eventId);
       this.applyCouncil(event);
     }
-    if (publish) this.publish({ kind: "event", event: this.view(event), run: { ...run } });
+    if (publish) {
+      this.publish({ kind: "event", event: this.view(event), run: { ...run } });
+      // An answer or a note arrives from a relay as an ordinary event: tell the chat and board pages too.
+      if (event.type === "chat_message") this.publish({ kind: "chat", project_id: event.project_id });
+      else if (["board_note", "host_online", "task_status", "task_created"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
+    }
     return true;
   }
 
@@ -326,6 +334,37 @@ export class MemoryStore {
     this.publish({ kind: "heartbeat", run: { ...run } });
   }
 
+  /** Events a purge of `projectId` removes: seeded demo data only, never anything real. */
+  protected purgeable(event: Json, projectId: string): boolean {
+    return event.source === "seed" && event.project_id === projectId;
+  }
+
+  /**
+   * Remove the seeded demo events of one project and rebuild the read model from what is left,
+   * in the order it arrived. Real events, dismissals, lease renewals and heartbeats are kept.
+   * Returns the number of events removed.
+   */
+  async purgeSeeded(projectId: string): Promise<number> {
+    const all = [...this.events.values()];
+    const kept = all.filter((event) => !this.purgeable(event, projectId));
+    if (kept.length === all.length) return 0;
+    const dismissed = new Set(this.dismissed);
+    const leases = new Map([...this.board.claims.values()].map((c) => [c.claim_id, c.lease_until]));
+    const beats = new Map([...this.runs.values()].map((r) => [r.run_id, r.last_heartbeat_at]));
+    // Reset every read-model field to a fresh store's, keeping live subscribers (and a subclass's storage).
+    const fresh = new MemoryStore() as unknown as Record<string, unknown>;
+    for (const key of Object.keys(fresh)) if (key !== "subscribers") (this as unknown as Record<string, unknown>)[key] = fresh[key];
+    for (const event of kept) this.record({ ...event }, false);
+    for (const id of dismissed) if (this.events.has(id)) await MemoryStore.prototype.dismiss.call(this, id);
+    for (const [id, lease] of leases) {
+      const claim = this.board.claims.get(id);
+      if (claim && lease && lease > (claim.lease_until || "")) claim.lease_until = lease;
+    }
+    for (const [id, at] of beats) { const run = this.runs.get(id); if (run && at) run.last_heartbeat_at = at; }
+    this.publish({ kind: "board", project_id: projectId });
+    return all.length - kept.length;
+  }
+
   /** Mark an advisory event (for example a possible spec deviation) as read. */
   async dismiss(eventId: string): Promise<boolean> {
     const event = this.events.get(eventId);
@@ -354,6 +393,8 @@ export class MemoryStore {
       out.push({
         ...project,
         runs: runs.length,
+        // Any seeded event in the project, including its council, flow and board runs.
+        seeded: [...this.runs.values()].some((run) => run.project_id === project.project_id && run.seeded),
         running: runs.filter((run) => run.status === "running").length,
         credits: round6(runs.reduce((sum, run) => sum + run.credits, 0)),
         specs: [...(this.specsByProject.get(project.project_id)?.values() ?? [])]
@@ -411,6 +452,7 @@ export class MemoryStore {
       const wanted = {
         spec: input.spec ?? null, task_id: String(input.task_id), member: String(input.member),
         kind: CLAIM_KINDS.has(input.kind) ? input.kind : "task", paths: Array.isArray(input.paths) ? input.paths.map(String) : [],
+        agent: typeof input.agent === "string" && input.agent ? input.agent : null,
       };
       const seconds = Math.min(MAX_LEASE_SECONDS, Math.max(60, Number(input.lease_seconds) || DEFAULT_LEASE_SECONDS));
       const leaseUntil = new Date(Date.now() + seconds * 1000).toISOString();
@@ -470,8 +512,28 @@ export class MemoryStore {
     return event;
   }
 
+  /** People accept a task's result (a `task_status` of `done`, from the web). */
+  async postWebStatus(projectId: string, payload: Json): Promise<Json> {
+    const event = this.boardEvent(projectId, "task_status", undefined, payload, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    this.publish({ kind: "board", project_id: projectId });
+    return event;
+  }
+
   boardView(projectId: string): Json {
     return this.board.view(projectId);
+  }
+
+  /** A message from a person to the council (POST /v1/chat). Agents answer as ordinary events via the relay. */
+  async postChat(projectId: string, payload: Json): Promise<Json> {
+    const event = this.boardEvent(projectId, "chat_message", undefined, { ...payload, role: "human" }, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    this.publish({ kind: "chat", project_id: projectId });
+    return event;
+  }
+
+  chatView(projectId: string): Json {
+    return this.board.chatView(projectId);
   }
 
   /** Flows, derived from their events (contract §5.5 / §9.5), newest first. */
@@ -603,6 +665,11 @@ export class DynamoStore extends MemoryStore {
   override async heartbeat(body: Json): Promise<void> {
     await super.heartbeat(body);
     await this.persistRun(body.run_id);
+  }
+
+  /** Not supported: the table would keep the events and bring them back on the next start. */
+  override async purgeSeeded(): Promise<number> {
+    throw new Error("purging seeded events is not supported on the DynamoDB store");
   }
 
   /** Rebuild projects, runs, timelines and councils from the table at start-up. */

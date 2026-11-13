@@ -12,5 +12,22 @@
   "resources": [],
   "mcpServers": {},
   "toolsSettings": {},
-  "includeMcpJson": false
+  "includeMcpJson": false,
+  "permissions": {
+    "rules": [
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "skill",
+        "effect": "allow"
+      }
+    ]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:0264a62b41cc21471e11490cddb95180b9e9fdb134352d88b9bb0d815d220132",
+    "source": "sha256:b9503b8fd68ff923b3bd969be44545554179bffd8edbb1683eca9308326121d5"
+  }
 }

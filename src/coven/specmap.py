@@ -8,6 +8,7 @@ and the `tasks.md` template Kiro writes):
       - _Requirements: 1.1, 2.3_                 Kiro annotation
       - _Paths: `src/coven/`, `tests/`_          Coven annotation: declared paths
       - _Verify: `pytest -q tests/test_x.py`_    Coven annotation: the guard's command
+      - _Agent: elf_                             Coven annotation: which persona works it (default green-witch)
     - [ ]* 1.2 Write property tests              `*` after the box: optional sub-task
 
     ## Task Dependency Graph
@@ -29,6 +30,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import re
+import time
 from pathlib import Path
 
 # Kiro 3.1 parseTaskLine: indent, bullet, status box, optional marker, text.
@@ -38,7 +40,7 @@ NUMBER = (re.compile(r"^(\d+(?:\.\d+)*)\s"), re.compile(r"^(\d+(?:\.\d+)*)\."))
 STATUS = {" ": "not_started", "x": "completed", "-": "in_progress", "~": "queued"}
 GRAPH_HEADING = "## Task Dependency Graph"
 # `- _Paths: ..._`, `_Verify: ..._`, `_Requirements: ..._` (bullet and underscores optional).
-ANNOTATION = re.compile(r"^\s*(?:[-*+]\s+)?_?(?P<key>paths|verify|requirements)\s*:\s*(?P<value>.*?)_?\s*$", re.IGNORECASE)
+ANNOTATION = re.compile(r"^\s*(?:[-*+]\s+)?_?(?P<key>paths|verify|requirements|agent)\s*:\s*(?P<value>.*?)_?\s*$", re.IGNORECASE)
 BACKTICKED = re.compile(r"`([^`]+)`")
 HEADING = re.compile(r"^\s*#{1,6}\s")
 
@@ -122,7 +124,7 @@ def _process(lines: list[str], start: int, parent_text: str | None, out: list[di
 
 
 def _annotations(content: list[str]) -> dict:
-    found: dict = {"paths": [], "verify": None, "requirements": []}
+    found: dict = {"paths": [], "verify": None, "requirements": [], "agent": None}
     for line in content:
         if HEADING.match(line):  # `## Notes` / `## Task Dependency Graph` are not task content for Coven
             break
@@ -136,6 +138,8 @@ def _annotations(content: list[str]) -> dict:
             found["paths"].extend(item for item in items if item and item not in found["paths"])
         elif key == "verify" and found["verify"] is None:
             found["verify"] = (quoted[0] if quoted else value) or None
+        elif key == "agent" and found["agent"] is None:
+            found["agent"] = (quoted[0] if quoted else value).strip() or None
         elif key == "requirements":
             found["requirements"].extend(part.strip() for part in value.split(",") if part.strip())
     return found
@@ -207,6 +211,7 @@ def parse(text: str, spec: str | None = None) -> dict[str, dict]:
             "paths": notes["paths"],
             "verify": notes["verify"],
             "requirements": notes["requirements"],
+            "agent": notes["agent"],
             "wave": waves.get(task_id),
             "line": task["line"],
         }
@@ -220,7 +225,43 @@ def parse(text: str, spec: str | None = None) -> dict[str, dict]:
             if not current:
                 break
             task["paths"] = list(current["paths"])
+    # Likewise a sub-task asks for its parent's agent unless it names its own.
+    for task in tasks.values():
+        current, seen = task, set()
+        while not task["agent"] and current.get("parent") and current["parent"] not in seen:
+            seen.add(current["parent"])
+            current = tasks.get(f"{spec}#{current['parent']}" if spec else current["parent"])
+            if not current:
+                break
+            task["agent"] = current["agent"]
     return tasks
+
+
+TICKABLE = re.compile(r"^(\s*[-*+]\s+)\[[ \-~]\]")
+
+
+def tick(path: Path, task: dict) -> bool:
+    """Mark one task done (`[x]`) in its `tasks.md`, as Kiro does when a task is finished. True if the file changed.
+
+    Only that task's own line changes; a task already ticked, or whose line moved, is left alone.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    lines = text.split("\n")
+    index = int(task.get("line") or 0) - 1
+    if not 0 <= index < len(lines):
+        return False
+    line = lines[index].rstrip("\r")
+    if _line(line) is None or _line(line)["text"] != task.get("text"):
+        return False
+    done = TICKABLE.sub(lambda m: f"{m.group(1)}[x]", line, count=1)
+    if done == line:
+        return False
+    lines[index] = done + ("\r" if lines[index].endswith("\r") else "")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return True
 
 
 def load(root: Path) -> dict[str, dict]:
@@ -239,7 +280,14 @@ class SpecCache:
 
     A relay lives for days and Kiro edits `tasks.md` (ticking tasks off), so a copy read
     once at start-up would go stale. A stat per call is cheap; parsing happens on change.
+
+    File times come from a coarse clock (a few milliseconds per tick), and ticking a box
+    (`[ ]` → `[x]`) keeps the size, so an edit in the same tick as the last read would look
+    unchanged. As git does for "racily clean" files, a file modified in the last
+    RACY_NS is always re-read.
     """
+
+    RACY_NS = 2_000_000_000
 
     def __init__(self, root: Path):
         self.root = root
@@ -253,7 +301,8 @@ class SpecCache:
                 stat = path.stat()
                 signature = (stat.st_mtime_ns, stat.st_size)
                 cached = self._files.get(path)
-                if cached is None or cached[0] != signature:
+                racy = time.time_ns() - stat.st_mtime_ns < self.RACY_NS
+                if cached is None or cached[0] != signature or racy:
                     parsed = parse(path.read_text(encoding="utf-8"), spec=path.parent.name)
                     self._files[path] = (signature, parsed)
             except (OSError, UnicodeDecodeError):

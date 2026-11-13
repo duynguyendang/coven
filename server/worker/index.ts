@@ -1,0 +1,71 @@
+/**
+ * Coven Cloud on Cloudflare: a thin Worker in front of one Durable Object.
+ *
+ * - The Worker serves the dashboard (`web/`, as static assets) and forwards `/v1/*` and
+ *   `/healthz` to the Durable Object. It does no work of its own, so it stays inside the
+ *   free plan's per-request CPU limit.
+ * - The Durable Object `CovenCloud` is the single cloud instance the API assumes (CSD §4.3,
+ *   §4.11): one object named "fleet" runs the same handler as the Node server
+ *   (`../src/handler.ts`) over SqlStore (SQLite in the object's own storage). Requests reach it
+ *   one at a time, so the board's claim lock holds, and live streams are served from it.
+ *
+ * Access is one shared password, the Worker secret `COVEN_TOKENS`: the dashboard, the relay and
+ * `coven board` all use it. (A separate read-only web token, `COVEN_READ_TOKEN`, still works if set.)
+ * The API refuses to run with the development token: a deployed store must not be open.
+ */
+
+import { DurableObject } from "cloudflare:workers";
+
+import { type Env as TokenEnv, usingDevToken } from "../src/auth.ts";
+import { createHandler, type Handler, HTML_CSP, json, SECURITY_HEADERS } from "../src/handler.ts";
+import { SqlStore } from "../src/sqlstore.ts";
+
+interface Env {
+  COVEN: DurableObjectNamespace<CovenCloud>;
+  ASSETS: Fetcher;
+  COVEN_TOKENS?: string;
+  COVEN_INGEST_TOKEN?: string;
+  COVEN_READ_TOKEN?: string;
+}
+
+const tokenEnv = (env: Env): TokenEnv => ({
+  COVEN_TOKENS: env.COVEN_TOKENS, COVEN_INGEST_TOKEN: env.COVEN_INGEST_TOKEN, COVEN_READ_TOKEN: env.COVEN_READ_TOKEN,
+});
+
+export class CovenCloud extends DurableObject<Env> {
+  private handle: Handler | null = null;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // No request is served until the read model is rebuilt from storage.
+    ctx.blockConcurrencyWhile(async () => {
+      const store = new SqlStore(ctx.storage.sql as any);
+      const replayed = await store.hydrate();
+      console.log(`coven cloud: rehydrated ${replayed} events`);
+      this.handle = createHandler({ store, env: tokenEnv(env), storeName: "durable-object" });
+    });
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return (await this.handle!(request)) ?? json(404, { detail: "Not Found" });
+  }
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/healthz" || url.pathname === "/v1" || url.pathname.startsWith("/v1/")) {
+      if (usingDevToken(tokenEnv(env)) && url.pathname !== "/healthz") {
+        return json(503, { detail: "no password configured: set one with `wrangler secret put COVEN_TOKENS`" });
+      }
+      return env.COVEN.get(env.COVEN.idFromName("fleet")).fetch(request);
+    }
+    // The dashboard: same headers as the Node server gives it.
+    const asset = await env.ASSETS.fetch(request);
+    const headers = new Headers(asset.headers);
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+    headers.set("Cache-Control", "no-cache");
+    if ((headers.get("content-type") ?? "").startsWith("text/html")) headers.set("Content-Security-Policy", HTML_CSP);
+    return new Response(asset.body, { status: asset.status, headers });
+  },
+} satisfies ExportedHandler<Env>;

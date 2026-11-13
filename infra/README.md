@@ -155,3 +155,68 @@ Posting the same `event_id` twice must return `{"accepted": 0, "duplicates": 1}`
   Every `/v1/*` read requires a token.
 - **A relay outage is not an alert.** The run turns `STALE` then `DISCONNECTED` in
   the dashboard; nothing pages anyone.
+
+---
+
+# Deploying Coven Cloud on Cloudflare Workers (free plan, for testing)
+
+Deployed and tested on 2026-11-12. Shape:
+
+```text
+relay / coven board --HTTPS-->  Worker (server/worker/index.ts): serves web/, forwards /v1/* and /healthz
+browser             --HTTPS-->     └── one Durable Object "fleet" (CovenCloud): the same API handler
+                                       as the Node server (server/src/handler.ts) over SqlStore
+                                       (SQLite in the object's own storage)
+```
+
+One object is the single cloud instance the API assumes: requests reach it one at a time, so the
+board's claim lock holds, and live streams are served from it. The read model is rebuilt from
+SQLite whenever the object starts (it is evicted when idle). Dismissals and claim lease renewals
+are stored too; heartbeats are not (a run reads DISCONNECTED until its next heartbeat after a restart).
+
+```bash
+cd server/worker
+npm install                               # wrangler, pinned
+npx wrangler login
+npx wrangler deploy                       # prints https://coven-cloud.<you>.workers.dev
+# Until a password exists the API answers 503: it never runs on the `dev` token.
+npx wrangler secret put COVEN_TOKENS      # type the password when asked
+```
+
+- **One password, everywhere.** Type it into the dashboard's sign-in box, and give it to each
+  host machine: `coven login --cloud-url <url> --token <password>`. To change it, run the same
+  `wrangler secret put COVEN_TOKENS` again; every browser and host then needs the new one.
+- Anyone with the password can read the fleet, send events, claim tasks, post whiteboard
+  notes and chat messages that every host's witches read, and ask the Chair to dispatch work
+  (which spends the hosts' Kiro credits). Share it only with people you trust, and pick one that is
+  not guessable: the API does not rate-limit sign-in attempts.
+- If you later want web viewers who cannot send events, also set `COVEN_READ_TOKEN`: it is
+  accepted for reading (and posting notes) only.
+
+Check a deployment (writes only into a fresh `smoke-*` project):
+
+```bash
+COVEN_URL=<url> COVEN_INGEST_TOKEN=<password> node server/worker/smoke.ts
+COVEN_TEST_CLOUD_URL=<url> COVEN_TEST_CLOUD_TOKEN=<password> PYTHONPATH=src python3 -m pytest tests/test_board_live.py
+```
+
+Local, in the real Workers runtime: put `COVEN_TOKENS=<password>` in
+`server/worker/.dev.vars` (ignored by git) and run `npx wrangler dev` (port 8788).
+
+Free-plan limits (Cloudflare docs, Nov 2026): 100,000 requests/day, 100,000 SQLite rows written/day,
+13,000 GB-s/day of Durable Object time. Going over fails requests until 00:00 UTC; nothing is billed.
+A running relay heartbeats every 5 s per active run (about 17,000 requests/day), and an open
+dashboard keeps the object active. Fine for a test fleet; not for a busy one left on all day.
+Stored events do not expire yet.
+
+Cloudflare refuses urllib's default `Python-urllib` User-Agent (error 1010); the Coven client sends
+`coven/<version>`.
+
+Demo data: `node server/src/seed.ts --url <url> --token <password>` seeds the labelled demo fleet into
+its own projects (`coven-demo`, `atlas-api`), never a real one. To take seeded events out of a
+project later (only `source: "seed"` events go; real ones never do):
+`node server/src/seed.ts --url <url> --token <password> --purge <project>`.
+
+A deploy reaches a Durable Object that is already running only when it restarts. If the API still
+answers with the old code after a deploy, stop the relays and listeners and send nothing for about
+five minutes so the object goes idle (`/healthz` shows a new `started_at` once it has).

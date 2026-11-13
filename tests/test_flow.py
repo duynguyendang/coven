@@ -227,7 +227,7 @@ def test_the_guard_accepts_only_when_its_own_checks_pass_and_the_chair_agrees(re
     answer, guard = council(repo, made)
 
     assert answer["outcome"] == "terminal-state"
-    assert guard["verdict"] == "accept" and [c["result"] for c in guard["checks"]] == ["pass", "pass", "pass"]
+    assert guard["verdict"] == "accept" and [(c["name"], c["result"]) for c in guard["checks"]] == [("verify", "pass"), ("scope", "pass"), ("challenge", "pass"), ("human", "pass")]
     kinds = [e["type"] for e in events_of(repo) if e.get("council_id") == flow.council_id(made["flow_id"])]
     assert kinds[:1] == ["verify_result"] and {"council_opened", "test_result", "claim_proposed", "chair_proposal", "guard_verdict"} <= set(kinds)
     proposal = next(e for e in events_of(repo, "chair_proposal"))
@@ -446,3 +446,68 @@ def test_without_a_cloud_a_flow_is_not_started_unless_asked_to_work_alone(repo, 
         flow.new(repo, "shop#1")
     assert cli.main(["flow", "new", "--next"]) == 1, "taking the next task needs the board"
     assert cli.main(["flow", "new"]) == 2, "a task or --next"
+
+
+# ------------------------------------------------------------- people decide (council chat, §5.7)
+
+
+def _with_chat(repo, monkeypatch, messages=None, error=None):
+    """A cloud is configured; the council chat holds `messages` (or cannot be read)."""
+    from coven import board
+
+    (repo / ".coven").mkdir(exist_ok=True)
+    (repo / ".coven" / "config.json").write_text(json.dumps({"project_id": "shop", "cloud_url": "https://cloud.example", "token": "t"}))
+
+    def chat(_root):
+        if error:
+            raise board.BoardError(error, 0)
+        return {"messages": messages or [], "waiting": [], "listeners": []}
+
+    monkeypatch.setattr(board, "chat", chat)
+    monkeypatch.setattr(board, "post", lambda *a, **k: {})
+
+
+def _reject(task, ts, by="duy", why="ttlDays=0 deletes every event"):
+    return {"message_id": f"evt_{ts}", "role": "human", "kind": "reject", "task": task, "ts": ts, "author": by, "message": why}
+
+
+def test_a_person_rejecting_the_task_after_this_rounds_work_makes_the_guard_reject(repo, monkeypatch):
+    made = flow.new(repo, "shop#1", claim=False)
+    _with_chat(repo, monkeypatch, [_reject("shop#1", "2999-01-01T00:00:00.000Z"), _reject("shop#2", "2999-01-01T00:00:00.000Z", by="bo")])
+    _answer, guard = council(repo, made, chair="accept")
+    human = next(c for c in guard["checks"] if c["name"] == "human")
+    assert guard["verdict"] == "reject", "the person's rejection wins over a passing guard and a Chair accept"
+    assert human["result"] == "fail" and "rejected by duy" in human["detail"] and "ttlDays=0" in human["detail"]
+    assert guard["disagreement"] is True, "Chair accept vs reject is shown as a disagreement"
+
+
+def test_work_done_after_a_rejection_answers_it(repo, monkeypatch):
+    made = flow.new(repo, "shop#1", claim=False)
+    _with_chat(repo, monkeypatch, [_reject("shop#1", "2000-01-01T00:00:00.000Z")])
+    _answer, guard = council(repo, made, chair="accept")
+    human = next(c for c in guard["checks"] if c["name"] == "human")
+    assert (human["result"], guard["verdict"]) == ("pass", "accept")
+    assert "1 earlier rejection" in human["detail"]
+
+
+def test_an_unreadable_chat_is_unknown_never_a_pass(repo, monkeypatch):
+    made = flow.new(repo, "shop#1", claim=False)
+    _with_chat(repo, monkeypatch, error="cloud unreachable")
+    _answer, guard = council(repo, made, chair="accept")
+    assert next(c for c in guard["checks"] if c["name"] == "human")["result"] == "unknown"
+    assert guard["verdict"] == "no-consensus"
+
+
+def test_the_board_step_brings_what_people_said_to_the_chair(repo, monkeypatch):
+    made = flow.new(repo, "shop#1", claim=False)
+    said = [{"message_id": "m1", "role": "human", "kind": "idea", "task": "shop#1", "ts": "2026-11-12T01:00:00.000Z", "author": "duy", "message": "Cache totals"},
+            {"message_id": "m2", "role": "council", "kind": "answer", "task": None, "reply_to": "m1", "ts": "2026-11-12T01:01:00.000Z", "message": "ok"},
+            {"message_id": "m3", "role": "human", "kind": "ask", "task": "shop#2", "ts": "2026-11-12T01:02:00.000Z", "author": "bo", "message": "Other task"}]
+    _with_chat(repo, monkeypatch, said)
+    from coven import board
+
+    monkeypatch.setattr(board, "read", lambda _root: {"notes": []})
+    flowsteps.run_step(repo, "board", stdin_for(repo, made))
+    written = json.loads((repo / made["flow_dir"] / "board.json").read_text())
+    assert written["human"] == [{"from": "duy", "kind": "idea", "message": "Cache totals", "ts": "2026-11-12T01:00:00.000Z"}]
+    assert "People decide" in written["human_rule"]

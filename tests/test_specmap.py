@@ -281,4 +281,35 @@ def test_the_repositorys_own_spec_parses_in_kiro_format():
 
     assert t["coven-relay#9"]["title"] == "Fleet dashboard"
     assert t["coven-relay#9"]["paths"] == ["web/index.html", "server/test/web.test.ts"]
-    assert all(task["done"] for key, task in t.items() if key.startswith("coven-relay#"))
+    assert all(t[f"coven-relay#{n}"]["done"] for n in range(1, 13)), "tasks 1-12 are done"
+    assert t["coven-relay#13"]["paths"] == [".github/workflows/"] and not t["coven-relay#13"]["done"]
+    assert t["coven-relay#14"]["paths"] == ["server/src/sqlstore.ts", "server/test/sqlstore.test.ts"]
+
+
+def test_spec_cache_sees_a_tick_in_the_same_clock_tick(tmp_path):
+    # Ticking a box keeps the size; on a coarse file clock the mtime can stay the same too.
+    import os
+
+    path = tmp_path / ".kiro" / "specs" / "demo" / "tasks.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("- [ ] 1. One\n")
+    cache = specmap.SpecCache(tmp_path)
+    assert cache.tasks()["demo#1"]["status"] == "not_started"
+    before = path.stat()
+    path.write_text("- [x] 1. One\n")
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))  # same tick: identical signature
+    assert (path.stat().st_mtime_ns, path.stat().st_size) == (before.st_mtime_ns, before.st_size)
+    assert cache.tasks()["demo#1"]["status"] == "completed"
+
+
+def test_spec_cache_trusts_an_old_unchanged_file(tmp_path, monkeypatch):
+    path = tmp_path / ".kiro" / "specs" / "demo" / "tasks.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("- [ ] 1. One\n")
+    cache = specmap.SpecCache(tmp_path)
+    cache.tasks()
+    monkeypatch.setattr(specmap.time, "time_ns", lambda: path.stat().st_mtime_ns + 10 * specmap.SpecCache.RACY_NS)
+    calls = []
+    monkeypatch.setattr(specmap, "parse", lambda *a, **k: calls.append(1) or {})
+    cache.tasks()
+    assert calls == [], "a file that settled long ago is not parsed again"

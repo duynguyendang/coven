@@ -200,7 +200,7 @@ def _post(httpx, cloud: str, token: str, items: list, root: Path) -> bool:
     first = items[0].event
     payload = {"project_id": first["project_id"], "run_id": first["run_id"], "events": [i.event for i in items]}
     try:
-        response = httpx.post(f"{cloud}/v1/events", json=payload, headers={"Authorization": f"Bearer {token}"}, timeout=10.0)
+        response = httpx.post(f"{cloud}/v1/events", json=payload, headers={"Authorization": f"Bearer {token}", "User-Agent": board.USER_AGENT}, timeout=10.0)
     except httpx.HTTPError:
         return False  # offline: keep it, try again next tick
     if response.status_code in (413, 422):
@@ -264,7 +264,7 @@ def _heartbeat(root: Path, cloud: str | None, token: str | None) -> None:
             "last_event_at": run.get("last_event_at"),
         }
         try:
-            httpx.post(f"{cloud}/v1/heartbeat", json=body, headers={"Authorization": f"Bearer {token}"}, timeout=5.0)
+            httpx.post(f"{cloud}/v1/heartbeat", json=body, headers={"Authorization": f"Bearer {token}", "User-Agent": board.USER_AGENT}, timeout=5.0)
         except httpx.HTTPError:
             return
 

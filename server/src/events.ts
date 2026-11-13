@@ -46,11 +46,67 @@ export const EVENT_TYPES = new Set([
   "task_claimed",
   "task_released",
   "board_note",
+  // a doer says where its task stands — contract §5.6
+  "task_status",
+  // the Chair splits a request into jobs for witches; they appear on the board as tasks of the spec `council`
+  "task_created",
+  // council chat — contract §5.7
+  "chat_message",
+  "council_listening",
+  // a host is up and can run these agents — contract §5.8
+  "host_online",
 ]);
 
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
 const NOTE_KINDS = new Set(["idea", "question", "answer", "review", "note", "review-wanted"]);
+/** Where a task stands as its doer reports it. `done` is not here: only the spec's tick (a merge) makes a task done. */
+export const TASK_STATES = new Set(["working", "submitted", "answered", "failed"]);
+/** `done` is people's word (POST /v1/board/done), never a doer's. */
+export const PEOPLE_STATES = new Set([...TASK_STATES, "done"]);
+
+/**
+ * Council chat (contract §5.7). One role for people today: Human (anyone signed in). A human message
+ * is made by the cloud from POST /v1/chat, never accepted from a relay, so no agent can speak as a
+ * human or forge a rejection. The council answers through a member's `coven council listen`.
+ */
+export const HUMAN_CHAT_KINDS = new Set(["ask", "idea", "suggestion", "reject", "do"]);
+/** `working` says a host's witch took a `do` request; `answer` / `error` close it. */
+export const COUNCIL_CHAT_KINDS = new Set(["answer", "error", "working"]);
+/** The witches a host can run (agents.py). */
+export const AGENT_SLUGS = new Set(["green-witch", "white-hat", "black-hat", "imp", "elder-witch", "elf", "grey-witch", "raven", "scribe", "herald", "weaver"]);
+/** Whom a human may address: the council's roles, or any witch by name. Unaddressed means the Chair. */
+export const CHAT_ROLES = new Set(["chair", "sa", "dev", "tester", "red-team", "brainstorm", ...AGENT_SLUGS]);
+/** The Dev builds from a task in tasks.md (paths, verify); a free-text request has neither. */
+const BUILDERS = new Set(["dev", "green-witch"]);
+export const MAX_CHAT_CHARS = 400; // the redaction budget for any string
+const TASK_REF = /^[^#\s]{1,80}#[^#\s]{1,20}$/;
+
+export function chatProblems(payload: Json): string[] {
+  const errors: string[] = [];
+  const message = payload.message;
+  if (typeof message !== "string" || !message.trim()) errors.push("a chat message needs text (payload.message)");
+  else if (Array.from(message).length > MAX_CHAT_CHARS) errors.push(`a chat message is at most ${MAX_CHAT_CHARS} characters`);
+  if (payload.role === "human") {
+    if (!HUMAN_CHAT_KINDS.has(payload.kind)) errors.push(`a human message is one of ${[...HUMAN_CHAT_KINDS].join(", ")}`);
+    if (payload.kind === "reject" && !payload.task) errors.push("a rejection names the task it rejects");
+    if (payload.kind === "do") {
+      // Dispatch: a host that runs this witch takes the request and answers in the chat.
+      // No witch named: the Chair understands the request and dispatches it as jobs.
+      if (payload.to && BUILDERS.has(payload.to)) errors.push("the Dev builds from a task in tasks.md (with _Paths:_ and _Verify:_); ask another witch, or add the task");
+    }
+  } else if (payload.role === "council") {
+    if (!COUNCIL_CHAT_KINDS.has(payload.kind)) errors.push(`a council message is one of ${[...COUNCIL_CHAT_KINDS].join(", ")}`);
+    if (typeof payload.reply_to !== "string" || !payload.reply_to) errors.push("a council message answers a human message (reply_to)");
+  } else {
+    errors.push("role must be human or council");
+  }
+  if (payload.task !== undefined && payload.task !== null && !(typeof payload.task === "string" && TASK_REF.test(payload.task))) {
+    errors.push("task must look like <spec>#<task>");
+  }
+  if (payload.to !== undefined && payload.to !== null && !CHAT_ROLES.has(payload.to)) errors.push(`to must be one of ${[...CHAT_ROLES].join(", ")}`);
+  return errors;
+}
 
 export const FLOW_TYPES = new Set(["flow_started", "flow_step_started", "flow_step_finished", "flow_finished"]);
 const FLOW_ID = /^flw_[0-9a-f]{20}$/;
@@ -94,6 +150,19 @@ export function validateEvent(event: Json): string[] {
     if (typeof text !== "string" || !text.trim()) errors.push("a board note needs text (payload.note)");
     if (!NOTE_KINDS.has((isObject(payload) ? payload : {}).kind)) errors.push(`note kind must be one of ${[...NOTE_KINDS].join(", ")}`);
   }
+  if (event.type === "task_status") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_status needs task as <spec>#<task>");
+    if (!PEOPLE_STATES.has(p.state)) errors.push(`task_status state must be one of ${[...PEOPLE_STATES].join(", ")}`);
+  }
+  if (event.type === "task_created") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_created needs task as <spec>#<task>");
+    if (typeof p.title !== "string" || !p.title.trim()) errors.push("task_created needs a title");
+    if (typeof p.agent !== "string" || !AGENT_SLUGS.has(p.agent)) errors.push("task_created needs the agent that should do it");
+    else if (BUILDERS.has(p.agent)) errors.push("the Dev builds from tasks.md; a council job is for the other witches");
+  }
+  if (event.type === "chat_message") errors.push(...chatProblems(isObject(payload) ? payload : {}));
   if (event.member !== undefined && (typeof event.member !== "string" || event.member.length > 80 || !event.member.trim())) {
     errors.push("member must be a short name");
   }

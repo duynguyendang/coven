@@ -9,3 +9,9 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+# Cloudflare Worker (server/worker): local state, local secrets, generated runtime types
+.wrangler/
+.dev.vars
+worker-configuration.d.ts
+*.bak
+vendor/

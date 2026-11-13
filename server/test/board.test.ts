@@ -144,6 +144,131 @@ class SlowTable implements TableClient {
   async scanAll() { return [...this.items.values()]; }
 }
 
+describe("a host runs several agents", () => {
+  const online = (member: string, agents: string[], slots: number) => ({
+    event_id: `evt_host_${member}`, project_id: "shop", run_id: `member_${member}`, type: "host_online", ts: new Date().toISOString(),
+    source: "relay", member, payload: { agents, slots, running: [] },
+  });
+
+  test("two agents of one host hold two tasks; the same agent re-claiming renews", async () => {
+    const s = await startServer();
+    try {
+      const elf = await claim(s.base, { member: "wsl-1", agent: "elf", spec: "shop", task_id: "2", paths: ["src/search/"] });
+      const dev = await claim(s.base, { member: "wsl-1", agent: "green-witch", spec: "shop", task_id: "1", paths: ["src/cart/"] });
+      assert.deepEqual([elf.status, dev.status, elf.body.claim.agent, dev.body.claim.agent], [201, 201, "elf", "green-witch"]);
+      const again = await claim(s.base, { member: "wsl-1", agent: "elf", spec: "shop", task_id: "2", paths: ["src/search/"] });
+      assert.deepEqual([again.status, again.body.renewed], [200, true]);
+    } finally { await s.close(); }
+  });
+
+  test("agents on one host still collide: same task, or overlapping paths", async () => {
+    const s = await startServer();
+    try {
+      await claim(s.base, { member: "wsl-1", agent: "green-witch", spec: "shop", task_id: "1", paths: ["src/cart/"] });
+      const same = await claim(s.base, { member: "wsl-1", agent: "elf", spec: "shop", task_id: "1", paths: ["src/cart/"] });
+      assert.deepEqual([same.status, same.body.reason, same.body.held_by, same.body.held_agent], [409, "held", "wsl-1", "green-witch"]);
+      const overlap = await claim(s.base, { member: "wsl-1", agent: "black-hat", spec: "shop", task_id: "4", paths: ["src/cart/total.py"] });
+      assert.deepEqual([overlap.status, overlap.body.reason], [409, "paths overlap"]);
+      const elsewhere = await claim(s.base, { member: "wsl-2", agent: "green-witch", spec: "shop", task_id: "1", paths: ["src/cart/"] });
+      assert.equal(elsewhere.status, 409, "another host cannot take what an agent holds");
+    } finally { await s.close(); }
+  });
+
+  test("a bad agent name is refused", async () => {
+    const s = await startServer();
+    try {
+      const bad = await claim(s.base, { member: "wsl-1", agent: "Elf; drop", spec: "shop", task_id: "2", paths: [] });
+      assert.equal(bad.status, 422);
+    } finally { await s.close(); }
+  });
+
+  test("the board shows hosts with their agents, slots, and who holds each task", async () => {
+    const s = await startServer();
+    try {
+      assert.equal((await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "member_wsl-1", events: [online("wsl-1", ["elf", "raven", "green-witch"], 3)] }, auth("dev"))).status, 200);
+      await claim(s.base, { member: "wsl-1", agent: "elf", spec: "shop", task_id: "2", paths: ["src/search/"] });
+      await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "sess_x", events: [{ event_id: "evt_spec_1", project_id: "shop", run_id: "sess_x", type: "spec_artifact_updated", ts: new Date().toISOString(), source: "relay", member: "wsl-1",
+        payload: { artifact: "tasks", spec: "shop", total: 2, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [
+          { task_id: "1", title: "Cart", status: "not_started", paths: ["src/cart/"], agent: "green-witch" },
+          { task_id: "2", title: "Search", status: "not_started", paths: ["src/search/"], agent: "elf" }] } }] }, auth("dev"));
+      const view = (await getJson(s.base, "/v1/board?project_id=shop")).body;
+      const host = view.hosts.find((h: Json) => h.host === "wsl-1");
+      assert.deepEqual([host.agents, host.slots, host.working], [["elf", "raven", "green-witch"], 3, [{ agent: "elf", task: "shop#2" }]]);
+      assert.deepEqual(view.members, view.hosts, "`members` is the old name of `hosts`");
+      const tasks = view.specs[0].tasks;
+      assert.deepEqual(tasks.map((t: Json) => [t.task_id, t.agent, t.claimed_by, t.claimed_agent]), [["1", "green-witch", null, null], ["2", "elf", "wsl-1", "elf"]]);
+    } finally { await s.close(); }
+  });
+});
+
+describe("the doer reports where a task stands", () => {
+  const status = (member: string, task: string, state: string, extra: Json = {}, ts = new Date().toISOString()): Json => ({
+    event_id: `evt_st_${Math.random().toString(16).slice(2, 12)}`, project_id: "shop", run_id: `member_${member}`, type: "task_status", ts,
+    source: "coven-cli", member, payload: { task, state, ...extra },
+  });
+  const send = (member: string, events: Json[], base: string) => postJson(base, "/v1/events", { project_id: "shop", run_id: `member_${member}`, events }, auth("dev"));
+
+  test("the board view carries the latest state, agent, host and detail of each task", async () => {
+    const s = await startServer();
+    try {
+      await send("wsl-1", [{ event_id: "evt_spec_st", project_id: "shop", run_id: "member_wsl-1", type: "spec_artifact_updated", ts: new Date().toISOString(), source: "coven-cli", member: "wsl-1",
+        payload: { artifact: "tasks", spec: "shop", total: 2, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [
+          { task_id: "1", title: "Cart", status: "not_started", paths: ["src/cart/"] }, { task_id: "2", title: "Search", status: "not_started", paths: ["src/search/"] }] } }], s.base);
+      const t0 = Date.now();
+      const r = await send("wsl-1", [status("wsl-1", "shop#1", "working", { agent: "green-witch" }, new Date(t0).toISOString()),
+        status("wsl-1", "shop#1", "submitted", { agent: "green-witch", detail: "coven/shop-1 at abc123" }, new Date(t0 + 1000).toISOString()),
+        status("wsl-1", "shop#2", "failed", { agent: "elf", detail: "no answer within 5 s" }, new Date(t0 + 500).toISOString())], s.base);
+      assert.deepEqual(r.body.rejected, []);
+      const tasks = (await getJson(s.base, "/v1/board?project_id=shop")).body.specs[0].tasks;
+      assert.deepEqual(tasks.map((t: Json) => [t.task_id, t.doer_state, t.doer_agent, t.doer_host, t.doer_detail]),
+        [["1", "submitted", "green-witch", "wsl-1", "coven/shop-1 at abc123"], ["2", "failed", "elf", "wsl-1", "no answer within 5 s"]]);
+    } finally { await s.close(); }
+  });
+
+  test("a bad state or task is refused; `done` is the spec's tick, never a report", async () => {
+    const s = await startServer();
+    try {
+      const r = await send("wsl-1", [status("wsl-1", "shop#1", "done"), status("wsl-1", "nonsense", "working")], s.base);
+      assert.equal(r.body.accepted, 0);
+      assert.equal(r.body.rejected.length, 2);
+    } finally { await s.close(); }
+  });
+});
+
+describe("council jobs: the Chair turns a request into tasks on the board", () => {
+  const created = (task: string, agent: string, extra: Json = {}): Json => ({
+    event_id: `evt_tc_${Math.random().toString(16).slice(2, 12)}`, project_id: "shop", run_id: "member_wsl-1", type: "task_created", ts: new Date().toISOString(),
+    source: "coven-cli", member: "wsl-1", payload: { task, title: "Run the relay tests", agent, detail: "read tests/test_relay.py", source: "evt_msg", ...extra },
+  });
+  const send = (events: Json[], base: string) => postJson(base, "/v1/events", { project_id: "shop", run_id: "member_wsl-1", events }, auth("dev"));
+
+  test("a job appears as a task of the spec `council` with its agent, detail and source; the Dev and bad refs are refused", async () => {
+    const s = await startServer();
+    try {
+      const r = await send([created("council#rq1-1", "white-hat"), created("council#rq1-2", "green-witch"), created("nonsense", "elf"), created("council#rq1-3", "nobody")], s.base);
+      assert.equal(r.body.accepted, 1);
+      assert.equal(r.body.rejected.length, 3);
+      const spec = (await getJson(s.base, "/v1/board?project_id=shop")).body.specs.find((x: Json) => x.spec === "council");
+      assert.deepEqual(spec.tasks.map((t: Json) => [t.task_id, t.title, t.agent, t.detail, t.source, t.leaf, t.status]),
+        [["rq1-1", "Run the relay tests", "white-hat", "read tests/test_relay.py", "evt_msg", true, "not_started"]]);
+    } finally { await s.close(); }
+  });
+
+  test("people mark a result done; a doer cannot", async () => {
+    const s = await startServer();
+    try {
+      await send([created("council#rq1-1", "white-hat")], s.base);
+      const sneaky = await send([{ event_id: "evt_sneak", project_id: "shop", run_id: "member_wsl-1", type: "task_status", ts: new Date().toISOString(), source: "coven-cli", member: "wsl-1", payload: { task: "council#rq1-1", state: "done" } }], s.base);
+      assert.equal(sneaky.body.accepted, 0);
+      const done = await postJson(s.base, "/v1/board/done", { project_id: "shop", task: "council#rq1-1", author: "duy" }, auth("dev"));
+      assert.equal(done.status, 201);
+      const task = (await getJson(s.base, "/v1/board?project_id=shop")).body.specs[0].tasks[0];
+      assert.deepEqual([task.doer_state, task.doer_detail], ["done", "accepted by duy"]);
+      assert.equal((await postJson(s.base, "/v1/board/done", { project_id: "shop", task: "bad" }, auth("dev"))).status, 422);
+    } finally { await s.close(); }
+  });
+});
+
 describe("racing members", () => {
   for (const [name, make] of [["memory", () => new MemoryStore()], ["dynamo (slow writes)", () => new DynamoStore(new SlowTable())]] as const) {
     test(`${name}: ten members claim one task at once; exactly one wins`, async () => {

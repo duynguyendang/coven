@@ -9,6 +9,8 @@
 
 > **Update 2026-11-11 (CSD v1.3 §4.10.2, §4.11):** five non-council agents exist beside the six personas, in the same style: Weaver — Conductor, Scribe — Steward, Raven — Watcher, Herald — Reporter (the flow), and **Imp — Cross-reviewer** (the coven board: reads the whiteboard, posts at most three notes on another member's task that wants review, never touches that member's work). They are not council roles and have no `role` tag. All eleven live in `.kiro/agents/<slug>.json`.
 
+
+> **Update 2026-11-12/13 (`coven-hosts-v1.md`):** the eleven personas are now **witches that hosts run**. A host (`coven host run`) runs any persona it has installed, up to its slots; a task names the one it needs with `_Agent:_` (default Green Witch). Each persona has a **kind** that sets what a headless run may do: **build** (Green Witch: writes code in her own worktree; the host verifies, path-checks and commits), **inspect** (White Hat, Black Hat, Imp: read and run commands, change nothing), **think** (the rest: read only). The **Grey Witch dispatches** in the council chat: she understands what people ask and makes jobs for the other witches. Each persona has an icon, the Kiro ghost in her outfit (UX v3 §4.7). Rules 1, 3 and 7 below still hold: a persona is prompt and voice, never a permission, and one run holds one persona for one task.
 ---
 
 ## Global rules (apply to every persona)

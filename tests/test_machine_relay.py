@@ -50,11 +50,18 @@ def test_progress_of_an_unknown_spec_is_none():
     assert specmap.progress({}, None) is None
 
 
-def test_spec_cache_rereads_a_changed_file_only(tmp_path):
+def test_spec_cache_rereads_a_changed_file_only(tmp_path, monkeypatch):
     repo = make_repo(tmp_path / "r", "p")
     cache = specmap.SpecCache(repo)
     first = cache.tasks()
-    assert cache.tasks()["demo#1"] is first["demo#1"], "unchanged file: not parsed again"
+    # A file written just now is always re-read (it may change again within the same clock tick);
+    # once it has settled, an unchanged file is served from the cache.
+    real_now = specmap.time.time_ns
+    monkeypatch.setattr(specmap.time, "time_ns", lambda: real_now() + 10 * specmap.SpecCache.RACY_NS)
+    settled = cache.tasks()
+    assert cache.tasks()["demo#1"] is settled["demo#1"], "unchanged file: not parsed again"
+    monkeypatch.setattr(specmap.time, "time_ns", real_now)
+    assert first["demo#1"] == settled["demo#1"]
 
     path = repo / ".kiro" / "specs" / "demo" / "tasks.md"
     path.write_text(TEMPLATE.replace("[ ] 2.2", "[x] 2.2") + "\n- [ ] 4. Brand new task\n")

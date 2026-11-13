@@ -103,9 +103,23 @@ before(async () => {
   await send("shop", "sess_cy_1", [ev("sess_cy_1", "shop", "board_note", { note: "What if the cart is empty?", kind: "question", task: "shop#1" }, 30)]
     .map((e) => ({ ...e, member: "cy" })));
 
+  // 5b. a host that runs agents: wsl-7 has the elf and the raven, and the elf holds a task that asks for it
+  await send("lab", "member_wsl-7", [{ ...ev("member_wsl-7", "lab", "host_online", { agents: ["elf", "raven", "green-witch"], slots: 2, running: [] }, 20), member: "wsl-7" },
+    { ...ev("member_wsl-7", "lab", "spec_artifact_updated", { artifact: "tasks", spec: "lab", total: 2, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [
+      { task_id: "L1", title: "Another way to search", status: "not_started", paths: ["lab/a/"], agent: "elf" },
+      { task_id: "L2", title: "Watch the build", status: "not_started", paths: ["lab/b/"], agent: "raven" }] }, 19), member: "wsl-7" }]);
+  assert.equal((await postJson(s.base, "/v1/claims", { project_id: "lab", member: "wsl-7", agent: "elf", spec: "lab", task_id: "L1", paths: ["lab/a/"] })).status, 201);
+  const statusEv = (id: string, task: string, state: string, agent: string, detail: string, secs: number) =>
+    ({ ...ev("member_wsl-7", "lab", "task_status", { task, state, agent, detail }, secs), event_id: id, member: "wsl-7" });
+  await send("lab", "member_wsl-7", [statusEv("evt_st_lab_1", "lab#L1", "answered", "elf", "Try a materialised view.", 6),
+    statusEv("evt_st_lab_2", "lab#L2", "failed", "raven", "no answer within 5 s", 6)]);
+  await send("lab", "member_wsl-7", [{ ...ev("member_wsl-7", "lab", "board_note", { note: "Try a materialised view.", kind: "idea", task: "lab#L1", agent: "elf" }, 5), member: "wsl-7" }]);
+
+  await send("lab", "member_wsl-7", [{ ...ev("member_wsl-7", "lab", "task_created", { task: "council#rq9-1", title: "Run the relay tests", agent: "white-hat", detail: "read tests/test_relay.py", source: "evt_x" }, 4), member: "wsl-7" }]);
+
   // 6. the seeded demo fleet, including the council
   for (const b of batches(build())) await send(b.projectId, b.runId, b.events);
-  await beat("coven", RUN_IDS["coven-live"]);
+  await beat("coven-demo", RUN_IDS["coven-live"]);
 
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError", (e) => errors.push(`jsdomError: ${e.detail ?? e.message}`));
@@ -137,11 +151,45 @@ before(async () => {
 
 after(async () => { dom.window.close(); await s.close(); });
 
+/** Open one kanban column's details (a tile toggles, so click only a closed one). */
+const openColumn = (col: string) => {
+  const tile = doc().querySelector(`button.tile[data-col="${col}"]`) as HTMLButtonElement;
+  if (tile.getAttribute("aria-expanded") !== "true") tile.click();
+};
+
 describe("sessions screen", () => {
   test("is served by the Node server with a restrictive CSP", async () => {
     const response = await fetch(s.base + "/");
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-security-policy")!, /frame-ancestors 'none'/);
+  });
+
+  test("the Astryx theme stylesheet is linked and served from this origin", async () => {
+    const doc = dom.window.document;
+    assert.equal(doc.documentElement.getAttribute("data-astryx-theme"), "neutral");
+    const href = doc.querySelector('link[rel="stylesheet"]')?.getAttribute("href");
+    assert.equal(href, "vendor/astryx/theme-neutral.css");
+    const css = await fetch(`${s.base}/${href}`);
+    assert.equal(css.status, 200);
+    assert.match(css.headers.get("content-type") ?? "", /text\/css/);
+    assert.match(await css.text(), /--color-background-body: light-dark\(/);
+  });
+
+  test("the theme switch: System follows the OS; Light and Dark are remembered", () => {
+    const doc = dom.window.document;
+    const pick = (choice: string) => (doc.querySelector(`[data-theme-choice="${choice}"]`) as HTMLButtonElement).click();
+    const pressed = () => [...doc.querySelectorAll("[data-theme-choice]")].filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => (b as HTMLElement).dataset.themeChoice);
+    pick("light");
+    assert.deepEqual([doc.documentElement.dataset.theme, pressed(), dom.window.localStorage.getItem("coven_theme")], ["light", ["light"], "light"]);
+    pick("dark");
+    assert.deepEqual([doc.documentElement.dataset.theme, pressed(), dom.window.localStorage.getItem("coven_theme")], ["dark", ["dark"], "dark"]);
+    pick("system");
+    assert.deepEqual([doc.documentElement.hasAttribute("data-theme"), pressed(), dom.window.localStorage.getItem("coven_theme")], [false, ["system"], "system"]);
+  });
+
+  test("no colour is hard-coded: every colour in the stylesheet is a theme token", () => {
+    const css = dom.window.document.querySelector("style")?.textContent ?? "";
+    assert.deepEqual(css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) ?? [], []);
   });
 
   test("check 1: the real session's card leads with its last intent, with matching counts", () => {
@@ -276,21 +324,21 @@ describe("session screen", () => {
     for (const view of ["All sessions", "Live", "Needs attention", "Deviations", "Councils"]) {
       assert.ok(items.some((i) => i.startsWith(view + " ")), view);
     }
-    for (const name of ["atlas ", "atlas-api ", "coven ", "unlinked "]) assert.ok(items.some((i) => i.startsWith(name)), name);
+    for (const name of ["atlas ", "atlas-api ", "coven-demo ", "unlinked "]) assert.ok(items.some((i) => i.startsWith(name)), name);
     assert.ok(items.includes("atlas 2"), items.join(" | "));
     assert.equal(nav.querySelector('[aria-current="page"]')!.textContent!.replace(/\s+/g, " ").trim().startsWith("All sessions"), true);
     assert.equal(doc().querySelector("#main nav.projects"), null, "the old chip bar is gone");
   });
 
   test("choosing a project narrows the list, the numbers and the deviations to it", async () => {
-    await go("#/p/coven");
+    await go("#/p/coven-demo");
     const cards = [...doc().querySelectorAll<HTMLElement>("a.scard")];
     assert.ok(cards.length >= 2, "coven has its sessions");
-    assert.ok(cards.every((c) => c.textContent!.includes("coven")), "only coven sessions");
+    assert.ok(cards.every((c) => c.textContent!.includes("coven-demo")), "only coven sessions");
     assert.ok(!card("run_fail"), "an atlas session is not listed");
     assert.ok(!card(REAL_RUN), "an unlinked session is not listed");
     assert.match(doc().querySelector("#nav [aria-current=page]")!.textContent!, /^\s*coven/);
-    assert.equal(doc().querySelector("#main h1")!.textContent, "coven");
+    assert.equal(doc().querySelector("#main h1")!.textContent, "coven-demo");
     assert.ok(doc().querySelector(".deviation"), "the coven deviation banner is shown for coven");
     assert.match(doc().querySelector(".deviation")!.textContent!, /server\/src\/app\.ts/);
     assert.equal(doc().querySelector(".deviation .row"), null, "the banner must not use the timeline's row class");
@@ -303,7 +351,7 @@ describe("session screen", () => {
   });
 
   test("a project shows its spec progress as a bar with the numbers", async () => {
-    await go("#/p/coven");
+    await go("#/p/coven-demo");
     const bar = doc().querySelector<HTMLProgressElement>(".proj progress")!;
     assert.ok(bar, "a progress bar");
     assert.equal(bar.getAttribute("value"), "9");
@@ -327,12 +375,12 @@ describe("session screen", () => {
   });
 
   test("back from a session returns to the project you came from", async () => {
-    await go("#/p/coven");
+    await go("#/p/coven-demo");
     await go(`#/run/${RUN_IDS["coven-live"]}`);
-    assert.equal(doc().querySelector<HTMLAnchorElement>('[data-key="back"]')!.getAttribute("href"), "#/p/coven");
+    assert.equal(doc().querySelector<HTMLAnchorElement>('[data-key="back"]')!.getAttribute("href"), "#/p/coven-demo");
     key("Escape");
     await wait(400);
-    assert.equal(dom.window.location.hash, "#/p/coven");
+    assert.equal(dom.window.location.hash, "#/p/coven-demo");
     await go("#/");
     await go(`#/run/${RUN_IDS["coven-live"]}`);
     assert.equal(doc().querySelector<HTMLAnchorElement>('[data-key="back"]')!.getAttribute("href"), "#/");
@@ -377,24 +425,24 @@ describe("session screen", () => {
   });
 
   test("a spec has its own page: progress, and the sessions on its tasks", async () => {
-    await go("#/p/coven/s/coven-relay");
+    await go("#/p/coven-demo/s/coven-relay");
     assert.equal(doc().querySelector("#main h1")!.textContent, "coven-relay");
     const bar = doc().querySelector<HTMLProgressElement>("progress.big")!;
     assert.equal(bar.getAttribute("value"), "9");
     assert.equal(bar.getAttribute("max"), "10");
     const crumbs = [...doc().querySelectorAll("#main .crumbs a, #main .crumbs span[aria-current]")].map((e) => e.textContent);
-    assert.deepEqual(crumbs, ["Sessions", "coven", "coven-relay"]);
+    assert.deepEqual(crumbs, ["Sessions", "coven-demo", "coven-relay"]);
     const hrefs = [...doc().querySelectorAll("a.scard")].map((c) => c.getAttribute("href"));
     assert.ok(hrefs.includes(`#/run/${RUN_IDS["coven-live"]}`) && !hrefs.includes("#/run/run_fail"));
     // a coven session whose current task belongs to another spec
-    await send("coven", "run_other_spec", [
-      ev("run_other_spec", "coven", "task_started", { task_id: "1", spec: "other-spec", title: "Elsewhere" }, 20),
+    await send("coven-demo", "run_other_spec", [
+      ev("run_other_spec", "coven-demo", "task_started", { task_id: "1", spec: "other-spec", title: "Elsewhere" }, 20),
     ]);
     streams[0].emit("heartbeat", { kind: "heartbeat", run: {} });   // the live stream tells the page to reload
     await wait(900);
-    await go("#/p/coven");
+    await go("#/p/coven-demo");
     assert.ok(card("run_other_spec"), "the project page lists it");
-    await go("#/p/coven/s/coven-relay");
+    await go("#/p/coven-demo/s/coven-relay");
     assert.ok(!card("run_other_spec"), "the spec page does not: it is on another spec");
     assert.ok(card(RUN_IDS["coven-live"]));
     const sub = doc().querySelector('#nav .nav-sub [aria-current="page"]');
@@ -511,16 +559,16 @@ describe("session screen", () => {
   });
 
   test("back from a session returns to the exact list, filter included", async () => {
-    await go("#/p/coven?f=live");
+    await go("#/p/coven-demo?f=live");
     await go(`#/run/${RUN_IDS["coven-live"]}`);
     const back = doc().querySelector<HTMLAnchorElement>('[data-key="back"]')!;
-    assert.equal(back.getAttribute("href"), "#/p/coven?f=live");
-    assert.equal(back.textContent, "coven");
+    assert.equal(back.getAttribute("href"), "#/p/coven-demo?f=live");
+    assert.equal(back.textContent, "coven-demo");
     assert.deepEqual([...doc().querySelectorAll("#main .crumbs > *")].filter((e) => e.tagName !== "SPAN" || e.hasAttribute("aria-current")).map((e) => e.textContent),
-      ["coven", RUN_IDS["coven-live"].length > 22 ? RUN_IDS["coven-live"].slice(0, 22) + "…" : RUN_IDS["coven-live"]]);
+      ["coven-demo", RUN_IDS["coven-live"].length > 22 ? RUN_IDS["coven-live"].slice(0, 22) + "…" : RUN_IDS["coven-live"]]);
     key("Escape");
     await wait(300);
-    assert.equal(dom.window.location.hash, "#/p/coven?f=live");
+    assert.equal(dom.window.location.hash, "#/p/coven-demo?f=live");
     await go("#/deviations");
     await go(`#/run/${RUN_IDS["coven-live"]}`);
     assert.equal(doc().querySelector('[data-key="back"]')!.textContent, "Deviations");
@@ -629,23 +677,72 @@ describe("session screen", () => {
   test("board: members, their claims, and tasks in the right column", async () => {
     await go("#/board/shop", 600);
     assert.equal(doc().querySelector("#main h1")!.textContent, "Coven board · shop");
-    const members = [...doc().querySelectorAll(".member")].map((m) => m.textContent!.replace(/\s+/g, " "));
-    assert.ok(members.some((m) => /ana.*on shop#1/.test(m)), members.join(" | "));
-    assert.ok(members.some((m) => /bo.*on shop#2/.test(m)));
-    const column = (label: string) => [...doc().querySelector(`section.column[aria-label="${label}"]`)!.querySelectorAll(".tcard .id")].map((e) => e.textContent);
+    const witches = [...doc().querySelectorAll(".witch")].map((m) => m.textContent!.replace(/\s+/g, " "));
+    assert.equal(witches.length, 11, "the whole coven is listed");
+    assert.ok(witches.some((m) => /Green Witch.*Working.*on shop#1 · ana/.test(m)), witches.join(" | "));
+    assert.ok(witches.some((m) => /Green Witch.*Working.*on shop#2 · bo/.test(m)));
+    assert.equal(doc().querySelector("#main")!.textContent!.includes("Members"), false);
+    const tile = (label: string) => doc().querySelector(`button.tile[aria-label^="${label}:"]`) as HTMLButtonElement;
+    assert.deepEqual(["Ready", "Claimed", "In review", "Done"].map((l) => tile(l).querySelector(".n")!.textContent), ["1", "1", "1", "1"], "the board shows numbers only");
+    assert.equal(doc().querySelector(".tcard"), null, "no task cards until a number is clicked");
+    const column = (label: string) => {
+      if (tile(label).getAttribute("aria-expanded") !== "true") tile(label).click();
+      return [...doc().querySelector(`section.column-detail[aria-label="${label}"]`)!.querySelectorAll(".tcard .id")].map((e) => e.textContent);
+    };
     assert.deepEqual(column("Ready"), ["shop#4"]);
     assert.deepEqual(column("Claimed"), ["shop#2"]);
     assert.deepEqual(column("In review"), ["shop#1"], "a task with a reviewer is in review");
     assert.deepEqual(column("Done"), ["shop#3"]);
+    column("In review");
     const cart = doc().querySelector('[data-key="task-shop#1"]')!.textContent!;
     assert.match(cart, /ana is on it.*reviewing: cy.*1 note/s);
+  });
+
+  test("board: the witches are what is shown: who works, who is available, who is not; hosts are only where", async () => {
+    await go("#/board/lab", 600);
+    const by = (slug: string) => doc().querySelector(`[data-key="witch-${slug}"]`)!;
+    const text = (slug: string) => by(slug).textContent!.replace(/\s+/g, " ");
+    assert.match(text("elf"), /Working.*on lab#L1 · wsl-7/);
+    assert.ok(by("elf").classList.contains("working"));
+    assert.match(text("raven"), /Available.*on wsl-7/);
+    assert.ok(by("raven").classList.contains("available"));
+    assert.match(text("herald"), /Not available.*no host runs it/);
+    assert.ok(by("herald").classList.contains("offline"));
+    assert.match(doc().querySelector("#main h2")!.parentElement!.textContent!, /Witches/);
+    assert.equal(doc().querySelector(".member"), null, "no list of machines");
+    const order = [...doc().querySelectorAll(".witch")].map((e) => e.className.replace("witch ", ""));
+    assert.deepEqual(order, [...order].sort((a, b) => ["working", "available", "full", "offline"].indexOf(a) - ["working", "available", "full", "offline"].indexOf(b)), "working first, unavailable last");
+    const label = (col: string) => doc().querySelector(`button.tile[data-col="${col}"]`)?.getAttribute("aria-label");
+    assert.equal(label("review"), "In review: 1 task", "an answered task waits in review, not in claimed");
+    assert.equal(label("failed"), "Blocked: 1 task", "a failed task is blocked, not ready");
+    assert.equal(label("ready"), "Ready: 1 task", "the Chair's job is a task on the board, waiting for a White Hat host");
+    openColumn("ready");
+    const job = doc().querySelector('[data-key="task-council#rq9-1"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(job, /Run the relay tests/);
+    assert.match(job, /White Hat Witch needed/);
+    openColumn("review");
+    const held = doc().querySelector('[data-key="task-lab#L1"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(held, /Elf on wsl-7/);
+    assert.match(held, /Answered.*Try a materialised view/);
+    (doc().querySelector('[data-key="done-lab#L1"]') as HTMLButtonElement).click();
+    await wait(900);
+    assert.equal(label("review"), "In review: 0 tasks", "accepted by a person: it leaves review");
+    assert.equal(label("done"), "Done: 1 task");
+    openColumn("failed");
+    const blocked = doc().querySelector('[data-key="task-lab#L2"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(blocked, /Raven needed/);
+    assert.match(blocked, /Failed.*no answer within 5 s/);
+    const sticky = doc().querySelector(".wall .sticky")!;
+    assert.match(sticky.textContent!.replace(/\s+/g, " "), /Elf on wsl-7/);
+    assert.ok(sticky.querySelector("svg.av"), "the note carries its agent's icon");
+    await go("#/");
   });
 
   test("board: notes are sticky notes, newest first, with author and task", async () => {
     await go("#/board/shop", 400);
     const first = doc().querySelector(".wall .sticky")!;
     assert.ok(first.classList.contains("question"));
-    assert.match(first.textContent!.replace(/\s+/g, " "), /question\s*What if the cart is empty\?\s*cy · on shop#1 · \d+ s ago/);
+    assert.match(first.textContent!.replace(/\s+/g, " "), /question\s*What if the cart is empty\?\s*cy · on shop#1 · \d+ (?:s|min) ago/);
   });
 
   test("board: a person posts a note from the web and it lands on the board", async () => {
@@ -675,6 +772,7 @@ describe("session screen", () => {
         { task_id: "5.2", title: "Second", status: "not_started", parent: "5" }] }, 5), member: "ana" }]);
     await go("#/");
     await go("#/board/shop", 600);
+    openColumn("ready");
     const second = doc().querySelector('[data-key="task-steps#5.2"]')!;
     assert.ok(second.classList.contains("waiting"));
     assert.match(second.textContent!, /waits for 5\.1/);
@@ -687,7 +785,8 @@ describe("session screen", () => {
     assert.equal((await postJson(s.base, "/v1/claims", { project_id: "shop", member: "dee", spec: "shop", task_id: "4", paths: ["docs/"] })).status, 201);
     streams[0].emit("board", { kind: "board", project_id: "shop" });
     await wait(900);
-    assert.deepEqual([...doc().querySelector('section.column[aria-label="Claimed"]')!.querySelectorAll(".tcard .id")].map((e) => e.textContent), ["shop#2", "shop#4"]);
+    openColumn("claimed");
+    assert.deepEqual([...doc().querySelector('section.column-detail[aria-label="Claimed"]')!.querySelectorAll(".tcard .id")].map((e) => e.textContent), ["shop#2", "shop#4"]);
     await go("#/");
   });
 
@@ -771,6 +870,208 @@ describe("first run", () => {
       const t = page.window.document.getElementById("main")!.textContent!;
       for (const step of ["No sessions yet", "coven project link", "coven relay up --machine", "coven hooks check", "kiro-cli chat"]) assert.ok(t.includes(step), step);
     } finally { page.window.close(); await empty.close(); }
+  });
+});
+
+describe("council chat", () => {
+  const form = () => doc().getElementById("chat-form")!;
+  const submit = async () => { form().dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true })); await wait(500); };
+  const pick = (kind: string) => { (doc().querySelector(`input[name="chat-kind"][value="${kind}"]`) as HTMLInputElement).checked = true; };
+  const type = (id: string, value: string) => { (doc().getElementById(id) as HTMLInputElement).value = value; };
+  const bubbles = () => [...doc().querySelectorAll(".chat .msg")].map((el) => el.textContent!.replace(/\s+/g, " ").trim());
+
+  test("the sidebar leads to the chat; nobody listening is said plainly", async () => {
+    await go("#/chat/shop");
+    assert.ok(doc().querySelector('[data-key="nav-chat"]'), "a Council chat place in the sidebar");
+    assert.equal(doc().querySelector("#main h1")!.textContent, "Council chat · shop");
+    assert.ok(text().includes("No member is listening") && text().includes("coven council listen"));
+    assert.ok(text().includes("No messages yet"));
+  });
+
+  test("a person asks a role a question; it waits for the council", async () => {
+    await go("#/chat/shop");
+    type("chat-text", "Is the cart total cached?");
+    (doc().getElementById("chat-to") as HTMLSelectElement).value = "red-team";
+    (doc().getElementById("chat-author") as HTMLInputElement).value = "duy";
+    await submit();
+    assert.equal((doc().getElementById("chat-text") as HTMLTextAreaElement).value, "", "the box is cleared after sending");
+    const [first] = bubbles();
+    assert.ok(first.includes("Ask") && first.includes("duy") && first.includes("to Black Hat Witch — Red Team"), first);
+    assert.ok(first.includes("waiting for the council…"));
+  });
+
+  test("a rejection must name its task, and is shown as binding", async () => {
+    await go("#/chat/shop");
+    pick("reject");
+    type("chat-text", "Not like this: an empty cart crashes.");
+    await submit();
+    assert.match(doc().getElementById("chat-error")!.textContent!, /needs the task/);
+    assert.equal(bubbles().length, 1, "nothing was sent");
+    (doc().getElementById("chat-task") as HTMLSelectElement).value = "shop#1";
+    await submit();
+    const last = bubbles().at(-1)!;
+    assert.ok(last.includes("Reject") && last.includes("on shop#1") && last.includes("Binding"), last);
+  });
+
+  test("the council's answer arrives live, in the voice of the role asked, and the wait ends", async () => {
+    const chat = (await getJson(s.base, "/v1/chat?project_id=shop")).body;
+    const asked = chat.messages[0];
+    await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "member_ana", events: [
+      { event_id: "evt_listen_ana", project_id: "shop", run_id: "member_ana", type: "council_listening", ts: new Date().toISOString(), member: "ana", payload: { roles: ["chair", "red-team"] } },
+      { event_id: "evt_answer_ana", project_id: "shop", run_id: "member_ana", type: "chat_message", ts: new Date().toISOString(), member: "ana",
+        payload: { role: "council", kind: "answer", message: "Yes, but it is never invalidated on write.", reply_to: asked.message_id, persona: "red-team" } },
+    ] });
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    const all = bubbles();
+    const reply = all.find((b) => b.includes("never invalidated"))!;
+    assert.ok(reply.includes("Black Hat Witch — Red Team") && reply.includes("on ana") && reply.includes("↪ duy: “Is the cart total cached?”"), reply);
+    assert.ok(!all[0].includes("waiting for the council"), "answered");
+    assert.ok(text().includes("Answering: ana"), "the listener is shown online");
+  });
+
+  test("Do it sends work to a witch: it says when no host runs her, then who takes it, then the answer in steps", async () => {
+    await go("#/chat/shop");
+    pick("do");
+    type("chat-text", "review the relay and plan the fixes");
+    (doc().getElementById("chat-to") as HTMLSelectElement).value = "dev";
+    await submit();
+    assert.match(doc().getElementById("chat-error")!.textContent!, /Dev builds from a task/);
+    // no witch named: the Chair decides who does it
+    type("chat-text", "who will review the code?");
+    (doc().getElementById("chat-to") as HTMLSelectElement).value = "";
+    await submit();
+    const chairs = bubbles().find((b) => b.includes("who will review the code?"))!;
+    assert.ok(chairs.includes("Do it") && chairs.includes("to the council"), chairs);
+    assert.match(chairs, /No online host runs Grey Witch — Senior Kiro · Chair/);
+    type("chat-text", "review the relay and plan the fixes");
+    (doc().getElementById("chat-to") as HTMLSelectElement).value = "sa";
+    await submit();
+    const mine = () => bubbles().find((b) => b.includes("review the relay"))!;
+    assert.ok(mine().includes("Do it") && mine().includes("to Elder Witch — SA"), mine());
+    assert.match(mine(), /No online host runs Elder Witch — SA/);
+
+    const askedId = (await getJson(s.base, "/v1/chat?project_id=shop")).body.messages.find((m: any) => m.kind === "do" && m.message.includes("review the relay")).message_id;
+    const send = (events: any[]) => postJson(s.base, "/v1/events", { project_id: "shop", run_id: "member_wsl-7", events });
+    const at = () => new Date().toISOString();
+    await send([{ event_id: "evt_host_chat", project_id: "shop", run_id: "member_wsl-7", type: "host_online", ts: at(), member: "wsl-7", payload: { agents: ["elder-witch"], slots: 1, running: [] } }]);
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    assert.match(mine(), /wsl-7 will take it/);
+
+    await send([{ event_id: "evt_work_chat", project_id: "shop", run_id: "member_wsl-7", type: "chat_message", ts: at(), member: "wsl-7",
+      payload: { role: "council", kind: "working", message: "Elder Witch — SA is on it, on wsl-7.", reply_to: askedId, persona: "elder-witch" } }]);
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    assert.match(mine(), /Elder Witch — SA is working on it/);
+    assert.ok(bubbles().some((b) => b.includes("is on it, on wsl-7")), "the status line is in the thread");
+
+    await send([1, 2].map((n) => ({ event_id: `evt_step_${n}`, project_id: "shop", run_id: "member_wsl-7", type: "chat_message", ts: at(), member: "wsl-7",
+      payload: { role: "council", kind: "answer", message: `${n}. step ${n}`, reply_to: askedId, persona: "elder-witch" } })));
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    assert.ok(!/working on it|will take it/.test(mine()), "closed once answered");
+    const answers = bubbles().filter((b) => b.includes("Elder Witch — SA") && b.includes("on wsl-7") && /\d\. step \d/.test(b));
+    assert.equal(answers.length, 1, "the steps of one answer are one bubble");
+    assert.deepEqual(answers[0].match(/\d\. step \d/g), ["1. step 1", "2. step 2"]);
+    assert.ok(!bubbles().some((b) => b.includes("is on it, on wsl-7")), "the working line goes once the answer is in");
+  });
+
+  test("the chat page fills the window: the page itself never scrolls, only the conversation", async () => {
+    await go("#/chat/shop");
+    assert.ok(doc().body.classList.contains("chat-mode"));
+    assert.ok(doc().querySelector(".chat-page #chat-thread ol.chat") && doc().querySelector(".chat-page > #chat-form"), "the thread, then the composer");
+    await go("#/board/shop");
+    assert.ok(!doc().body.classList.contains("chat-mode"), "other pages scroll as before");
+  });
+
+  test("Enter sends, Shift+Enter is a new line, and the conversation sticks to its newest message", async () => {
+    await go("#/chat/shop");
+    pick("ask");
+    (doc().getElementById("chat-to") as HTMLSelectElement).value = "tester";
+    const box = doc().getElementById("chat-text") as HTMLTextAreaElement;
+    const press = (init: KeyboardEventInit) => {
+      const ev = new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...init });
+      box.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    };
+    box.focus();
+    box.value = "first line";
+    assert.equal(press({ shiftKey: true }), false, "Shift+Enter is left to the box: a new line");
+    assert.equal(press({ isComposing: true }), false, "an input method composing a character keeps its Enter");
+    const before = (await getJson(s.base, "/v1/chat?project_id=shop")).body.messages.length;
+    assert.equal(press({}), true, "Enter sends");
+    press({}); // a second Enter at once must not send it twice
+    await wait(700);
+    const after = (await getJson(s.base, "/v1/chat?project_id=shop")).body.messages;
+    assert.equal(after.length, before + 1);
+    assert.equal(after[after.length - 1].message, "first line");
+    assert.equal((doc().getElementById("chat-text") as HTMLTextAreaElement).value, "");
+    assert.equal(doc().activeElement!.id, "chat-text", "you can type the next message at once");
+    assert.match(doc().getElementById("chat-keys")!.textContent!, /Enter to send · Shift\+Enter for a new line/);
+
+    // jsdom lays nothing out, so give the pane a size by hand: tall content, short window.
+    const pane = () => doc().getElementById("chat-thread") as HTMLElement;
+    const size = (el: HTMLElement, scrollHeight: number, clientHeight: number) => {
+      Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => scrollHeight });
+      Object.defineProperty(el, "clientHeight", { configurable: true, get: () => clientHeight });
+    };
+    size(pane(), 2000, 300);
+    pane().scrollTop = 1700; // at the bottom
+    for (const proto of [dom.window.HTMLElement.prototype]) {
+      Object.defineProperty(proto, "scrollHeight", { configurable: true, get() { return (this as HTMLElement).id === "chat-thread" ? 2400 : 0; } });
+      Object.defineProperty(proto, "clientHeight", { configurable: true, get() { return (this as HTMLElement).id === "chat-thread" ? 300 : 0; } });
+    }
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    assert.equal(pane().scrollTop, 2400, "at the bottom: a new render stays at the newest message");
+    pane().scrollTop = 500; // the reader scrolls up to read older messages
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    assert.equal(pane().scrollTop, 500, "scrolled up: a live update does not yank the reader down");
+    box.value = "";
+    delete (dom.window.HTMLElement.prototype as any).scrollHeight;
+    delete (dom.window.HTMLElement.prototype as any).clientHeight;
+  });
+
+  test("what you are typing survives a live update", async () => {
+    await go("#/chat/shop");
+    type("chat-text", "half a thought");
+    pick("idea");
+    (doc().getElementById("chat-text") as HTMLTextAreaElement).focus();
+    streams[0].emit("heartbeat", { kind: "heartbeat", run: {} });
+    await wait(900);
+    assert.equal((doc().getElementById("chat-text") as HTMLTextAreaElement).value, "half a thought");
+    assert.equal((doc().querySelector('input[name="chat-kind"]:checked') as HTMLInputElement).value, "idea");
+    assert.equal(doc().activeElement!.id, "chat-text");
+    type("chat-text", "");
+  });
+});
+
+describe("demo data is labelled only where it is shown", () => {
+  const banner = () => doc().querySelector("#main .banner.demo");
+
+  test("a real project with no seeded events never says DEMO DATA, on its sessions or its board", async () => {
+    for (const hash of ["#/p/atlas", "#/board/shop", "#/p/shop"]) {
+      await go(hash);
+      assert.equal(banner(), null, `${hash} shows no demo banner`);
+    }
+  });
+
+  test("the demo project says so, and each seeded session carries a demo badge", async () => {
+    await go("#/p/coven-demo");
+    assert.ok(banner(), "demo banner on the demo project");
+    const badge = (id: string) => card(id)?.querySelector(".badge.warn")?.textContent;
+    assert.deepEqual([badge(RUN_IDS["coven-live"]), badge(RUN_IDS["coven-done"])], ["demo", "demo"], "every seeded session is badged");
+    await go("#/board/atlas-api");
+    assert.ok(banner(), "the seeded board says so too");
+  });
+
+  test("a mixed list says so, but only the seeded sessions are badged", async () => {
+    await go("#/");
+    assert.ok(banner(), "the all-sessions list holds seeded sessions");
+    const real = card(REAL_RUN)!;
+    assert.equal(real.querySelector(".badge"), null, "a real session is not badged");
   });
 });
 
