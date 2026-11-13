@@ -96,7 +96,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H2 | Hosts **pull** work: each tick a host with a free slot takes chat requests, council jobs, rework, then the next ready task whose witch it runs. The cloud never assigns. | Must | Built |
 | FR-H3 | A task runs as the witch its `_Agent:_` names; without one, the Dev (Green Witch). A host that lacks the witch leaves the task for one that has it. | Must | Built |
 | FR-H4 | A claim is held by host plus witch, with a lease; the cloud refuses a claim on a held task or on paths that overlap a held task. | Must | Built |
-| FR-H5 | A headless run trusts only the tools its kind needs: build (write and shell), inspect (read and shell), think (read only). | Must | Built |
+| FR-H5 | A headless run trusts only the tools its kind needs: build (write and shell), inspect (read and shell), think (read only). The shell is trusted under both engine names (`run_command` for v3, `execute_bash` for v2). | Must | Built (probed on kiro-cli 3.2.1) |
 | FR-H6 | The Dev builds in her own git worktree on `coven/<spec>-<task>`. The **host**, not the model, refuses changes outside `_Paths:_` or a failing `_Verify:_`, ticks the task on the branch and commits locally. It never pushes or merges and never touches the main checkout. | Must | Built |
 | FR-H7 | Inspect and think witches answer read-only; the answer is posted as a board note under the witch's name. | Must | Built |
 | FR-H8 | People's rejection or feedback on a submitted task sends the same witch back to the same branch with that feedback. | Must | Built |
@@ -121,9 +121,13 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-CH2 | Everything said to the council goes to the Chair when an online host runs her. She is told what each witch can do and which are online, the last 10 messages and the open tasks; she answers and, when work is wanted, makes jobs. | Must | Built |
 | FR-CH3 | The Chair's jobs become tasks of the spec `council` on the board, taken by a host that runs that witch; the answer returns to the chat and the board. Jobs for the Dev, the Chair or unknown witches are dropped. | Must | Built |
 | FR-CH4 | The Chair prefers online witches, and says so when a job waits for one. | Should | Built |
-| FR-CH5 | Code changes go through `tasks.md`: nothing in the chat writes to the repository; a Do it to the Dev is refused. | Must | Built |
+| FR-CH5 | Nothing in the chat writes to the repository: a Do it to the Dev is refused; code changes go through `tasks.md` or a plan a person approved (FR-CH8). | Must | Built |
 | FR-CH6 | Messages to one witch (not Do it), or everything when no host runs the Chair, are answered by the listener (`coven council listen`) in that witch's voice. | Should | Built |
 | FR-CH7 | A Reject is binding: it fails the task's review and sends submitted work back. | Must | Built |
+| FR-CH8 | A request for a change becomes a planning job for the Elder Witch: she proposes at most five build tasks, each with narrow paths and one verify command, which the host checks and puts on the board as a plan. | Should | Built (not yet run with a real model) |
+| FR-CH9 | Only a person's approval of a plan (dashboard, `POST /v1/board/plan`) makes build tasks; the Dev builds each on its own branch and the host checks and commits it as for a spec task. | Must | Built |
+| FR-CH10 | A plan task's submitted branch gets review jobs for White Hat and Black Hat, run in a checkout of that branch; people read them and merge or reject. Reviews of "what I have" see the working copy's uncommitted changes. | Should | Built |
+| FR-CH11 | One voice per message: the listener stays quiet when a host's Chair answers first. | Should | Built |
 
 ### 4.8 Preparing tasks
 

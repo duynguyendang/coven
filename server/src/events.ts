@@ -52,6 +52,9 @@ export const EVENT_TYPES = new Set([
   "task_created",
   // a person decides a task runs in Kiro Web (or takes that back) — contract §5.6, web only
   "task_dispatch",
+  // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
+  "plan_proposed",
+  "plan_decision",
   // council chat — contract §5.7
   "chat_message",
   "council_listening",
@@ -62,7 +65,20 @@ export const EVENT_TYPES = new Set([
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
 /** People's word, made by the cloud from the web (POST /v1/board/dispatch); a relay may not send it. */
-export const WEB_ONLY_TYPES = new Set(["task_dispatch"]);
+export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision"]);
+export const PLAN_STATES = new Set(["approved", "rejected"]);
+export const MAX_PLAN_TASKS = 5;
+const TASK_ID = /^[A-Za-z0-9._-]{1,20}$/;
+const BRANCH = /^coven\/[A-Za-z0-9._-]{1,100}$/;
+/** A declared path a plan may use: repo-relative, never the whole repo, never outside it. */
+export function planPathProblem(path: unknown): string | null {
+  if (typeof path !== "string" || !path.trim() || path.length > 200) return "a path is a non-empty string of at most 200 characters";
+  const text = path.trim();
+  if (["*", "**", "**/*", ".", "./", "/"].includes(text) || text.startsWith("/") || text.startsWith("~") || text.split("/").includes("..") || text.includes("`")) {
+    return `path ${JSON.stringify(text.slice(0, 40))} must be repo-relative and narrower than the whole repo`;
+  }
+  return null;
+}
 export const DISPATCH_VIA = new Set(["kiro-web"]);
 export const DISPATCH_STATES = new Set(["requested", "cancelled"]);
 const NOTE_KINDS = new Set(["idea", "question", "answer", "review", "note", "review-wanted"]);
@@ -167,8 +183,28 @@ export function validateEvent(event: Json): string[] {
     if (!DISPATCH_VIA.has(p.via)) errors.push(`task_dispatch via must be one of ${[...DISPATCH_VIA].join(", ")}`);
     if (!DISPATCH_STATES.has(p.state)) errors.push(`task_dispatch state must be one of ${[...DISPATCH_STATES].join(", ")}`);
   }
+  if (event.type === "plan_proposed") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.plan !== "string" || !TASK_REF.test(p.plan)) errors.push("plan_proposed needs plan as <spec>#<task> (the planning job)");
+    if (!Array.isArray(p.tasks) || !p.tasks.length || p.tasks.length > MAX_PLAN_TASKS) errors.push(`plan_proposed needs 1 to ${MAX_PLAN_TASKS} tasks`);
+    for (const t of Array.isArray(p.tasks) ? p.tasks.slice(0, MAX_PLAN_TASKS) : []) {
+      if (!isObject(t)) { errors.push("every plan task is an object"); continue; }
+      if (typeof t.task_id !== "string" || !TASK_ID.test(t.task_id)) errors.push("a plan task needs a task_id of letters, digits, . _ -");
+      if (typeof t.title !== "string" || !t.title.trim()) errors.push("a plan task needs a title");
+      if (!Array.isArray(t.paths) || !t.paths.length || t.paths.length > 10) errors.push("a plan task declares 1 to 10 paths");
+      for (const path of Array.isArray(t.paths) ? t.paths : []) { const why = planPathProblem(path); if (why) errors.push(why); }
+      if (typeof t.verify !== "string" || !t.verify.trim() || t.verify.length > 200 || /[`\n]/.test(t.verify)) errors.push("a plan task needs one verify command of at most 200 characters");
+    }
+  }
+  if (event.type === "plan_decision") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.plan !== "string" || !TASK_REF.test(p.plan)) errors.push("plan_decision needs plan as <spec>#<task>");
+    if (!PLAN_STATES.has(p.state)) errors.push(`plan_decision state must be one of ${[...PLAN_STATES].join(", ")}`);
+  }
   if (event.type === "task_created") {
     const p = isObject(payload) ? payload : {};
+    if (p.branch !== undefined && (typeof p.branch !== "string" || !BRANCH.test(p.branch))) errors.push("task_created branch must be coven/<name>");
+    if (p.review_of !== undefined && (typeof p.review_of !== "string" || !TASK_REF.test(p.review_of))) errors.push("task_created review_of must be <spec>#<task>");
     if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_created needs task as <spec>#<task>");
     if (typeof p.title !== "string" || !p.title.trim()) errors.push("task_created needs a title");
     if (typeof p.agent !== "string" || !AGENT_SLUGS.has(p.agent)) errors.push("task_created needs the agent that should do it");

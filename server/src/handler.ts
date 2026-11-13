@@ -257,7 +257,7 @@ export function createHandler(options: HandlerOptions): Handler {
         }
         const problems = validateEvent(event);
         if (CLOUD_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is made by the cloud only (POST /v1/claims)`);
-        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch), not a relay's`);
+        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch or /v1/board/plan), not a relay's`);
         if (event.type === "task_status" && (event.payload || {}).state === "done") {
           problems.push("done is people's word (POST /v1/board/done), not a doer's report");
         }
@@ -399,6 +399,22 @@ export function createHandler(options: HandlerOptions): Handler {
       const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_dispatch", ts: now(), payload });
       if (problems.length) throw validation("task", problems.join("; "));
       const event = await store.postWebDispatch(projectId, redactEvent({ payload }).payload);
+      return json(201, { event_id: event.event_id });
+    }
+
+    if (method === "POST" && path === "/v1/board/plan") {
+      // A person approves or rejects the Elder Witch's plan. Approval turns its tasks into build tasks for the Dev;
+      // the plan is decided once. A read token may, like Mark done: people decide, and every signed-in person is one.
+      need(request, url, "read");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = idField(body, "project_id");
+      const payload = { plan: optionalString(body, "plan") ?? "", state: optionalString(body, "state") ?? "",
+        author: (optionalString(body, "author") ?? "someone").slice(0, 40) };
+      const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "plan_decision", ts: now(), payload });
+      if (problems.length) throw validation("plan", problems.join("; "));
+      const event = await store.postWebPlanDecision(projectId, redactEvent({ payload }).payload);
+      if (!event) throw new HttpError(409, "no such plan is waiting for a decision");
       return json(201, { event_id: event.event_id });
     }
 

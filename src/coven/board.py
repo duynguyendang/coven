@@ -258,14 +258,33 @@ def task_status(root: Path, ref: str, state: str, agent: str | None = None, deta
     return _member_event(root, "task_status", payload)
 
 
-def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, detail: str | None = None, source: str | None = None) -> dict:
-    """A job for a witch, as a task on the board (the Chair makes them from a person's request)."""
+def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, detail: str | None = None, source: str | None = None,
+                plan: bool = False, branch: str | None = None, review_of: str | None = None) -> dict:
+    """A job for a witch, as a task on the board (the Chair makes them from a person's request).
+
+    `plan`: a planning job (the Elder Witch proposes build tasks for people to approve). `branch` and `review_of`:
+    a review job, run in a checkout of that task branch."""
     payload = {"task": f"{spec}#{task_id}", "title": " ".join(str(title).split())[:120], "agent": agent}
+    if plan:
+        payload["plan"] = True
+    if branch:
+        payload["branch"] = branch
+    if review_of:
+        payload["review_of"] = review_of
     if detail:
         payload["detail"] = " ".join(str(detail).split())[:380]
     if source:
         payload["source"] = source
     return _member_event(root, "task_created", payload)
+
+
+def plan_propose(root: Path, plan: str, tasks: list[dict], summary: str, source: str | None = None, agent: str = "elder-witch") -> dict:
+    """The Elder Witch's plan for a request: build tasks a person approves (or rejects) on the board. Nothing builds before that."""
+    payload = {"plan": plan, "agent": agent, "summary": " ".join(str(summary).split())[:380],
+               "tasks": [{k: t[k] for k in ("task_id", "title", "detail", "paths", "verify") if t.get(k)} for t in tasks][:5]}
+    if source:
+        payload["source"] = source
+    return _member_event(root, "plan_proposed", payload)
 
 
 def host_online(root: Path, agents: list[str], slots: int, running: list[str] | None = None, cloud: list[str] | None = None) -> dict:

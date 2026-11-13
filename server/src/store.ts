@@ -192,7 +192,7 @@ export class MemoryStore {
       this.publish({ kind: "event", event: this.view(event), run: { ...run } });
       // An answer or a note arrives from a relay as an ordinary event: tell the chat and board pages too.
       if (event.type === "chat_message") this.publish({ kind: "chat", project_id: event.project_id });
-      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
+      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch", "plan_proposed", "plan_decision"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
     }
     return true;
   }
@@ -523,6 +523,16 @@ export class MemoryStore {
   /** A person decides a task runs in Kiro Web, or takes that back (a `task_dispatch`, from the web). */
   async postWebDispatch(projectId: string, payload: Json): Promise<Json> {
     const event = this.boardEvent(projectId, "task_dispatch", undefined, payload, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    this.publish({ kind: "board", project_id: projectId });
+    return event;
+  }
+
+  /** A person approves or rejects a proposed plan (a `plan_decision`, from the web). Null when there is no such plan waiting. */
+  async postWebPlanDecision(projectId: string, payload: Json): Promise<Json | null> {
+    const plan = this.board.plans.get(projectId)?.get(String(payload.plan));
+    if (!plan || plan.state !== "proposed") return null;
+    const event = this.boardEvent(projectId, "plan_decision", undefined, payload, "web");
     await this.ingest(projectId, event.run_id, [event]);
     this.publish({ kind: "board", project_id: projectId });
     return event;

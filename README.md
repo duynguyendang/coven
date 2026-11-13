@@ -316,9 +316,15 @@ Leave *To* on **the council**, and the **Chair** (Grey Witch, on a host that run
 answers. She sees the recent conversation, the witches online and the open tasks. When you
 want something done she makes a **job for each witch it needs**: the jobs appear on the board
 (spec `council`), hosts that run those witches take them, and the answers come back into the
-chat. Name a witch under *To* with **Do it** to send her the work directly (not the Dev: she
-builds only from `tasks.md`; to get code changed, the Chair has the Elder Witch write the task
-lines, and you add them).
+chat. Name a witch under *To* with **Do it** to send her the work directly (not the Dev).
+
+To get code changed, ask for it ("add …", "fix …"). The Chair gives the Elder Witch a
+**planning job**; her plan (at most five tasks, each with its paths and verify command) appears
+on the board under **Plans**. Nothing is built until you press **Approve plan**. Then the Dev
+builds each task on its own branch `coven/council-<id>` (the host checks paths and verify and
+commits locally), White Hat and Black Hat review that branch, and you merge, or reject in the
+chat and the Dev reworks it. A task can go to Kiro Web instead ("Run in Kiro Web") before a host
+takes it. A review of "what I have" sees your uncommitted changes.
 
 ```bash
 ./run-host.sh            # runs the Chair and the other witches: dispatch and work

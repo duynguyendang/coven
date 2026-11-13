@@ -325,6 +325,10 @@
   @media (max-width: 640px) { .chat-compose .keys { display: none; } .msg { max-width: 94%; } .chat-page .page-h .lede, .chat-page .crumbs { display: none; } .chat-page .page-h h1 { font-size: 18px; } }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); margin-bottom: 14px; }
   .card > .body { padding: 14px 16px; }
+  .plan ol { margin: 0 0 10px; padding-left: 20px; }
+  .plan li { margin-bottom: 8px; overflow-wrap: anywhere; }
+  .plan li code { font-size: 12px; }
+  .plan .decide { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .card > .head { padding: 11px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .empty { padding: 26px 16px; color: var(--muted); font-size: 13px; }
   .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
@@ -1104,6 +1108,19 @@
     }
     return out;
   }
+  /** A plan the Elder Witch proposed: every task with its paths and verify command, so a person sees what would run before approving. */
+  function planCard(p) {
+    const items = (p.tasks || []).map((t) => `<li><b>${esc(t.title)}</b>${t.detail ? ` <span class="hint">${esc(short(t.detail, 200))}</span>` : ""}
+      <div class="hint">paths ${(t.paths || []).map((x) => `<code>${esc(x)}</code>`).join(" ")} · verify <code>${esc(t.verify)}</code></div></li>`).join("");
+    const decided = p.state !== "proposed";
+    const status = decided ? `<span class="badge ${p.state === "approved" ? "accept" : "reject"}">${p.state === "approved" ? "Approved" : "Rejected"}</span> <span class="hint">by ${esc(p.decided_by || "someone")}</span>`
+      : `<span class="badge warn">Waits for you</span>`;
+    const buttons = decided ? "" : `<div class="decide"><button class="act" type="button" data-plan="${esc(p.plan)}" data-plan-state="approved" data-key="approve-${esc(p.plan)}">Approve plan</button>
+      <button class="act" type="button" data-plan="${esc(p.plan)}" data-plan-state="rejected" data-key="reject-${esc(p.plan)}">Reject</button>
+      <span class="hint">On approval the Dev builds each task on its own branch; White Hat and Black Hat review it; you merge.</span></div>`;
+    return `<section class="card plan" data-key="plan-${esc(p.plan)}" aria-label="Plan ${esc(p.plan)}"><div class="head"><h3>${avatar(p.agent || "elder-witch")}${esc(agentName(p.agent || "elder-witch"))} · plan ${esc(p.plan)}</h3>${status}</div>
+      <div class="body">${p.summary ? `<p style="margin:0 0 8px">${esc(p.summary)}</p>` : ""}${decided ? "" : `<ol>${items}</ol>`}${buttons}</div></section>`;
+  }
   /** Some online host is set up to run tasks in Kiro Web (it names the repository it may use). */
   function cloudHostOnline(b) {
     return (b.hosts || b.members || []).some((h) => (h.cloud || []).length && secondsSince(h.last_seen) !== null && secondsSince(h.last_seen) < ONLINE_SECONDS);
@@ -1129,8 +1146,9 @@
       ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "";
     const agentLine = `<div class="agent">${avatar(holder || need)}<span>${esc(agentName(holder || need))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : " needed"}</span></div>`;
     const stuck = state.runnable && isStuck(t, state.runnable);
+    const planLine = t.from_plan ? `<div class="hint">from plan ${esc(t.from_plan)}, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${stuckLine}${stateLine}${dispatchLine(t, need)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${dispatchLine(t, need)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -1175,6 +1193,9 @@
     state.runnable = runnableWitches(b);
     state.cloudReady = cloudHostOnline(b);
     const stuckCount = cols.ready.filter((t) => isStuck(t, state.runnable)).length;
+    // Plans that wait for a person first, then the three latest decided ones.
+    const plans = [...(b.plans || []).filter((p) => p.state === "proposed"), ...(b.plans || []).filter((p) => p.state !== "proposed").slice(0, 3)];
+    const waitingPlans = plans.filter((p) => p.state === "proposed").length;
     // The board shows numbers only; a click on a number opens that column's tasks below.
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : null;
     const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host · ` : ""}${open === key ? "Hide tasks" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
@@ -1191,6 +1212,7 @@
         lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
       ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
       <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? `<div class="witches">${members.html}</div>` : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
+      ${plans.length ? `<h2>Plans${waitingPlans ? ` <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span>` : ""}</h2>${plans.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
       <h2>Whiteboard</h2>${compose}
@@ -1774,6 +1796,16 @@
         await loadBoard();
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }
+    }));
+    root.querySelectorAll("[data-plan]").forEach((el) => el.addEventListener("click", async () => {
+      const pair = [...(el.closest(".plan") || el.parentElement).querySelectorAll("[data-plan]")];
+      pair.forEach((b) => { b.disabled = true; });
+      try {
+        await api("/v1/board/plan", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), plan: el.dataset.plan,
+          state: el.dataset.planState, author: localStorage.getItem("coven_author") || undefined }) });
+        await loadBoard();
+        render({ keepScroll: true });
+      } catch (error) { pair.forEach((b) => { b.disabled = false; }); quiet(error); }
     }));
     root.querySelectorAll("[data-dispatch], [data-undispatch]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;

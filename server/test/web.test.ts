@@ -722,6 +722,27 @@ describe("session screen", () => {
     assert.ok(button(), "taken back: the button returns");
     await go("#/");
   });
+  test("board: a plan shows every task with its paths and verify; a person approves it and the Dev's tasks appear", async () => {
+    await send("shop", "member_wsl-8", [{ ...ev("member_wsl-8", "shop", "task_created", { task: "council#rp1-1", title: "Plan the cart total", agent: "elder-witch", plan: true }, 3), member: "wsl-8" },
+      { ...ev("member_wsl-8", "shop", "plan_proposed", { plan: "council#rp1-1", summary: "Two small steps.", tasks: [
+        { task_id: "rp1-1b1", title: "Cart total", detail: "sum the items", paths: ["src/cart/"], verify: "pytest -q tests/test_cart.py" },
+        { task_id: "rp1-1b2", title: "Docs", paths: ["docs/"], verify: "true" }] }, 2), member: "wsl-8" }]);
+    await go("#/");
+    await go("#/board/shop", 600);
+    const card = () => doc().querySelector('[data-key="plan-council#rp1-1"]')!;
+    const text = card().textContent!.replace(/\s+/g, " ");
+    assert.match(text, /Elder Witch.*plan council#rp1-1.*Waits for you/);
+    assert.match(text, /Cart total.*paths src\/cart\/.*verify pytest -q tests\/test_cart\.py/);
+    assert.match(doc().querySelector("#main")!.textContent!, /1 plan waits for you/);
+    (doc().querySelector('[data-key="approve-council#rp1-1"]') as HTMLButtonElement).click();
+    await wait(900);
+    assert.match(card().textContent!.replace(/\s+/g, " "), /Approved by/);
+    assert.equal(doc().querySelector('[data-key="approve-council#rp1-1"]'), null, "decided once");
+    openColumn("ready");
+    const build = doc().querySelector('[data-key="task-council#rp1-1b1"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(build, /Cart total.*Green Witch.*from plan council#rp1-1, approved by/);
+    await go("#/");
+  });
   test("board: the witches are what is shown: who works, who is available, who is not; hosts are only where", async () => {
     await go("#/board/lab", 600);
     const by = (slug: string) => doc().querySelector(`[data-key="witch-${slug}"]`)!;

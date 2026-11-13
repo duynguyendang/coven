@@ -135,10 +135,34 @@ sequenceDiagram
 ```
 
 The Chair replies with one JSON object `{answer, jobs}`; the host validates it (≤ 6 jobs, known
-witches, never the Dev or the Chair). Code changes are never made from the chat: the Chair asks
-the Elder Witch for `tasks.md` lines, a person adds them, and the Dev builds them as in §4.2. When
-no host runs the Chair, the listener (`coven council listen`) answers instead and says how to get
-the work done.
+witches, never the Dev or the Chair). When no host runs the Chair, the listener (`coven council
+listen`) answers instead; when a host's Chair answers while the listener thinks, the listener stays
+quiet (one voice per message). Inspect witches on a chat request or a council job work in a
+throw-away checkout that carries the working copy's uncommitted changes, so "review what I have"
+reviews what the person has.
+
+### 4.3.1 From a request to code: plan, approve, build, review (FR-CH8–CH10)
+
+```mermaid
+sequenceDiagram
+    participant P as Person (web)
+    participant C as Cloud
+    participant H as Host
+    P->>C: POST /v1/chat "add …"
+    H->>C: Chair: task_created (elder-witch, plan: true)
+    H->>H: Elder Witch reads the code, proposes ≤ 5 tasks (JSON)
+    H->>C: plan_proposed (host-checked paths and verify) · chat answer
+    P->>C: POST /v1/board/plan approved
+    C->>C: plan tasks become council build tasks for the Dev (from_plan, approved_by)
+    H->>H: Dev builds each on coven/council-<id>, host checks paths and verify, commits locally
+    H->>C: task_status submitted · task_created review jobs (white-hat, black-hat, branch)
+    H->>H: reviewers run in a checkout of that branch
+    P->>P: reads the reviews, merges (or rejects: the Dev reworks the branch)
+```
+
+No model starts a build alone: the cloud makes a build task only from a person's
+`plan_decision`, and refuses a relay's `task_created` for the Dev. A person may also send an
+approved task to Kiro Web (§FR-H11) before a host takes it.
 
 ### 4.4 Preparing tasks: the Scribe (FR-P1–P2)
 
@@ -190,7 +214,7 @@ leased. `tasks.md` stays in git: the cloud never edits it.
 | Deviation and relay health | `spec_deviation`, `policy_block`, `warning`, `daemon_connected`, `daemon_disconnected` |
 | Council review | `council_opened`, `claim_proposed`, `claim_challenged`, `test_result`, `verify_result`, `chair_summary`, `chair_proposal`, `guard_verdict`, `council_closed` |
 | Flows | `flow_started`, `flow_step_started`, `flow_step_finished`, `flow_finished` |
-| Board | `task_claimed`, `task_released`, `board_note`, `task_status` (`{task, state, agent?, detail?}`; `done` refused from `/v1/events`), `task_created` (a council job: `{task, title, agent, detail, source}`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`) |
+| Board | `task_claimed`, `task_released`, `board_note`, `task_status` (`{task, state, agent?, detail?}`; `done` refused from `/v1/events`), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?}`; never for the Dev; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author}`; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`) |
 | Chat | `chat_message` (kinds ask, idea, suggestion, do, reject, answer, working, error), `council_listening` |
 | Hosts | `host_online` (`{agents, slots, running, cloud?}`; `cloud` names the repositories this host may run Kiro Web sessions on) |
 
@@ -215,6 +239,7 @@ Bearer token (`Authorization: Bearer …`, constant-time compare); `?token=` onl
 | `GET /v1/board` | read | board view: tasks, claims, notes, status, hosts |
 | `POST /v1/board/notes` | read | a person's note (untrusted, redacted) |
 | `POST /v1/board/done` | read | a person accepts a task (`task_status done`) |
+| `POST /v1/board/plan` | read | a person approves or rejects a proposed plan (`plan_decision`); 409 when no such plan waits; the board view lists `plans` |
 | `POST /v1/board/dispatch` | read | a person sends a ready build task to Kiro Web, or takes that back (`task_dispatch`); the board view then shows `dispatch_via`/`dispatch_by` on the task |
 | `GET /v1/chat`, `POST /v1/chat` | read | the council chat; a Do it to the Dev is 422 |
 | `GET /v1/stream` | read | SSE: events and view updates |

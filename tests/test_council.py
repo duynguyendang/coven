@@ -137,3 +137,21 @@ def test_listening_waits_out_a_cloud_that_is_away(root, monkeypatch):
     lines = []
     assert council.listen(root, once=True, runner=lambda *a: pytest.fail("no message to answer"), out=lines.append) == []
     assert "cloud unavailable" in lines[0]
+
+
+def test_the_listener_stays_quiet_when_a_hosts_chair_answered_while_it_thought(root, monkeypatch):
+    chat = {"waiting": ["m1"], "listeners": [], "hosts": [], "messages": [msg(1, "ask", ago=1)]}
+    chat["messages"][0]["ts"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    monkeypatch.setattr(board, "chat", lambda _root: chat)
+    monkeypatch.setattr(board, "read", lambda _root: {"notes": []})
+
+    def runner(_root, prompt):
+        chat["waiting"] = []  # the Grey Witch on a host answered meanwhile
+        return "My own answer.", None
+
+    lines = []
+    assert council.listen(root, once=True, runner=runner, out=lines.append) == []
+    assert sent(root, "chat_message") == [], "one voice per message"
+    assert any("answered meanwhile" in line for line in lines)
+    chat["waiting"], chat["hosts"] = ["m1"], [{"online": True, "agents": ["grey-witch"]}]
+    assert council.superseded(root, chat["messages"][0]), "a host's Chair now takes what is said to the council"

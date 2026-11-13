@@ -16,7 +16,7 @@
  * lives until its recorded lease ends, and a running member renews it within a minute.
  */
 
-import { DISPATCH_STATES, DISPATCH_VIA, PEOPLE_STATES, type Json } from "./events.ts";
+import { DISPATCH_STATES, DISPATCH_VIA, MAX_PLAN_TASKS, PEOPLE_STATES, PLAN_STATES, type Json } from "./events.ts";
 
 export const DEFAULT_LEASE_SECONDS = 15 * 60;
 export const MAX_LEASE_SECONDS = 60 * 60;
@@ -71,6 +71,7 @@ export class Board {
   chat = new Map<string, Json[]>();          // project -> council chat, oldest first
   listeners = new Map<string, Map<string, Json>>(); // project -> member -> its council listener
   statuses = new Map<string, Map<string, Json>>(); // project -> "<spec>#<task>" -> where its doer says it stands
+  plans = new Map<string, Map<string, Json>>(); // project -> plan ref -> the Elder Witch's proposal and people's decision
   dispatches = new Map<string, Map<string, Json>>(); // project -> task -> the latest decision of a person (task_dispatch)
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
 
@@ -124,6 +125,8 @@ export class Board {
         agent: typeof p.agent === "string" ? p.agent.slice(0, 40) : null, paths: [], leaf: true,
         detail: typeof p.detail === "string" ? p.detail.slice(0, 380) : null, source: typeof p.source === "string" ? p.source.slice(0, 80) : null,
         created_by: event.member ?? null, created_at: event.ts,
+        plan: p.plan === true, branch: typeof p.branch === "string" ? p.branch.slice(0, 110) : null,
+        review_of: typeof p.review_of === "string" ? p.review_of.slice(0, 110) : null,
       });
       specs.set(spec, list.slice(-MAX_TASKS_PER_SPEC));
       this.tasks.set(project, specs);
@@ -137,6 +140,41 @@ export class Board {
         });
       }
       this.statuses.set(project, all);
+    } else if (event.type === "plan_proposed" && typeof p.plan === "string" && Array.isArray(p.tasks)) {
+      const all = this.plans.get(project) ?? new Map<string, Json>();
+      const known = all.get(p.plan);
+      if (!known || known.state === "proposed") {  // a decided plan stays decided; a new proposal replaces one nobody decided
+        all.set(p.plan, {
+          plan: p.plan, project_id: project, source: typeof p.source === "string" ? p.source.slice(0, 80) : null,
+          summary: typeof p.summary === "string" ? p.summary.slice(0, 400) : "", proposed_by: event.member ?? null, proposed_at: event.ts,
+          agent: typeof p.agent === "string" ? p.agent.slice(0, 40) : "elder-witch", state: "proposed", decided_by: null, decided_at: null,
+          tasks: p.tasks.slice(0, MAX_PLAN_TASKS).map((t: Json) => ({
+            task_id: String(t.task_id).slice(0, 20), title: String(t.title ?? "").slice(0, 160), detail: typeof t.detail === "string" ? t.detail.slice(0, 380) : null,
+            paths: (Array.isArray(t.paths) ? t.paths : []).slice(0, 10).map((x: unknown) => String(x).trim().slice(0, 200)),
+            verify: String(t.verify ?? "").slice(0, 200),
+          })),
+        });
+      }
+      this.plans.set(project, all);
+    } else if (event.type === "plan_decision" && typeof p.plan === "string" && PLAN_STATES.has(p.state)) {
+      const plan = this.plans.get(project)?.get(p.plan);
+      if (plan && plan.state === "proposed") {
+        Object.assign(plan, { state: p.state, decided_by: String(p.author ?? "someone").slice(0, 40), decided_at: event.ts });
+        if (p.state === "approved") {
+          // A person approved: the plan's tasks become build tasks on the board, for the Dev. This is the only way a
+          // builder gets a council task (a relay's task_created for the Dev is refused): no model can start a build alone.
+          const specs = this.tasks.get(project) ?? new Map<string, Json[]>();
+          const [spec] = plan.plan.split("#");
+          const keep = (specs.get(spec) ?? []).filter((t) => !plan.tasks.some((n: Json) => n.task_id === t.task_id));
+          for (const t of plan.tasks) {
+            keep.push({ task_id: t.task_id, title: t.title, status: "not_started", optional: false, parent: null, wave: null, agent: "green-witch",
+              paths: t.paths, verify: t.verify, leaf: true, detail: t.detail, source: plan.source, created_by: plan.proposed_by, created_at: event.ts,
+              plan: false, from_plan: plan.plan, approved_by: plan.decided_by, branch: null, review_of: null });
+          }
+          specs.set(spec, keep.slice(-MAX_TASKS_PER_SPEC));
+          this.tasks.set(project, specs);
+        }
+      }
     } else if (event.type === "task_dispatch" && typeof p.task === "string" && DISPATCH_STATES.has(p.state) && DISPATCH_VIA.has(p.via)) {
       const all = this.dispatches.get(project) ?? new Map<string, Json>();
       const known = all.get(p.task);
@@ -247,6 +285,7 @@ export class Board {
       project_id: projectId, at, members, hosts: members, specs,
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
+      plans: [...(this.plans.get(projectId)?.values() ?? [])].sort((a, b) => ((a.proposed_at || "") < (b.proposed_at || "") ? 1 : -1)).slice(0, 20),
     };
   }
 

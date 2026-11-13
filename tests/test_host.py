@@ -65,8 +65,11 @@ class FakeCloud:
             return [t for r, t in tasks.items() if r not in held and not t["done"]]
 
         c.answers, c.statuses, c.created = [], [], []
-        monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None: c.created.append(
-            {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source}) or {})
+        monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None: c.created.append(
+            {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of}) or {})
+        c.plans = []
+        monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
+            {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
         monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None: c.statuses.append((ref, state, agent, detail)) or {})
         monkeypatch.setattr(board, "answer", lambda root, reply_to, message, role="chair", kind="answer": c.answers.append((reply_to, role, kind, message)) or {})
         for attr, fn in {
@@ -671,3 +674,89 @@ def test_a_host_without_kiro_web_leaves_a_dispatched_task_alone(repo, monkeypatc
     local = Runner({"green-witch": builds_cart})
     host.Host(repo, slots=4, runner=local, only=["green-witch"]).run(once=True)
     assert "shop#1" not in host.load(repo) and all(k["task_id"] != "1" for k in cloud.claims), "never run here instead of in Kiro Web"
+
+
+# ------------------------------------------- plan, approve, build, review (the council implements, people decide)
+
+
+def test_the_chair_sends_a_change_to_the_elder_witch_as_a_planning_job(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do(None, message="add a cart total"))
+    plan = json.dumps({"answer": "Elder Witch plans it.", "jobs": [{"agent": "elder-witch", "title": "Plan the cart total", "detail": "src/cart", "plan": True},
+                                                                  {"agent": "elf", "title": "Ideas", "plan": True}]})
+    runner = Runner({"grey-witch": lambda cwd, prompt: (plan, None)})
+    host.Host(repo, slots=1, runner=runner, only=["grey-witch"]).run(once=True)
+    assert "planning job" in runner.calls[0]["prompt"] and "you never give her a job" in runner.calls[0]["prompt"]
+    assert [(c["agent"], c["plan"]) for c in cloud.created] == [("elder-witch", True), ("elf", False)], "only the Elder Witch plans"
+
+
+def plan_job(view_tasks):
+    return {"notes": [], "claims": [], "specs": [{"spec": "council", "tasks": view_tasks}]}
+
+
+def test_the_elder_witch_proposes_checked_tasks_and_nothing_builds_before_approval(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do(None, message="add a cart total"))
+    view = plan_job([{"task_id": "r1-1", "title": "Plan the cart total", "agent": "elder-witch", "plan": True, "source": "evt_req1"}])
+    monkeypatch.setattr(board, "read", lambda root: view)
+    proposal = json.dumps({"answer": "Two steps.", "tasks": [
+        {"title": "Cart total", "detail": "sum", "paths": ["src/cart/", "/etc/passwd"], "verify": "test -f src/cart/total.py"},
+        {"title": "Whole repo", "paths": ["**"], "verify": "true"},
+        {"title": "Two commands", "paths": ["docs/"], "verify": "true\nrm -rf x"}]})
+    runner = Runner({"elder-witch": lambda cwd, prompt: (proposal, None)})
+    host.Host(repo, slots=2, runner=runner, only=["elder-witch", "green-witch"]).run(once=True)
+    (plan,) = cloud.plans
+    assert plan["plan"] == "council#r1-1" and plan["source"] == "evt_req1"
+    assert plan["tasks"] == [{"task_id": "r1-1b1", "title": "Cart total", "paths": ["src/cart/"], "verify": "test -f src/cart/total.py", "detail": "sum"}], \
+        "outside paths, the whole repo and a second command are dropped"
+    said = " ".join(a[3] for a in cloud.answers)
+    assert "Nothing is built until a person approves" in said and all(a[1] == "elder-witch" for a in cloud.answers)
+    assert [c["agent"] for c in runner.calls if c["env"]["COVEN_TASK"].startswith("council")] == ["elder-witch"], "the Dev is not started by a proposal"
+
+
+def test_an_approved_plan_task_is_built_then_reviewed_on_its_branch(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    build = {"task_id": "r1-1b1", "title": "Cart total", "agent": "green-witch", "paths": ["src/cart/"], "verify": "test -f src/cart/total.py",
+             "detail": "sum the items", "from_plan": "council#r1-1", "approved_by": "duy", "source": "evt_req1"}
+    unapproved = {**build, "task_id": "r1-1b2", "approved_by": None}
+    view = plan_job([build, unapproved])
+    monkeypatch.setattr(board, "read", lambda root: view)
+    runner = Runner({"green-witch": builds_cart})
+    host.Host(repo, slots=2, runner=runner, only=["green-witch"]).run(once=True)
+    (call,) = [c for c in runner.calls if c["env"]["COVEN_TASK"].startswith("council")]
+    assert "worktrees" in str(call["cwd"]) and "(from the plan a person approved): sum the items" in call["prompt"]
+    record = host.load(repo)["council#r1-1b1"]
+    assert record["state"] == "submitted" and record["branch"] == "coven/council-r1-1b1"
+    assert git(repo, "log", "-1", "--format=%s", "coven/council-r1-1b1").startswith("coven: council#r1-1b1")
+    reviews = [(c["agent"], c["task_id"], c["branch"], c["review_of"]) for c in cloud.created]
+    assert reviews == [("white-hat", "r1-1b1-t", "coven/council-r1-1b1", "council#r1-1b1"), ("black-hat", "r1-1b1-x", "coven/council-r1-1b1", "council#r1-1b1")]
+    assert "council#r1-1b2" not in host.load(repo), "a task nobody approved is never built"
+
+
+def test_a_review_job_runs_in_a_checkout_of_its_branch(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    git(repo, "branch", "coven/council-r1-1b1")
+    view = plan_job([{"task_id": "r1-1b1-t", "title": "Test it", "agent": "white-hat", "branch": "coven/council-r1-1b1", "review_of": "council#r1-1b1"},
+                     {"task_id": "r2-1b1-t", "title": "Elsewhere", "agent": "white-hat", "branch": "coven/council-r2-1b1", "review_of": "council#r2-1b1"}])
+    monkeypatch.setattr(board, "read", lambda root: view)
+    seen = []
+    runner = Runner({"white-hat": lambda cwd, prompt: seen.append(git(cwd, "rev-parse", "HEAD")) or ("1. passes", None)})
+    host.Host(repo, slots=2, runner=runner, only=["white-hat"]).run(once=True)
+    assert len(runner.calls) == 1, "the branch that is not here is left to the host that has it"
+    assert seen == [git(repo, "rev-parse", "coven/council-r1-1b1")] and "task branch coven/council-r1-1b1" in runner.calls[0]["prompt"]
+
+
+def test_a_review_of_the_working_copy_sees_uncommitted_changes(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    (repo / "src" / "cart").mkdir(parents=True)
+    (repo / "src" / "cart" / "new.py").write_text("x = 1\n")
+    (repo / ".kiro" / "specs" / "shop" / "tasks.md").write_text(TASKS + "- [ ] 6. More\n")
+    view = plan_job([{"task_id": "r3-1", "title": "Review the uncommitted diff", "agent": "black-hat"}])
+    monkeypatch.setattr(board, "read", lambda root: view)
+    seen = {}
+    def look(cwd, prompt):
+        seen.update(status=git(cwd, "status", "--porcelain", "--untracked-files=all"), new=(cwd / "src" / "cart" / "new.py").read_text())
+        return "1. two files changed", None
+    host.Host(repo, slots=1, runner=Runner({"black-hat": look}), only=["black-hat"]).run(once=True)
+    assert seen["new"] == "x = 1\n" and "tasks.md" in seen["status"] and "src/cart/new.py" in seen["status"]
+    assert git(repo, "status", "--porcelain").count("\n") == 1, "the person's working copy is untouched"

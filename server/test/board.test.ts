@@ -268,6 +268,36 @@ describe("council jobs: the Chair turns a request into tasks on the board", () =
     } finally { await s.close(); }
   });
 
+  test("the Elder Witch proposes a plan; only a person's approval makes build tasks, once", async () => {
+    const s = await startServer();
+    try {
+      const member = (type: string, payload: Json): Json => ({ event_id: `evt_pl_${Math.random().toString(16).slice(2, 12)}`, project_id: "shop", run_id: "member_wsl-1",
+        type, ts: new Date().toISOString(), source: "coven-cli", member: "wsl-1", payload });
+      await send([created("council#r1-1", "elder-witch", { plan: true })], s.base);
+      const tasks = [{ task_id: "r1-1b1", title: "Cart totals", detail: "sum the items", paths: ["src/cart/"], verify: "pytest -q tests/test_cart.py" }];
+      const bad = await send([member("plan_proposed", { plan: "council#r1-1", tasks: [{ ...tasks[0], paths: ["../etc"] }] }),
+        member("plan_proposed", { plan: "council#r1-1", tasks: [{ ...tasks[0], paths: ["**"] }] })], s.base);
+      assert.equal(bad.body.accepted, 0, "a plan may not reach outside the repo or take all of it");
+      assert.equal((await send([member("plan_proposed", { plan: "council#r1-1", source: "evt_msg", summary: "One task.", tasks })], s.base)).body.accepted, 1);
+      const view = async () => (await getJson(s.base, "/v1/board?project_id=shop")).body;
+      assert.deepEqual([(await view()).plans[0].state, (await view()).plans[0].tasks[0].verify], ["proposed", "pytest -q tests/test_cart.py"]);
+      assert.equal((await view()).specs[0].tasks.length, 1, "nothing to build before a person approves");
+      const sneaky = await send([member("plan_decision", { plan: "council#r1-1", state: "approved" })], s.base);
+      assert.equal(sneaky.body.accepted, 0, "a relay cannot approve");
+      assert.equal((await postJson(s.base, "/v1/board/plan", { project_id: "shop", plan: "council#r1-1", state: "maybe" }, auth("dev"))).status, 422);
+      assert.equal((await postJson(s.base, "/v1/board/plan", { project_id: "shop", plan: "council#nope", state: "approved" }, auth("dev"))).status, 409);
+      assert.equal((await postJson(s.base, "/v1/board/plan", { project_id: "shop", plan: "council#r1-1", state: "approved", author: "duy" }, auth("dev"))).status, 201);
+      const after = await view();
+      assert.deepEqual([after.plans[0].state, after.plans[0].decided_by], ["approved", "duy"]);
+      const build = after.specs[0].tasks.find((t: Json) => t.task_id === "r1-1b1");
+      assert.deepEqual([build.agent, build.paths, build.verify, build.from_plan, build.approved_by], ["green-witch", ["src/cart/"], "pytest -q tests/test_cart.py", "council#r1-1", "duy"]);
+      assert.equal((await postJson(s.base, "/v1/board/plan", { project_id: "shop", plan: "council#r1-1", state: "rejected" }, auth("dev"))).status, 409, "decided once");
+      assert.equal((await send([created("council#x-1", "green-witch")], s.base)).body.accepted, 0, "a relay still cannot make a build task");
+      const review = await send([created("council#r1-1b1-t", "white-hat", { branch: "coven/council-r1-1b1", review_of: "council#r1-1b1" }), created("council#bad-t", "white-hat", { branch: "main" })], s.base);
+      assert.equal(review.body.accepted, 1, "a review job names a coven/ branch only");
+    } finally { await s.close(); }
+  });
+
   test("a person requests and cancels; a relay cannot", async () => {
     const s = await startServer();
     try {
