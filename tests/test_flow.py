@@ -385,13 +385,14 @@ def test_lint_catches_agent_mistakes(repo):
 def test_hooks_install_points_watch_commands_at_a_working_python_and_back(repo):
     path = repo / ".kiro" / "workflows" / RECIPE.name
     recipe = json.loads(path.read_text())
-    for nid in ("verify", "guard", "close"):
+    steps = ("verify", "board", "guard", "close")
+    for nid in steps:
         node(recipe, nid)["config"]["command"] = f"coven flow run-step {nid}"
     path.write_text(json.dumps(recipe))
 
     changes = hooks.install_workflows(repo)
-    commands = [node(json.loads(path.read_text()), n)["config"]["command"] for n in ("verify", "guard", "close")]
-    assert len(changes) == 3 and all(c.endswith(f"-m coven.cli flow run-step {n}") for c, n in zip(commands, ("verify", "guard", "close")))
+    commands = [node(json.loads(path.read_text()), n)["config"]["command"] for n in steps]
+    assert len(changes) == len(steps) and all(c.endswith(f"-m coven.cli flow run-step {n}") for c, n in zip(commands, steps))
     assert hooks.install_workflows(repo) == []
     hooks.install_workflows(repo, portable=True)
     assert node(json.loads(path.read_text()), "guard")["config"]["command"] == "coven flow run-step guard"

@@ -381,7 +381,7 @@ command that must pass, and `_Agent:_` the witch that works it (default the Dev)
 
 A task is identified by its spec folder and number (`coven-relay · 9`). A task
 without `_Paths:_` never raises a deviation. File names mentioned in a task's
-text are not treated as declared paths. Details: data contract §3.2.2.
+text are not treated as declared paths.
 
 ## Usage is credits, not tokens
 
@@ -408,8 +408,9 @@ permission: one token sees the whole fleet.
 
 ## Deploy
 
-`infra/README.md` has the ECR + App Runner + DynamoDB walkthrough. The dashboard
-is served by the same container, so the hosted URL needs no separate static site.
+`infra/README.md` has the AWS (ECR + App Runner + DynamoDB) and Cloudflare Workers
+(Worker + SQLite Durable Object) walkthroughs. The dashboard is served by the
+same service, so the hosted URL needs no separate static site.
 
 ## Layout
 
@@ -447,7 +448,7 @@ make check         # tsc --noEmit on the server
 are the same in `agents.py`, the cloud, the dashboard and `.kiro/agents/`; agent files are
 safe (no pre-approved write or shell, the council's hard constraints kept, secrets forbidden,
 the listener's agent read-only); the recipe and hooks only call what exists; every file the
-dashboard loads is in git; the data contract lists every event type and the README every
+dashboard loads is in git; `docs/ADD.md` §6 lists every event type and the README every
 command; the Makefile has each target once. **The live host suite** (`tests/test_host_live.py`)
 runs a real host against a real cloud with a fake `kiro-cli` that asserts the exact flags a host
 uses, then reads the board and chat back over HTTP. Rules for changes: `AGENTS.md`.

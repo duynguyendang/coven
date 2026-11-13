@@ -7,7 +7,7 @@
       "trigger": "SessionStart",
       "action": {
         "type": "command",
-        "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli emit"
+        "command": "coven emit"
       },
       "timeout": 5
     },
@@ -18,7 +18,7 @@
       "matcher": "*",
       "action": {
         "type": "command",
-        "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli emit"
+        "command": "coven emit"
       },
       "timeout": 5
     },
@@ -28,7 +28,7 @@
       "trigger": "PreTaskExec",
       "action": {
         "type": "command",
-        "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli emit"
+        "command": "coven emit"
       },
       "timeout": 5
     },
@@ -38,7 +38,7 @@
       "trigger": "PostTaskExec",
       "action": {
         "type": "command",
-        "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli emit"
+        "command": "coven emit"
       },
       "timeout": 5
     },
@@ -48,7 +48,7 @@
       "trigger": "Stop",
       "action": {
         "type": "command",
-        "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli emit"
+        "command": "coven emit"
       },
       "timeout": 5
     },
@@ -58,7 +58,7 @@
       "trigger": "SessionEnd",
       "action": {
         "type": "command",
-        "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli emit"
+        "command": "coven emit"
       },
       "timeout": 5
     }

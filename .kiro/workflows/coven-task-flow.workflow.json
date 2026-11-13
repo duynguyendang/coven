@@ -47,7 +47,7 @@
               "id": "verify",
               "handler": "command",
               "config": {
-                "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli flow run-step verify",
+                "command": "coven flow run-step verify",
                 "pollIntervalSec": 10,
                 "commandTimeoutSec": 600,
                 "flow_dir": "{{flow_dir}}"
@@ -110,7 +110,7 @@
               "id": "board",
               "handler": "command",
               "config": {
-                "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli flow run-step board",
+                "command": "coven flow run-step board",
                 "pollIntervalSec": 10,
                 "commandTimeoutSec": 60,
                 "flow_dir": "{{flow_dir}}"
@@ -139,7 +139,7 @@
               "id": "guard",
               "handler": "command",
               "config": {
-                "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli flow run-step guard",
+                "command": "coven flow run-step guard",
                 "pollIntervalSec": 10,
                 "commandTimeoutSec": 900,
                 "flow_dir": "{{flow_dir}}"
@@ -182,7 +182,7 @@
           "id": "close",
           "handler": "command",
           "config": {
-            "command": "PYTHONPATH=/mnt/e/coven/src /usr/bin/python3 -m coven.cli flow run-step close",
+            "command": "coven flow run-step close",
             "pollIntervalSec": 10,
             "commandTimeoutSec": 120,
             "flow_dir": "{{flow_dir}}"
