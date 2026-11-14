@@ -133,12 +133,13 @@ def run_cloud_agent(repo: str, local: Runner = run_agent) -> Runner:
 
 
 def wait_for_branch(root: Path, branch: str, wait: float | None = None, poll: float = CLOUD_POLL,
-                    clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> bool:
-    """True once `branch` is on origin (`git ls-remote`), within `wait` seconds."""
+                    clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
+                    not_at: str | None = None) -> bool:
+    """True once `branch` is on origin (`git ls-remote`), and not still at `not_at`, within `wait` seconds."""
     deadline = clock() + (cloud_wait() if wait is None else max(0.0, wait))
     while True:
         found = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
-        if found.returncode == 0 and found.stdout.strip():
+        if found.returncode == 0 and found.stdout.strip() and found.stdout.split()[0] != not_at:
             return True
         if clock() >= deadline:
             return False
@@ -201,7 +202,7 @@ def ask_witch(root: Path, ref: str, asker: str, answerer: str, question: str, ru
 
 
 def prompt_for(task: dict, agent: str, host: str, notes: list[dict] | None = None, feedback: list[dict] | None = None,
-               problem: str | None = None, cloud_base: str | None = None) -> str:
+               problem: str | None = None, cloud_base: str | None = None, continue_branch: bool = False) -> str:
     ref = f"{task['spec']}#{task['task_id']}"
     who = agents.info(agent)
     lines = [f"You are {who['label']}, running on host {host}. Work this Coven board task as your instructions describe, in the voice of your role.",
@@ -211,7 +212,14 @@ def prompt_for(task: dict, agent: str, host: str, notes: list[dict] | None = Non
              (f"Read: .kiro/specs/{task['spec']}/tasks.md (line {task.get('line')}), requirements.md and design.md in that folder." if task.get("line")
               else f"What to do (from the plan a person approved): {task.get('detail') or task.get('title') or ''}")]
     kind = who["kind"]
-    if kind == "build" and cloud_base:
+    if kind == "build" and cloud_base and continue_branch:
+        branch = work.branch_for(task)
+        lines += ["", "Change only files inside the declared paths, with the tests the task asks for. Run the verify command yourself until it passes.",
+                  f"This is rework and the branch {branch} is already on origin. Check out {branch}, apply the feedback below as new commits on top of it, "
+                  f"and push {branch} without force. Never open a new branch and never open a new pull request; never merge, and never touch any other branch. "
+                  "Do not edit tasks.md.",
+                  "Never write or repeat a secret. Finish with one or two sentences saying what you changed."]
+    elif kind == "build" and cloud_base:
         lines += ["", "Change only files inside the declared paths, with the tests the task asks for. Run the verify command yourself until it passes.",
                   f"Work on the branch {work.branch_for(task)} (create it from {cloud_base}, or continue it if it exists), commit there and push that branch. "
                   f"Open a pull request into {cloud_base} but never merge it, and never touch any other branch. Do not edit tasks.md.",
@@ -487,6 +495,13 @@ def _build(root: Path, task: dict, agent: str, host: str, base: str, runner: Run
     return _fail(root, ref, agent, problem or "no change")
 
 
+def _origin_tip(root: Path, branch: str) -> str | None:
+    """The commit `branch` points at on origin now, or None when it is not there."""
+    found = subprocess.run(["git", "ls-remote", "--heads", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
+    line = (found.stdout or "").strip().splitlines()
+    return line[0].split()[0] if found.returncode == 0 and line else None
+
+
 def _build_cloud(root: Path, task: dict, agent: str, host: str, base: str, runner: Runner, feedback, notes) -> dict:
     """A build run in Kiro Web: the session pushes `coven/<spec>-<task>`; the host fetches it and checks it like a local branch.
 
@@ -500,16 +515,29 @@ def _build_cloud(root: Path, task: dict, agent: str, host: str, base: str, runne
     first = not record.get("commits")
     _update(root, ref, task=ref, agent=agent, kind="build", state="running", branch=branch, base=base, via="kiro-web",
             started_at=record.get("started_at") or events.now_iso(), error=None)
-    text, error = runner(root, agent, prompt_for(task, agent, host, notes, feedback, cloud_base=base), _env(root, host, agent, ref), RUN_TIMEOUT)
+    before = _origin_tip(root, branch)  # a rework must push past this commit, not leave it as it was
+    if before:
+        subprocess.run(["git", "fetch", "origin", branch], cwd=root, capture_output=True, text=True, check=False)  # so the old tip is known locally
+    rework = bool(record.get("commits")) and before is not None  # the branch is on origin: the session continues it
+    text, error = runner(root, agent, prompt_for(task, agent, host, notes, feedback, cloud_base=base, continue_branch=rework),
+                         _env(root, host, agent, ref), RUN_TIMEOUT)
     if error and "source provider" in error:
         return _fail(root, ref, agent, error)  # nothing can arrive: say how to fix it, once
     # The exit code does not decide (a session can push its branch and still exit with an error): the branch on origin does.
-    if not wait_for_branch(root, branch):
+    if not wait_for_branch(root, branch, not_at=before):
+        if before:
+            return _fail(root, ref, agent, f"Kiro Web pushed nothing new to {branch} within {cloud_wait():.0f} s: the tip is still {before[:7]}" + (f" ({error})" if error else ""))
         return _fail(root, ref, agent, f"Kiro Web did not push {branch} to origin within {cloud_wait():.0f} s" + (f" ({error})" if error else ""))
     fetched = subprocess.run(["git", "fetch", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
     if fetched.returncode != 0:
         return _fail(root, ref, agent, f"Kiro Web did not push {branch} to origin: {(fetched.stderr or fetched.stdout).strip()[:200]}")
     tip = work._git(root, "rev-parse", "FETCH_HEAD")
+    if before and tip == before:
+        return _fail(root, ref, agent, f"Kiro Web pushed nothing new to {branch}: the tip is still {tip[:7]}")
+    if before and subprocess.run(["git", "merge-base", "--is-ancestor", before, tip], cwd=root, capture_output=True, check=False).returncode != 0:
+        return _fail(root, ref, agent, f"{branch} was rewritten: the new tip {tip[:7]} does not descend from the earlier tip {before[:7]}")
+    if any(c and tip.startswith(c) for c in (load(root).get(ref) or {}).get("commits") or []):
+        return _fail(root, ref, agent, f"{branch} is at {tip[:7]}, a commit already submitted for this task")
     files = sorted(f for f in work._git(root, "diff", "--name-only", f"{base}...{tip}").splitlines() if f)
     if not files:
         return _fail(root, ref, agent, f"{branch} changes nothing against {base}")

@@ -130,6 +130,10 @@ in the prompt, and judges it by the branch, not the exit code: it polls `git ls-
 `coven/<spec>-<task>` up to `COVEN_CLOUD_WAIT` seconds (default 600), then fetches and checks it as a
 local build. A missing source provider ends the run at once with the fix.
 
+A rework reuses the same branch name. The host remembers the branch head from the last submission and
+counts the run as delivered only when origin shows a new commit beyond it; an unchanged branch fails
+the run instead of being submitted again. The path, verify and tick checks are the local ones.
+
 ### 4.3 Council chat: people talk, the Chair dispatches (FR-CH1–CH7)
 
 ```mermaid
@@ -391,7 +395,11 @@ Object). Scale-out would need a shared bus and is not claimed.
   cloud; a full real model run through every path, and a real flow with both gates, are not yet
   recorded.
 - **Not built:** the pre-write gate and the control feed (FR-S3–S4), relay split and quarantine
-  (FR-T7), a unique host id (FR-H12). Kiro Web dispatch (FR-H11) is built but untried against the real service.
+  (FR-T7), a unique host id (FR-H12). Kiro Web dispatch (FR-H11) is usable.
+- **Kiro cloud dependency.** Kiro Web runs on Kiro's cloud: it needs an account with the GitHub source
+  provider connected, a repository the session can push to, and the service being up. Without them the
+  run fails with the fix, and local hosts keep working. Sessions ignore `--agent`, so the witch is a
+  prompt, not an agent file.
 
 ## 11. Where to read more
 

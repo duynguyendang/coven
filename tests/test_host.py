@@ -578,21 +578,30 @@ class CloudSession:
 
     cloud = True
 
-    def __init__(self, origin, tmp, change=None, push=True):
-        self.origin, self.tmp, self.change, self.push, self.calls = origin, tmp, change, push, []
+    def __init__(self, origin, tmp, change=None, push=True, changes=None):
+        # `changes`: one dict of {path: text or None (delete)} per call, in turn; `change` serves every call.
+        self.origin, self.tmp, self.change, self.push, self.changes, self.calls = origin, tmp, change, push, list(changes or []), []
 
     def __call__(self, cwd, agent, prompt, env, timeout):
         self.calls.append({"agent": agent, "prompt": prompt, "env": env})
         if not self.push:
             return "nothing to push", None
+        branch = prompt.split("Work on the branch ", 1)[1].split(" ", 1)[0] if "Work on the branch " in prompt else "coven/shop-1"
         box = self.tmp / f"sandbox{len(self.calls)}"
         git(self.tmp, "clone", "-q", "-b", "main", str(self.origin), str(box))
         git(box, "config", "user.email", "k@example.com"), git(box, "config", "user.name", "K")
-        git(box, "checkout", "-q", "-b", "coven/shop-1")
-        for name, text in (self.change or {"src/cart/total.py": "def total(xs):\n    return sum(xs)\n"}).items():
+        if git(box, "branch", "-r", "--list", f"origin/{branch}"):
+            git(box, "checkout", "-q", "-b", branch, f"origin/{branch}")  # a rework continues the pushed branch
+        else:
+            git(box, "checkout", "-q", "-b", branch)
+        change = self.changes[len(self.calls) - 1] if self.changes else self.change
+        for name, text in (change or {"src/cart/total.py": "def total(xs):\n    return sum(xs)\n"}).items():
+            if text is None:
+                (box / name).unlink()
+                continue
             (box / name).parent.mkdir(parents=True, exist_ok=True)
             (box / name).write_text(text)
-        git(box, "add", "."), git(box, "commit", "-q", "-m", "cart totals"), git(box, "push", "-q", "origin", "coven/shop-1")
+        git(box, "add", "-A"), git(box, "commit", "-q", "-m", f"round {len(self.calls)}"), git(box, "push", "-q", "origin", branch)
         return "added total", None
 
 
@@ -621,6 +630,16 @@ def test_kiro_web_branch_is_fetched_checked_and_submitted(repo, origin, tmp_path
     assert any(n["kind"] == "review-wanted" and "Kiro Web" in n["note"] for n in cloud.notes)
 
 
+def test_prompt_continues_the_pushed_branch_on_rework():
+    task = {"spec": "shop", "task_id": "1", "title": "T", "paths": ["a/"], "verify": "true"}
+    feedback = [{"from": "bo", "kind": "reject", "message": "fix it"}]
+    text = host.prompt_for(task, "green-witch", "h", None, feedback, cloud_base="main", continue_branch=True)
+    assert "Check out coven/shop-1" in text and "new commits on top" in text and "without force" in text
+    assert "Never open a new branch" in text and "untrusted text" in text
+    first = host.prompt_for(task, "green-witch", "h", None, None, cloud_base="main")
+    assert "Check out" not in first and "create it from main" in first
+
+
 def test_kiro_web_branch_outside_the_paths_is_refused(repo, origin, tmp_path, monkeypatch):
     FakeCloud().install(monkeypatch)
     session = CloudSession(origin, tmp_path, change={"src/other/x.py": "x = 1\n"})
@@ -634,6 +653,158 @@ def test_kiro_web_without_a_pushed_branch_fails(repo, origin, tmp_path, monkeypa
     monkeypatch.setenv("COVEN_CLOUD_WAIT", "0")
     result = host.execute(repo, task_one(repo), "green-witch", CloudSession(origin, tmp_path, push=False))
     assert result["action"] == "failed" and "did not push" in result["error"]
+
+
+class ReworkSession:
+    """A Kiro Web rework: clones the task's branch from origin, then adds a commit, rewrites it, or does nothing."""
+
+    cloud = True
+
+    def __init__(self, origin, tmp, mode, delay=0.0):
+        self.origin, self.tmp, self.mode, self.delay, self.calls = origin, tmp, mode, delay, []
+
+    def _push(self):
+        box = self.tmp / f"rework{len(self.calls)}"
+        git(self.tmp, "clone", "-q", "-b", "coven/shop-1", str(self.origin), str(box))
+        git(box, "config", "user.email", "k@example.com"), git(box, "config", "user.name", "K")
+        if self.mode == "rewrite":
+            git(box, "reset", "-q", "--hard", "origin/main")
+            (box / "src" / "cart").mkdir(parents=True, exist_ok=True)
+            (box / "src/cart/total.py").write_text("def total(xs):\n    return sum(xs) + 0\n")
+            git(box, "add", "."), git(box, "commit", "-q", "-m", "rewritten")
+            git(box, "push", "-q", "--force", "origin", "coven/shop-1")
+        else:
+            (box / "src/cart/total.py").write_text("def total(xs):\n    return sum(xs) + 0\n")
+            git(box, "commit", "-qam", "rework")
+            git(box, "push", "-q", "origin", "coven/shop-1")
+
+    def __call__(self, cwd, agent, prompt, env, timeout):
+        self.calls.append(prompt)
+        if self.mode == "none":
+            return "nothing to push", None
+        if self.delay:
+            threading.Timer(self.delay, self._push).start()
+        else:
+            self._push()
+        return "reworked", None
+
+
+def first_round(repo, origin, tmp_path, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    assert host.execute(repo, task_one(repo), "green-witch", CloudSession(origin, tmp_path))["action"] == "submitted"
+    return git(origin, "rev-parse", "coven/shop-1")
+
+
+def test_kiro_web_rework_with_no_push_fails(repo, origin, tmp_path, monkeypatch):
+    old = first_round(repo, origin, tmp_path, monkeypatch)
+    monkeypatch.setenv("COVEN_CLOUD_WAIT", "0")
+    result = host.execute(repo, task_one(repo), "green-witch", ReworkSession(origin, tmp_path, "none"))
+    assert result["action"] == "failed" and "pushed nothing new" in result["error"] and old[:7] in result["error"]
+    assert len(host.load(repo)["shop#1"]["commits"]) == 1
+
+
+def test_kiro_web_rework_pushed_late_is_accepted(repo, origin, tmp_path, monkeypatch):
+    old = first_round(repo, origin, tmp_path, monkeypatch)
+    monkeypatch.setenv("COVEN_CLOUD_WAIT", "3")
+    result = host.execute(repo, task_one(repo), "green-witch", ReworkSession(origin, tmp_path, "add", delay=0.5))
+    assert result["action"] == "submitted" and result["rework"] is True
+    assert git(origin, "rev-parse", "coven/shop-1") != old and len(host.load(repo)["shop#1"]["commits"]) == 2
+
+
+def test_kiro_web_rework_that_force_pushes_a_rewrite_fails(repo, origin, tmp_path, monkeypatch):
+    first_round(repo, origin, tmp_path, monkeypatch)
+    result = host.execute(repo, task_one(repo), "green-witch", ReworkSession(origin, tmp_path, "rewrite"))
+    assert result["action"] == "failed" and "rewritten" in result["error"]
+
+
+def test_kiro_web_refuses_a_tip_already_submitted(repo, origin, tmp_path, monkeypatch):
+    old = first_round(repo, origin, tmp_path, monkeypatch)
+    monkeypatch.setenv("COVEN_CLOUD_WAIT", "0")
+    host._update(repo, "shop#1", commits=[host.load(repo)["shop#1"]["commits"][0]])
+    session = ReworkSession(origin, tmp_path, "add")
+    original = session._push
+
+    def push_old_again():
+        original()
+        host_commits = git(origin, "rev-parse", "coven/shop-1")
+        host._update(repo, "shop#1", commits=[host_commits[:7]])  # the new tip was already recorded
+
+    session._push = push_old_again
+    result = host.execute(repo, task_one(repo), "green-witch", session)
+    assert result["action"] == "failed" and "already submitted" in result["error"] and old != git(origin, "rev-parse", "coven/shop-1")
+
+
+def task_five(repo):
+    return specmap.load(repo)["shop#5"]
+
+
+TOTAL = "def total(xs):\n    return sum(xs)\n"
+REJECT = [{"from": "duy", "kind": "reject", "message": "use Decimal"}]
+
+
+def test_kiro_web_two_tasks_in_turn_then_a_rework_accumulate_commits(repo, origin, tmp_path, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    session = CloudSession(origin, tmp_path, changes=[
+        {"src/cart/total.py": TOTAL},
+        {"docs/notes.md": "notes\n"},
+        {"src/cart/total.py": "from decimal import Decimal\n" + TOTAL},
+    ])
+    first = host.execute(repo, task_one(repo), "green-witch", session)
+    second = host.execute(repo, task_five(repo), "green-witch", session)
+    assert (first["action"], first["branch"], first["rework"]) == ("submitted", "coven/shop-1", False)
+    assert (second["action"], second["branch"], second["rework"]) == ("submitted", "coven/shop-5", False)
+    assert "coven/shop-5" in session.calls[1]["prompt"], "each task names its own branch"
+    reworked = host.execute(repo, task_one(repo), "green-witch", session, feedback=REJECT)
+    assert (reworked["action"], reworked["rework"], reworked["via"]) == ("submitted", True, "kiro-web")
+    assert "use Decimal" in session.calls[2]["prompt"] and "untrusted" in session.calls[2]["prompt"]
+    state = host.load(repo)
+    assert len(state["shop#1"]["commits"]) == 2 and state["shop#1"]["commits"][1] == reworked["commit"]
+    assert len(state["shop#5"]["commits"]) == 1, "the other task's record is not touched"
+    assert git(repo, "rev-list", "--count", "main..coven/shop-1") == "2"
+    tip = git(repo, "rev-parse", "coven/shop-1")
+    assert git(host.worktree_dir(repo, "shop-1"), "rev-parse", "HEAD") == tip == git(origin, "rev-parse", "coven/shop-1"), "the worktree is at the new tip"
+    assert (host.worktree_dir(repo, "shop-1") / "src" / "cart" / "total.py").read_text().startswith("from decimal")
+    assert git(repo, "rev-parse", "coven/shop-5") != tip
+    assert sum(1 for n in cloud.notes if n["kind"] == "review-wanted") == 3
+
+
+def test_kiro_web_rework_outside_the_paths_keeps_the_earlier_commit(repo, origin, tmp_path, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    session = CloudSession(origin, tmp_path, changes=[{"src/cart/total.py": TOTAL}, {"src/other/x.py": "x = 1\n"}])
+    assert host.execute(repo, task_one(repo), "green-witch", session)["action"] == "submitted"
+    before = git(repo, "rev-parse", "coven/shop-1")
+    result = host.execute(repo, task_one(repo), "green-witch", session, feedback=REJECT)
+    assert result["action"] == "failed" and "outside the task's paths" in result["error"] and "src/other/x.py" in result["error"]
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "failed" and len(record["commits"]) == 1
+    assert git(repo, "rev-parse", "coven/shop-1") == before and git(host.worktree_dir(repo, "shop-1"), "rev-parse", "HEAD") == before
+    assert len(session.calls) == 2, "never retried"
+
+
+def test_kiro_web_rework_that_fails_verify_is_not_submitted(repo, origin, tmp_path, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    session = CloudSession(origin, tmp_path, changes=[{"src/cart/total.py": TOTAL}, {"src/cart/total.py": None, "src/cart/other.py": "y = 2\n"}])
+    assert host.execute(repo, task_one(repo), "green-witch", session)["action"] == "submitted"
+    result = host.execute(repo, task_one(repo), "green-witch", session, feedback=REJECT)
+    assert result["action"] == "failed" and "verify command did not pass" in result["error"]
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "failed" and len(record["commits"]) == 1
+    assert cloud.notes[-1]["kind"] == "question" and sum(1 for n in cloud.notes if n["kind"] == "review-wanted") == 1
+
+
+def test_kiro_web_rework_after_a_lost_lease_commits_nothing_more(repo, origin, tmp_path, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    session = CloudSession(origin, tmp_path, changes=[{"src/cart/total.py": TOTAL}, {"src/cart/total.py": "from decimal import Decimal\n" + TOTAL}])
+    board.claim(repo, task_one(repo), agent="green-witch")
+    assert host.execute(repo, task_one(repo), "green-witch", session)["action"] == "submitted"
+    cloud.lease_ok = False
+    result = host.execute(repo, task_one(repo), "green-witch", session, feedback=REJECT)
+    assert result["action"] == "failed" and "lease lost" in result["error"]
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "failed" and len(record["commits"]) == 1, "the lost run adds no commit to the record"
+    assert cloud.notes[-1]["kind"] == "question" and "lease lost" in cloud.notes[-1]["note"]
+    assert git(host.worktree_dir(repo, "shop-1"), "rev-parse", "HEAD") == git(origin, "rev-parse", "coven/shop-1"), "the kept worktree sits at the fetched tip"
+    assert record["commits"][0] != git(repo, "rev-parse", "--short", "coven/shop-1"), "but the record does not claim it"
 
 
 def test_kiro_web_runner_uses_cloud_flags_for_builders_only(tmp_path, monkeypatch):

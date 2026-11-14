@@ -340,7 +340,7 @@ on the board under **Plans**. Nothing is built until you press **Approve plan**.
 builds each task on its own branch `coven/council-<id>` (the host checks paths and verify and
 commits locally), White Hat and Black Hat review that branch, and you merge, or reject in the
 chat and the Dev reworks it. A task can go to Kiro Web instead ("Run in Kiro Web") before a host
-takes it. A review of "what I have" sees your uncommitted changes.
+takes it (needs Kiro's cloud and a connected GitHub source provider; a rework reuses the branch and counts only when it has a new commit). A review of "what I have" sees your uncommitted changes.
 
 ```bash
 ./run-host.sh            # runs the Chair and the other witches: dispatch and work
