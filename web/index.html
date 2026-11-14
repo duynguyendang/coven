@@ -109,8 +109,10 @@
   .persona { display: inline-flex; align-items: center; }
   .persona .av { margin-right: 5px; width: 1.9em; height: 1.9em; vertical-align: middle; }
   .meta .av { vertical-align: -0.5em; }
-  .icon { font: inherit; font-size: 1rem; line-height: 1; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; }
-  .icon:hover { color: var(--text); border-color: var(--line-strong); }
+  .icon { display: inline-grid; place-items: center; inline-size: max(34px, var(--target-size)); block-size: max(34px, var(--target-size)); padding: 0; font: inherit;
+    color: var(--muted); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; }
+  .icon .ico { inline-size: 18px; block-size: 18px; }
+  .icon:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, var(--panel)); }
   .pill { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.06em; padding: 3px 9px; border-radius: var(--radius-full); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .pill.ok { color: var(--ok-ink); border-color: var(--ok-line); background: var(--ok-bg); }
   .pill.bad { color: var(--bad-ink); border-color: var(--bad-line); background: var(--bad-bg); }
@@ -133,15 +135,16 @@
   .nav-sub .nav-item .label { font-family: var(--mono); font-size: 0.75rem; }
   .dot.mini { width: 7px; height: 7px; }
   .side-foot { margin-top: auto; padding-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); }
-  .side-foot .act { flex: 1; }
+  .side-foot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .side-foot .act { min-inline-size: 0; padding-inline: 4px; font-size: 0.75rem; gap: 0.3em; }
   /* two-state toggle: shows the opposite of what is rendered; the inactive option is display:none, so no JS keeps it current */
   .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  #theme-toggle { width: 100%; }
+  #theme-toggle > span { display: inline-flex; align-items: center; gap: 0.4em; }
   #theme-toggle .to-light { display: none; }
-  @media (prefers-color-scheme: dark) { #theme-toggle .to-dark { display: none; } #theme-toggle .to-light { display: inline; } }
+  @media (prefers-color-scheme: dark) { #theme-toggle .to-dark { display: none; } #theme-toggle .to-light { display: inline-flex; } }
   :root:has(> head > meta[name="color-scheme"][content="dark"]) #theme-toggle .to-dark { display: none; }
-  :root:has(> head > meta[name="color-scheme"][content="dark"]) #theme-toggle .to-light { display: inline; }
-  :root:has(> head > meta[name="color-scheme"][content="light"]) #theme-toggle .to-dark { display: inline; }
+  :root:has(> head > meta[name="color-scheme"][content="dark"]) #theme-toggle .to-light { display: inline-flex; }
+  :root:has(> head > meta[name="color-scheme"][content="light"]) #theme-toggle .to-dark { display: inline-flex; }
   :root:has(> head > meta[name="color-scheme"][content="light"]) #theme-toggle .to-light { display: none; }
   .scrim { display: none; }
   @media (max-width: 900px) {
@@ -394,6 +397,8 @@
   .chat-compose textarea { flex: 1; font: inherit; font-size: 0.875rem; line-height: 1.45; color: var(--text); background: transparent; border: 0; padding: 6px 2px; resize: none; field-sizing: content; width: auto; min-height: 1.45em; max-height: 9lh; overflow-y: auto; outline: none; }
   .chat-compose textarea:focus-visible { outline: none; }
   .chat-compose .send { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 0; cursor: pointer; background: var(--color-accent); color: var(--color-on-accent); font-size: 1rem; }
+  .chat-compose .send .ico { inline-size: 17px; block-size: 17px; translate: -1px 1px; }
+  .chat-compose .send:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 84%, var(--panel)); }
   .chat-compose .send:disabled { opacity: 0.4; cursor: default; }
   .chat-compose .foot { display: flex; gap: 10px; align-items: center; font-size: 0.7188rem; color: var(--muted); min-height: 16px; }
   .chat-compose #chat-error { color: var(--red); }
@@ -411,9 +416,31 @@
   .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
   .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 0.7812rem; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 
-  button.act { font: inherit; font-family: var(--mono); font-size: 0.6875rem; color: var(--text); background: var(--button); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
-  button.act:hover { border-color: var(--line-strong); }
-  button.act:disabled { opacity: 0.45; cursor: default; }
+  /* Buttons (docs/DESIGN.md, Components): quiet by default; primary (ink) for a view's one main action; good and bad only
+     where the action itself is a state (Mark done, Reject). An icon leads the label; the label names the button. */
+  .sprite { position: absolute; inline-size: 0; block-size: 0; overflow: hidden; }
+  .ico { inline-size: 1.05em; block-size: 1.05em; flex: none; }
+  button.act { display: inline-flex; align-items: center; justify-content: center; gap: 0.4em; font: inherit; font-size: 0.8125rem; font-weight: 500; line-height: 1.2;
+    color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, scale 120ms ease-out; }
+  button.act .ico { color: var(--muted); transition: color 120ms ease-out; }
+  button.act:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 5%, var(--panel)); }
+  button.act:hover:not(:disabled) .ico { color: currentColor; }
+  button.act:active:not(:disabled) { background: color-mix(in srgb, var(--text) 9%, var(--panel)); }
+  button.act:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.act.primary { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
+  button.act.primary .ico { color: currentColor; }
+  button.act.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 84%, var(--panel)); }
+  button.act.primary:active:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 72%, var(--panel)); }
+  button.act.good { background: var(--ok-bg); color: var(--ok-ink); border-color: var(--ok-line); }
+  button.act.bad { background: var(--panel); color: var(--bad-ink); border-color: var(--bad-line); }
+  button.act.good .ico, button.act.bad .ico { color: currentColor; }
+  button.act.good:hover:not(:disabled) { background: color-mix(in srgb, var(--ok-line) 22%, var(--ok-bg)); }
+  button.act.bad:hover:not(:disabled) { background: var(--bad-bg); }
+  button.act.quiet { background: transparent; border-color: transparent; color: var(--muted); }
+  button.act.quiet:hover:not(:disabled) { color: var(--text); background: var(--hover); border-color: var(--line); }
+  button.act.sm { font-size: 0.75rem; padding: 3px 8px; }
+  @media (forced-colors: active) { button.act, button.act.quiet { border: 1px solid ButtonText; } }
   button.link { font: inherit; color: var(--blue); background: none; border: 0; padding: 0; cursor: pointer; }
 
   /* session view */
@@ -495,10 +522,15 @@
   .toasts { position: fixed; bottom: max(1rem, env(safe-area-inset-bottom, 0px)); right: max(1rem, env(safe-area-inset-right, 0px)); left: max(1rem, env(safe-area-inset-left, 0px)); display: flex; justify-content: flex-end; pointer-events: none; z-index: 70; }
   .toast { display: none; align-items: flex-start; gap: 0.5rem; max-inline-size: min(28rem, 100%); background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--bad-ink); padding: 0.5rem 0.5rem 0.5rem 0.75rem; border-radius: 6px; font-size: 0.78125rem; pointer-events: auto; overflow-wrap: anywhere; }
   .toast.show { display: flex; }
-  .toast button { flex: none; font: inherit; color: inherit; background: transparent; border: 1px solid var(--bad-line); border-radius: 4px; cursor: pointer; }
+  .toast button { flex: none; display: inline-grid; place-items: center; inline-size: var(--target-size); block-size: var(--target-size); padding: 0; font: inherit; color: inherit;
+    background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+  .toast button:hover { border-color: var(--bad-line); }
+  .toast button .ico { inline-size: 14px; block-size: 14px; }
 </style>
 </head>
 <body>
+<!-- UI icons: one stroke set, drawn in currentColor so they follow the text colour and every theme. -->
+<svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0"><defs><symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol><symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol><symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z"/></symbol><symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol><symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3M15.5 16.5L20 12l-4.5-4.5M20 12H9.5"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6.5L9.5 17 4 11.5"/></symbol><symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7.5a4.5 4.5 0 1 1 .9-8.9 6 6 0 0 1 11.3 2.3A3.4 3.4 0 0 1 17.5 19z"/></symbol><symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol><symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14"/></symbol><symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z"/></symbol><symbol id="i-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A9.6 9.6 0 0 1 12 5c5 0 8.6 4 9.5 7a11 11 0 0 1-2.3 3.3M6.5 6.5A11.4 11.4 0 0 0 2.5 12c.9 3 4.5 7 9.5 7a9.6 9.6 0 0 0 5.3-1.6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h8.5M16.5 3.6a2.1 2.1 0 1 1 3 3L7.5 18.6 3.5 19.5l.9-4z"/></symbol></defs></svg>
 <a class="skip" href="#main">Skip to content</a>
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar" aria-label="Sidebar">
@@ -506,17 +538,17 @@
     <nav id="nav" aria-label="Main"></nav>
     <div class="side-foot">
       <button class="act" id="theme-toggle" type="button">
-        <span class="to-dark"><span aria-hidden="true">☾</span><span class="vh"> Switch to dark theme</span></span>
-        <span class="to-light"><span aria-hidden="true">☀</span><span class="vh"> Switch to light theme</span></span>
+        <span class="to-dark"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-moon"/></svg><span><span class="vh">Switch to </span>Dark<span class="vh"> theme</span></span></span>
+        <span class="to-light"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sun"/></svg><span><span class="vh">Switch to </span>Light<span class="vh"> theme</span></span></span>
       </button>
-      <button class="act" id="nav-hide" type="button">Hide sidebar</button>
-      <button class="act" id="sign-out" type="button">Sign out</button>
+      <button class="act" id="nav-hide" type="button"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg><span>Hide<span class="vh"> sidebar</span></span></button>
+      <button class="act" id="sign-out" type="button"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-logout"/></svg><span>Sign out</span></button>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
   <div class="col">
     <header class="topbar">
-      <button class="icon" id="menu" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Show or hide the sidebar">☰</button>
+      <button class="icon" id="menu" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Show or hide the sidebar"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-menu"/></svg></button>
       <a class="brand mini" href="#/" aria-label="Coven, all sessions"><b>COVEN</b></a>
       <div class="spacer"></div>
       <span id="stream-pill" class="pill" role="status">CONNECTING</span>
@@ -529,7 +561,7 @@
 </div>
 
 <aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title" tabindex="-1">
-  <div class="dh"><h3 id="drawer-title">Detail</h3><button class="act" id="drawer-close" type="button">close (esc)</button></div>
+  <div class="dh"><h3 id="drawer-title">Detail</h3><button class="act quiet" id="drawer-close" type="button"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-x"/></svg><span>Close</span></button></div>
   <div class="dn">The stored, redacted record. Output, file contents and command arguments are never recorded.</div>
   <pre id="drawer-body"></pre>
 </aside>
@@ -537,7 +569,7 @@
 <!-- One task, opened from its row in a column: a native modal (Esc, the back gesture and a click outside close it). -->
 <dialog class="task-dialog" id="task-dialog" closedby="any" aria-labelledby="task-dialog-title">
   <div class="td-head"><h2 id="task-dialog-title">Task</h2>
-    <form method="dialog"><button class="act" type="submit" value="close" autofocus>Close</button></form></div>
+    <form method="dialog"><button class="act quiet" type="submit" value="close" autofocus><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-x"/></svg><span>Close</span></button></form></div>
   <div class="td-body" id="task-dialog-body"></div>
 </dialog>
 
@@ -553,7 +585,7 @@
   </form>
 </div>
 <div class="toasts" role="region" aria-label="Notifications">
-  <div class="toast" id="toast"><span id="toast-text"></span><button type="button" id="toast-close" aria-label="Close notification"><span aria-hidden="true">✕</span></button></div>
+  <div class="toast" id="toast"><span id="toast-text"></span><button type="button" id="toast-close" aria-label="Close notification"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button></div>
   <!-- fallback announcer for browsers without ariaNotify(); present on load so screen readers register it -->
   <div class="sr" id="toast-live" aria-live="assertive"></div>
 </div>
@@ -707,6 +739,8 @@
     return hash || new URLSearchParams(location.search).get("token") || localStorage.getItem("coven_token") || "";
   }
   /** One key per click: a write the browser repeats (a flaky network) is replayed by the cloud, not done twice. */
+  /** A UI icon from the sprite at the top of <body>; decorative, so the button's text names it. */
+  const icon = (name) => `<svg class="ico" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
   const writeKey = () => (globalThis.crypto && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `w-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   async function api(path, options = {}) {
     const keyed = options.method === "POST" ? { "Idempotency-Key": writeKey() } : {};
@@ -1156,7 +1190,7 @@
       <div class="row1"><span class="chip">possible deviation</span><span class="mono">${esc(p.observed || "—")}</span><span class="spacer"></span><span class="hint">${agoTag(d.ts)}</span></div>
       <div class="hint" style="margin-top:6px">${esc(d.project_id)} · task ${esc(taskLabel(p.spec, d.task_id) || "—")} declares <span class="mono">${esc(expected)}</span></div>
       <div class="actions"><a href="#/run/${encodeURIComponent(d.run_id)}" data-key="dev-open-${esc(d.event_id)}">Open session</a>
-        <button class="act" type="button" data-dismiss="${esc(d.event_id)}">dismiss</button></div>
+        <button class="act quiet" type="button" data-dismiss="${esc(d.event_id)}">${icon("eyeoff")}<span>Dismiss</span></button></div>
     </div></li>`;
   }
   function deviationsView() {
@@ -1218,8 +1252,8 @@
     const decided = p.state !== "proposed";
     const status = decided ? `<span class="badge ${p.state === "approved" ? "accept" : "reject"}">${p.state === "approved" ? "Approved" : "Rejected"}</span> <span class="hint">by ${esc(p.decided_by || "someone")}${p.reasons ? `: ${esc(short(p.reasons, 120))}` : ""}</span>`
       : `<span class="badge warn">Waits for you</span>`;
-    const buttons = decided ? "" : `<div class="decide"><button class="act" type="button" data-plan="${esc(p.plan)}" data-plan-state="approved" data-key="approve-${esc(p.plan)}">Approve plan</button>
-      <button class="act" type="button" data-plan="${esc(p.plan)}" data-plan-state="rejected" data-key="reject-${esc(p.plan)}">Reject</button>
+    const buttons = decided ? "" : `<div class="decide"><button class="act primary" type="button" data-plan="${esc(p.plan)}" data-plan-state="approved" data-key="approve-${esc(p.plan)}">${icon("check")}<span>Approve plan</span></button>
+      <button class="act bad" type="button" data-plan="${esc(p.plan)}" data-plan-state="rejected" data-key="reject-${esc(p.plan)}">${icon("x")}<span>Reject</span></button>
       <label class="sr" for="why-${esc(p.plan)}">Why (optional)</label><input class="why" id="why-${esc(p.plan)}" data-why="${esc(p.plan)}" data-key="why-${esc(p.plan)}" maxlength="300" placeholder="why (optional; the next plan reads it)" />
       <span class="hint">On approval the Dev builds each task on its own branch; White Hat and Black Hat review it; you merge.</span></div>`;
     return `<section class="card plan" data-key="plan-${esc(p.plan)}" aria-label="Plan ${esc(p.plan)}"><div class="head"><h3>${avatar(p.agent || "elder-witch")}${esc(agentName(p.agent || "elder-witch"))} · plan ${esc(p.plan)}</h3>${status}</div>
@@ -1233,10 +1267,10 @@
   function dispatchLine(t, need) {
     if (need !== "green-witch" || t.claimed_by || t.waits_for || t.status === "completed" || ["done", "failed", "working", "submitted", "answered"].includes(t.doer_state)) return "";
     if (t.dispatch_via) {
-      return `<div class="who"><span class="badge working">Kiro Web requested</span> <span class="hint">by ${esc(t.dispatch_by || "someone")}</span> <button class="act" type="button" data-undispatch="${esc(t.ref)}" data-key="undispatch-${esc(t.ref)}">Cancel</button></div>`;
+      return `<div class="who"><span class="badge working">Kiro Web requested</span> <span class="hint">by ${esc(t.dispatch_by || "someone")}</span> <button class="act quiet" type="button" data-undispatch="${esc(t.ref)}" data-key="undispatch-${esc(t.ref)}">${icon("undo")}<span>Cancel</span></button></div>`;
     }
     const ok = state.cloudReady;
-    return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>Run in Kiro Web</button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
+    return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>${icon("cloud")}<span>Run in Kiro Web</span></button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
   }
   const closedThreads = new Set(); // a task's conversation opens with it; one a person folded stays folded across redraws
   const threadItems = new Map(); // the last conversation loaded per task, shown at once while a redraw reloads it
@@ -1267,7 +1301,7 @@
     if (p && p.state === "pushed") return `<div class="who"><span class="badge accept">Pushed</span> <span class="hint">${esc(p.branch)} is on origin</span></div>`;
     const failed = p && p.state === "failed" ? `<span class="hint">push failed: ${esc(short(p.detail || "", 100))}</span> ` : "";
     const offline = t.branch_host_online === false ? `<span class="hint">its host is offline; the branch is only there.</span> ` : "";
-    return `<div class="who">${failed}${offline}<button class="act" type="button" data-push="${esc(t.ref)}" data-key="push-${esc(t.ref)}">Ask host to push</button></div>`;
+    return `<div class="who">${failed}${offline}<button class="act" type="button" data-push="${esc(t.ref)}" data-key="push-${esc(t.ref)}">${icon("upload")}<span>Ask host to push</span></button></div>`;
   }
   /** Ready and its turn has come, but no online host runs the witch it needs: it would wait for ever, unseen. */
   const isStuck = (t, runnable) => !t.claimed_by && !t.waits_for && t.status !== "completed" && !["done", "failed"].includes(t.doer_state)
@@ -1317,7 +1351,7 @@
     const stuck = state.runnable && isStuck(t, state.runnable);
     const planLine = t.from_plan ? `<div class="hint">from plan ${esc(t.from_plan)}, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -1385,7 +1419,7 @@
         <label class="sr" for="note-kind">Kind</label><select id="note-kind" data-key="note-kind">${["idea", "question", "answer", "review", "note"].map((k) => `<option>${k}</option>`).join("")}</select>
         <label class="sr" for="note-task">About</label><select id="note-task" data-key="note-task"><option value="">the whole project</option>${tasks.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
         <label class="sr" for="note-author">Your name</label><input id="note-author" data-key="note-author" maxlength="40" placeholder="your name" value="${esc(author)}" />
-        <button class="act" type="submit">Post</button></form>`;
+        <button class="act primary" type="submit">${icon("pen")}<span>Post</span></button></form>`;
     return `${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Coven board · ${project}`,
         lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
       ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
@@ -1488,7 +1522,7 @@
         </div>
         <div class="write">
           <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="400" required aria-describedby="chat-keys" rows="1" placeholder="${esc(KIND_PLACEHOLDER.ask)}"></textarea>
-          <button class="send" type="submit" aria-label="Send" title="Send (Enter)">➤</button>
+          <button class="send" type="submit" aria-label="Send" title="Send (Enter)">${icon("send")}</button>
         </div>
         <div class="foot"><span id="chat-error" role="alert">${esc(state.chatError)}</span><span class="keys" id="chat-keys">Enter to send · Shift+Enter for a new line</span><span class="spacer"></span><span id="chat-count" aria-hidden="true"></span></div>
       </form>`;
@@ -1622,9 +1656,9 @@
     const rows = state.expandDeviations ? `<ul>${list.map((d) => `<li><span class="mono">${esc((d.payload || {}).observed || "—")}</span><span class="hint">${esc(d.project_id)} · task ${esc(taskLabel((d.payload || {}).spec, d.task_id) || "—")} · ${esc(ago(secondsSince(d.ts)))}</span><a href="#/run/${encodeURIComponent(d.run_id)}">open session</a></li>`).join("")}</ul>` : "";
     return `<section class="deviation" aria-label="Possible spec deviation">
       <div class="dev-top"><span class="label">possible spec deviation</span>
-        ${more > 0 ? `<button class="act" data-toggle-dev data-key="toggle-dev" type="button" aria-expanded="${state.expandDeviations}">+${more} more</button>` : ""}
+        ${more > 0 ? `<button class="act" data-toggle-dev data-key="toggle-dev" type="button" aria-expanded="${state.expandDeviations}">${icon("plus")}<span>${more} more</span></button>` : ""}
         <span class="spacer"></span><a href="#/run/${encodeURIComponent(top.run_id)}">open session</a>
-        <button class="act" data-dismiss="${esc(top.event_id)}" type="button">dismiss</button></div>
+        <button class="act quiet" data-dismiss="${esc(top.event_id)}" type="button">${icon("eyeoff")}<span>Dismiss</span></button></div>
       <div style="margin-top:6px">Expected <span class="mono">${esc(expected)}</span> · Observed <span class="mono">${esc(p.observed || "—")}</span></div>
       <div class="hint mono">task ${esc(taskLabel(p.spec, top.task_id) || "—")} · ${esc(short(top.run_id, 22))} · severity ${esc(p.severity || "possible")}</div>
       ${rows}
@@ -1754,7 +1788,7 @@
       size(isWrite ? (p.bytes ?? p.output_bytes) : (p.output_bytes ?? p.bytes)),
     ].filter(Boolean).join(" ");
     const dismiss = e.type === "spec_deviation" && !e.dismissed
-      ? ` <button class="act row-act" type="button" data-dismiss="${esc(e.event_id)}">dismiss</button>` : "";
+      ? ` <button class="act quiet sm row-act" type="button" data-dismiss="${esc(e.event_id)}">${icon("eyeoff")}<span>Dismiss</span></button>` : "";
     return `<li><button class="row ${p.success === false ? "fail" : ""} ${e.type === "spec_deviation" ? "dev" : ""} ${fresh}" type="button" data-event="${index}" data-key="ev-${esc(e.event_id)}">
       <span class="time">${esc(clock(e.ts))}</span><span class="mark ${tone}" aria-hidden="true">${mark}</span>
       <span class="what"><span class="sr">${esc(label)}: </span>${rowText(e)}</span><span class="side">${side}</span>

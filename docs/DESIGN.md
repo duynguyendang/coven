@@ -335,8 +335,16 @@ bubbles, full for pills. The ghost icons are the only organic shapes.
   to the other side.
 - **Chat composer:** kind and recipient as quiet inline selects, a growing textarea, Enter sends,
   Shift+Enter breaks a line; the send button is secondary to the keyboard.
-- **Buttons:** primary (ink fill) for the one main action of a view; quiet (muted fill, hairline)
-  for the rest; icon buttons 1 px bordered. Visible focus on all.
+- **Buttons:** `button.act`, Figtree 13 px / 500, 6 px radius, an icon before the label.
+  Default: surface fill, emphasised hairline. **Primary** (ink fill) for the one main action of a
+  view (*Approve plan*, *Post*). **Good** (success tint) and **Bad** (error ink, hairline; tint on
+  hover) only where the action is itself a state (*Mark done*, *Reject*). **Quiet** (no fill, no
+  border until hover) for dismiss and close. `sm` inside dense rows. Hover tints by 5 % ink, press
+  by 9 %; transitions 120 ms. Icon-only buttons (menu, send, toast close) are at least the target
+  size, 1 px bordered or ink-filled, with an `aria-label`. Visible focus on all.
+- **Icons:** one stroke set (24 px grid, 1.8 stroke, round caps), as `<symbol>`s at the top of
+  `<body>` drawn in `currentColor`, so they follow the text and both schemes; always decorative
+  (`aria-hidden`), the label names the button. No text glyphs (☰ ✕ ☾) as icons.
 - **Empty states:** one sentence that says why it is empty and the command that fills it
   (`./run-host.sh --agents elf`), in mono.
 
