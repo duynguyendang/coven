@@ -273,14 +273,14 @@ the Coven aliases at the top of `index.html` (`--bg`, `--panel`, `--line`, `--te
 | :--- | :--- | :--- |
 | LIVE · Available · Done | success | health pill, witch card border, Done tile |
 | Working · Claimed | info | badge, witch card tint |
-| STALE · needs a host · waiting for a slot | warning | card tint, Ready tile note |
-| DISCONNECTED · failed · Blocked · deviation | error | pill, Blocked tile, deviation banner |
+| STALE · needs a host · waiting for a slot · possible deviation | warning | card tint, Ready tile note, deviation banner |
+| DISCONNECTED · failed · Blocked | error | pill, Blocked tile |
 | Not available · unknown | muted | dashed border, greyed icon |
 
 ## Typography
 
 Two families from Astryx: **Figtree** (UI, falls back to the system sans) and **ui-monospace**
-(`SF Mono`, Consolas…). Base 14 px / 1.45.
+(`SF Mono`, Consolas…). Base 14 px / 1.45. Nothing readable is below 12 px; 11 px is only for caps labels, pills and badges.
 
 - **Headlines:** Figtree 600, 17–22 px; no display sizes above 22 px inside the app.
 - **Brand:** `COVEN` in Figtree 600 with 0.22 em tracking, beside the ghost.
@@ -319,6 +319,9 @@ bubbles, full for pills. The ghost icons are the only organic shapes.
 
 ## Components
 
+- **Connection pill:** top bar, mono caps: *CONNECTED* (success), *RECONNECTING* or *OFFLINE* (error). It names the live stream, never a count of live sessions.
+- **Demo bar:** one slim warning line, *DEMO DATA* in mono caps and one sentence; on every screen with seeded data, never dismissable.
+- **Selection:** a selected tile or nav item is shown by an info border (and a 2 px underline on tiles), never by a tint, so tints keep meaning state.
 - **Health pill:** mono 11 px, full radius, tinted by state (LIVE / STALE / DISCONNECTED). Always
   visible for a run; age since the last heartbeat beside it.
 - **Number tile:** the label in caps, the number in 22 px mono, one line of context (*2 need a
@@ -326,10 +329,14 @@ bubbles, full for pills. The ghost icons are the only organic shapes.
 - **Task card:** mono id, title, the witch (icon + name), a state badge (working, submitted,
   answered, failed) and the detail line; *Mark done* only on cards in review. Yellow tint and a
   how-to line when no online host runs its witch.
+- **Board order:** plans that wait for you, then Tasks (a column is always open: the person's choice, else the most urgent with tasks), then Witches (cards only for those working, available or waiting for a slot; the rest fold behind one row of their ghosts), then the Whiteboard.
+- **Notes:** neutral cards (surface, hairline); only the kind tag carries colour (idea amber, question blue, answer green, review red, review wanted purple).
+- **Your name:** one field in the sidebar signs notes, chat messages and decisions; the composers show *as <name>*, which focuses that field.
+- **Session title:** what the session works on (its task title, else its last tool call); the id stays in the crumbs and the facts.
 - **Witch card:** 40 px ghost, name, role, state (Working · Available · Waiting for a slot · Not
   available) and where. Working: info border and tint; available: success border; not available:
   dashed border, greyed icon.
-- **Deviation banner:** a soft error tint (40 % tint over the surface) with a 4 px ember left rule; ember caps label (ember on the full tint fails AA, so full tints carry the deep ink `on-error-tint`), expected vs observed path, *Dismiss*.
+- **Deviation banner:** advisory, so a soft warning tint with a 4 px amber left rule and an amber caps label; expected vs observed path; *Open session* (primary) and *Dismiss* (quiet).
 - **Chat bubble:** surface, hairline, 14 px radius, max 680 px; a witch's steps grouped into one
   bubble with her icon; *working…* dots that stop under reduced motion. People's messages align
   to the other side.

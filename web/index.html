@@ -124,9 +124,9 @@
   .nav-list { list-style: none; margin: 0; padding: 0; }
   .nav-item { display: flex; align-items: center; gap: 8px; color: var(--muted); border-radius: 6px; padding: 6px 8px; font-size: 0.8438rem; border-left: 2px solid transparent; }
   .nav-item:hover { background: var(--hover); color: var(--text); text-decoration: none; }
-  .nav-item[aria-current="page"] { background: var(--selected); color: var(--text); border-left-color: var(--blue); }
+  .nav-item[aria-current="page"] { background: var(--hover); color: var(--text); border-left-color: var(--blue); font-weight: 500; }
   .nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .count { font-family: var(--mono); font-size: 0.6875rem; color: var(--muted); }
+  .count { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
   .count.warn { color: var(--yellow); } .count.bad { color: var(--red); }
   .nav-row { display: flex; align-items: center; }
   .nav-row .nav-item { flex: 1; min-width: 0; }
@@ -137,8 +137,14 @@
   .nav-sub .nav-item { font-size: 0.7812rem; padding: 4px 8px; }
   .nav-sub .nav-item .label { font-family: var(--mono); font-size: 0.75rem; }
   .dot.mini { width: 7px; height: 7px; }
-  .side-foot { margin-top: auto; padding-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); }
-  .side-foot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .me { display: grid; gap: 3px; margin-top: auto; padding: 10px 2px 8px; border-top: 1px solid var(--line); }
+  .me label { font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  .me input { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; min-inline-size: 0; }
+  .me input::placeholder { color: var(--faint); }
+  .side-foot { padding-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .side-foot { display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); }
+  .act.icon-only { padding-inline: 9px; }
+  .act.icon-only .ico { inline-size: 1.15em; block-size: 1.15em; }
   .side-foot .act { min-inline-size: 0; padding-inline: 4px; font-size: 0.75rem; gap: 0.3em; }
   /* two-state toggle: shows the opposite of what is rendered; the inactive option is display:none, so no JS keeps it current */
   .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -174,9 +180,10 @@
   /* toolbar */
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 12px; }
   .toolbar input[type="search"], .toolbar select { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
-  .toolbar input[type="search"] { flex: 1 1 220px; min-width: 160px; max-width: 420px; }
+  .toolbar input[type="search"] { flex: 1 1 100%; min-width: 0; max-width: none; padding: 8px 12px; font-size: 0.875rem; }
   .toolbar input::placeholder { color: var(--faint); }
-  .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 0.7812rem; cursor: pointer; }
+  .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 0.8125rem; cursor: pointer; min-block-size: var(--target-size); padding-inline: 4px; }
+  .toolbar .result-n { margin-left: auto; }
   .seg { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
   .seg .filter { border: 0; border-radius: 0; border-right: 1px solid var(--line); padding: 5px 12px; }
   .seg .filter:last-child { border-right: 0; }
@@ -187,6 +194,8 @@
 
   .banner { border-radius: var(--radius-element); padding: 9px 14px; margin-bottom: 14px; font-size: 0.8125rem; border: 1px solid var(--line); background: var(--panel); }
   .banner.demo, .banner.replay { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn-ink); }
+  .banner.demo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 5px 12px; font-size: 0.75rem; margin-bottom: 10px; }
+  .banner.demo b { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.08em; }
   .banner.replay { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.04em; }
   .note { color: var(--muted); font-size: 0.7812rem; margin: 8px 0 12px; }
 
@@ -196,7 +205,7 @@
   .stat .k { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .stat .v { font-family: var(--mono); font-size: 1.375rem; line-height: 1.25; }
   .stat .v.warn { color: var(--yellow); } .stat .v.bad { color: var(--red); }
-  .stat .f { font-size: 0.6875rem; color: var(--muted); }
+  .stat .f { font-size: 0.75rem; color: var(--muted); }
 
   .filters { display: flex; gap: 6px; margin: 4px 0 10px; flex-wrap: wrap; }
   .filter { font: inherit; font-size: 0.7812rem; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--radius-full); padding: 3px 12px; cursor: pointer; }
@@ -226,21 +235,21 @@
   .health { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.06em; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--grey); flex: none; }
   .dot.live { background: var(--green); } .dot.stale { background: var(--yellow); } .dot.disconnected, .dot.failed { background: var(--red); }
-  .chip { font-family: var(--mono); font-size: 0.6562rem; padding: 1px 7px; border-radius: 4px; border: 1px solid var(--warn-line); color: var(--warn-ink); background: var(--warn-bg); }
+  .chip { font-family: var(--mono); font-size: 0.6875rem; padding: 1px 7px; border-radius: 4px; border: 1px solid var(--warn-line); color: var(--warn-ink); background: var(--warn-bg); }
   .chip.red { border-color: var(--bad-line); color: var(--bad-ink); background: var(--bad-bg); }
 
-  .badge { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .badge { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .badge.live, .badge.pass, .badge.accept { color: var(--ok-ink); border-color: var(--ok-line); background: var(--ok-bg); }
   .badge.stale, .badge.unknown, .badge.warn, .badge.no-consensus { color: var(--warn-ink); border-color: var(--warn-line); background: var(--warn-bg); }
   .badge.disconnected, .badge.failed, .badge.fail, .badge.reject { color: var(--bad-ink); border-color: var(--bad-line); background: var(--bad-bg); }
   .badge.finished, .badge.grey { color: var(--grey); }
   .ok { color: var(--green); } .bad { color: var(--red); }
 
-  .deviation { border: 1px solid var(--bad-line); border-left: 4px solid var(--red); background: var(--bad-soft); border-radius: var(--radius-element); padding: 12px 16px; margin-bottom: 14px; }
+  .deviation { border: 1px solid var(--warn-line); border-left: 4px solid var(--yellow); background: var(--warn-soft); border-radius: var(--radius-element); padding: 12px 16px; margin-bottom: 14px; }
   .deviation .dev-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  .deviation .label { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); }
-  .deviation ul { margin: 10px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--bad-line-soft); }
-  .deviation li { padding: 6px 0; border-bottom: 1px solid var(--bad-line-soft); font-size: 0.7812rem; display: flex; gap: 10px; flex-wrap: wrap; }
+  .deviation .label { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--warn-ink); font-weight: 600; }
+  .deviation ul { margin: 10px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--warn-line); }
+  .deviation li { padding: 6px 0; border-bottom: 1px solid var(--warn-line); font-size: 0.7812rem; display: flex; gap: 10px; flex-wrap: wrap; }
 
   .devlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .devlist > .card { margin: 0; }
@@ -260,22 +269,32 @@
   @media (max-width: 640px) { .stepper li { grid-template-columns: 22px minmax(0, 1fr); } .stepper li > :nth-child(n+3) { grid-column: 2; } }
   /* the coven board: members, task columns, whiteboard */
   .witches { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .witch { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 10px; align-items: center; }
+  .witch { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 10px; align-items: center; align-content: start; }
   .witch .av { grid-row: 1 / span 4; align-self: start; width: 40px; height: 40px; margin: 2px 0 0; }
   .witch .where { grid-column: 2; }
   .witch .nm { font-weight: 600; line-height: 1.2; }
-  .witch .rl { font-size: 0.7188rem; color: var(--muted); }
+  .witch .rl { font-size: 0.75rem; color: var(--muted); }
   .witch .st { font-size: 0.7812rem; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
   .witch.working { border-color: var(--blue); background: var(--selected); }
+  .more-witches { margin: 0 0 14px; }
+  .more-witches > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; padding: 8px 12px; min-block-size: var(--target-size);
+    border: 1px dashed var(--line-strong); border-radius: var(--radius-element); color: var(--muted); font-size: 0.8125rem; }
+  .more-witches > summary::-webkit-details-marker { display: none; }
+  .more-witches > summary::after { content: "Show"; margin-left: auto; font-size: 0.75rem; color: var(--blue); }
+  .more-witches[open] > summary::after { content: "Hide"; }
+  .more-witches > summary:hover { background: var(--hover); color: var(--text); }
+  .more-witches .faces { display: inline-flex; }
+  .more-witches .faces .av { inline-size: 26px; block-size: 26px; margin: 0 -6px 0 0; filter: grayscale(0.7); opacity: 0.7; }
+  .more-witches[open] > .witches { margin-top: 10px; }
   .witch.available { border-color: var(--ok-line); }
   .witch.full .av, .witch.offline .av { filter: grayscale(0.7); opacity: 0.55; }
   .witch.offline { background: transparent; border-style: dashed; }
   .witch.offline .nm, .witch.offline .st { color: var(--muted); }
-  .witch .where { font-size: 0.7188rem; color: var(--muted); }
+  .witch .where { font-size: 0.75rem; color: var(--muted); }
   .tcard .convo { margin-top: 6px; font-size: 0.75rem; }
   .tcard .convo summary { cursor: pointer; color: var(--muted); min-block-size: var(--target-size); display: flex; align-items: center; }
   .tcard .convo .items { margin: 4px 0 0; padding-left: 1.1rem; display: grid; gap: 4px; max-block-size: 16rem; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
-  .witch .duty { grid-column: 2; font-size: 0.7188rem; color: var(--muted); }
+  .witch .duty { grid-column: 2; font-size: 0.75rem; color: var(--muted); }
   .witch .duty summary { cursor: pointer; min-block-size: var(--target-size); display: flex; align-items: center; }
   .witch .duty dl { margin: 4px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 8px; }
   .witch .duty dt { font-weight: 600; color: var(--text); }
@@ -296,17 +315,17 @@
   @media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .tile { font: inherit; color: var(--text); text-align: left; cursor: pointer; background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
   .tile:hover { border-color: var(--line-strong); background: var(--hover); }
-  .tile[aria-expanded="true"] { border-color: var(--blue); background: var(--selected); }
+  .tile[aria-expanded="true"] { border-color: var(--blue); box-shadow: inset 0 -2px 0 var(--blue); }
   .tile .n { font-family: var(--mono); font-size: 1.375rem; font-weight: 400; line-height: 1.25; font-variant-numeric: tabular-nums; }
   .tile .l { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-  .tile .go { font-size: 0.7188rem; color: var(--muted); }
+  .tile .go { font-size: 0.75rem; color: var(--muted); }
   .column-detail { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; margin-bottom: 18px; }
   .column-detail h3 { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; }
   .column-detail .tlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .trow { inline-size: 100%; font: inherit; font-size: 0.8125rem; color: var(--text); text-align: start; cursor: pointer; background: var(--panel); border: 1px solid var(--line);
     border-radius: var(--radius-element); padding: 8px 10px; display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
   .trow:hover { border-color: var(--line-strong); background: var(--panel-2); }
-  .trow .id { font-family: var(--mono); font-size: 0.7188rem; color: var(--muted); }
+  .trow .id { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
   .trow .tt { overflow-wrap: anywhere; }
   .trow .who-row { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); flex-wrap: wrap; justify-content: end; }
   .trow .who-row .av { inline-size: 18px; block-size: 18px; margin: 0; }
@@ -326,21 +345,28 @@
   .task-dialog .tcard { margin: 0; border: 0; padding: 0; background: transparent; font-size: 0.875rem; }
   @media (max-width: 640px) { .task-dialog { inline-size: 100vw; max-inline-size: 100vw; max-block-size: 100dvh; margin: auto 0 0; border-radius: var(--radius-element) var(--radius-element) 0 0; } }
   .tcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 8px 10px; margin-bottom: 8px; font-size: 0.8125rem; }
-  .tcard .id { font-family: var(--mono); font-size: 0.7188rem; color: var(--muted); }
+  .tcard .id { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
   .tcard .who { font-size: 0.75rem; margin-top: 4px; color: var(--muted); }
   .tcard.mine { border-color: var(--blue); }
   .tcard.waiting { opacity: 0.6; border-style: dashed; }
   .tcard.stuck { border-color: var(--warn-line); background: var(--warn-soft); }
   .tcard .stuck-why { font-size: 0.75rem; margin-top: 4px; color: var(--warn-ink); }
-  .tcard .stuck-why code { white-space: nowrap; font-size: 0.7188rem; }
+  .tcard .stuck-why code { white-space: nowrap; font-size: 0.75rem; }
   .tile .go.warn { color: var(--warn-ink); font-weight: 600; }
   [data-board-project] { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
   .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-  .sticky { border-radius: 4px 4px 4px 14px; padding: 10px 12px; font-size: 0.8438rem; line-height: 1.4; box-shadow: var(--shadow-low); overflow-wrap: anywhere; }
-  .sticky .meta { font-size: 0.6875rem; opacity: 0.75; margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-  .sticky .kind { font-family: var(--mono); font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
-  .sticky.idea { background: var(--color-background-yellow); color: var(--color-text-yellow); } .sticky.question { background: var(--color-background-blue); color: var(--color-text-blue); } .sticky.answer { background: var(--color-background-green); color: var(--color-text-green); }
-  .sticky.review { background: var(--color-background-red); color: var(--color-text-red); } .sticky.note { background: var(--color-background-gray); color: var(--color-text-gray); } .sticky.review-wanted { background: var(--color-background-purple); color: var(--color-text-purple); }
+  /* Notes are neutral cards; only the kind tag carries colour (colour means kind, never failure). */
+  .sticky { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; font-size: 0.8438rem; line-height: 1.45;
+    overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 6px; }
+  .sticky .meta { font-size: 0.75rem; color: var(--muted); margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  .sticky .kind { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 0.6875rem; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 1px 8px 1px 2px; border-radius: var(--radius-full); border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+  .sticky .kind:not(:has(.av)) { padding-left: 8px; }
+  .sticky.idea .kind { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .sticky.question .kind { background: var(--info-bg); border-color: var(--info-line); color: var(--info-ink); }
+  .sticky.answer .kind { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok-ink); }
+  .sticky.review .kind { background: var(--bad-bg); border-color: var(--bad-line); color: var(--bad-ink); }
+  .sticky.review-wanted .kind { background: var(--color-background-purple); border-color: var(--color-border-purple); color: var(--color-text-purple); }
   .sticky a { color: inherit; text-decoration: underline; }
   .compose { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 8px; margin-bottom: 14px; align-items: center; }
   @media (max-width: 760px) { .compose { grid-template-columns: repeat(2, minmax(0, 1fr)); } .compose textarea { grid-column: 1 / -1; } }
@@ -408,7 +434,7 @@
   .chat-compose .send .ico { inline-size: 17px; block-size: 17px; translate: -1px 1px; }
   .chat-compose .send:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 84%, var(--panel)); }
   .chat-compose .send:disabled { opacity: 0.4; cursor: default; }
-  .chat-compose .foot { display: flex; gap: 10px; align-items: center; font-size: 0.7188rem; color: var(--muted); min-height: 16px; }
+  .chat-compose .foot { display: flex; gap: 10px; align-items: center; font-size: 0.75rem; color: var(--muted); min-height: 16px; }
   .chat-compose #chat-error { color: var(--red); }
   .chat-compose #chat-error:empty { display: none; }
   @media (max-width: 640px) { .chat-compose .keys { display: none; } .msg { max-width: 94%; } .chat-page .page-h .lede, .chat-page .crumbs { display: none; } .chat-page .page-h h1 { font-size: 1.125rem; } }
@@ -428,27 +454,28 @@
      where the action itself is a state (Mark done, Reject). An icon leads the label; the label names the button. */
   .sprite { position: absolute; inline-size: 0; block-size: 0; overflow: hidden; }
   .ico { inline-size: 1.05em; block-size: 1.05em; flex: none; }
-  button.act { display: inline-flex; align-items: center; justify-content: center; gap: 0.4em; font: inherit; font-size: 0.8125rem; font-weight: 500; line-height: 1.2;
+  a.act:hover { text-decoration: none; }
+  .act { display: inline-flex; align-items: center; justify-content: center; gap: 0.4em; font: inherit; font-size: 0.8125rem; font-weight: 500; line-height: 1.2;
     color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap;
     transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, scale 120ms ease-out; }
-  button.act .ico { color: var(--muted); transition: color 120ms ease-out; }
-  button.act:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 5%, var(--panel)); }
-  button.act:hover:not(:disabled) .ico { color: currentColor; }
-  button.act:active:not(:disabled) { background: color-mix(in srgb, var(--text) 9%, var(--panel)); }
-  button.act:disabled { opacity: 0.5; cursor: not-allowed; }
-  button.act.primary { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
-  button.act.primary .ico { color: currentColor; }
-  button.act.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 84%, var(--panel)); }
-  button.act.primary:active:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 72%, var(--panel)); }
-  button.act.good { background: var(--ok-bg); color: var(--ok-ink); border-color: var(--ok-line); }
-  button.act.bad { background: var(--panel); color: var(--bad-ink); border-color: var(--bad-line); }
-  button.act.good .ico, button.act.bad .ico { color: currentColor; }
-  button.act.good:hover:not(:disabled) { background: color-mix(in srgb, var(--ok-line) 22%, var(--ok-bg)); }
-  button.act.bad:hover:not(:disabled) { background: var(--bad-bg); }
-  button.act.quiet { background: transparent; border-color: transparent; color: var(--muted); }
-  button.act.quiet:hover:not(:disabled) { color: var(--text); background: var(--hover); border-color: var(--line); }
-  button.act.sm { font-size: 0.75rem; padding: 3px 8px; }
-  @media (forced-colors: active) { button.act, button.act.quiet { border: 1px solid ButtonText; } }
+  .act .ico { color: var(--muted); transition: color 120ms ease-out; }
+  .act:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 5%, var(--panel)); }
+  .act:hover:not(:disabled) .ico { color: currentColor; }
+  .act:active:not(:disabled) { background: color-mix(in srgb, var(--text) 9%, var(--panel)); }
+  .act:disabled { opacity: 0.5; cursor: not-allowed; }
+  .act.primary { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
+  .act.primary .ico { color: currentColor; }
+  .act.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 84%, var(--panel)); }
+  .act.primary:active:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 72%, var(--panel)); }
+  .act.good { background: var(--ok-bg); color: var(--ok-ink); border-color: var(--ok-line); }
+  .act.bad { background: var(--panel); color: var(--bad-ink); border-color: var(--bad-line); }
+  .act.good .ico, .act.bad .ico { color: currentColor; }
+  .act.good:hover:not(:disabled) { background: color-mix(in srgb, var(--ok-line) 22%, var(--ok-bg)); }
+  .act.bad:hover:not(:disabled) { background: var(--bad-bg); }
+  .act.quiet { background: transparent; border-color: transparent; color: var(--muted); }
+  .act.quiet:hover:not(:disabled) { color: var(--text); background: var(--hover); border-color: var(--line); }
+  .act.sm { font-size: 0.75rem; padding: 3px 8px; }
+  @media (forced-colors: active) { .act, .act.quiet { border: 1px solid ButtonText; } }
   button.link { font: inherit; color: var(--blue); background: none; border: 0; padding: 0; cursor: pointer; }
 
   /* session view */
@@ -474,11 +501,11 @@
   .rows > li { position: relative; }
   .row-act { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
   .row:hover { background: var(--panel-2); }
-  .row .time { font-family: var(--mono); font-size: 0.6875rem; color: var(--muted); }
+  .row .time { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
   .row .mark { font-family: var(--mono); text-align: center; }
   .row .what { min-width: 0; overflow-wrap: anywhere; }
   .row .what .sub { display: block; font-size: 0.75rem; color: var(--muted); }
-  .row .side { display: flex; gap: 8px; align-items: baseline; font-family: var(--mono); font-size: 0.6875rem; color: var(--muted); white-space: nowrap; }
+  .row .side { display: flex; gap: 8px; align-items: baseline; font-family: var(--mono); font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
   .row.fail { background: var(--bad-soft); }
   .row.dev { background: var(--warn-soft); }
   .row.fresh { animation: fresh 1.6s ease-out; }
@@ -505,7 +532,7 @@
   .persona.brainstorm { border-color: var(--color-border-orange); color: var(--color-text-orange); background: var(--color-background-orange); } .persona.chair { border-color: var(--color-border-gray); color: var(--color-text-gray); background: var(--color-background-gray); }
   .evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .ev-link { font: inherit; font-family: var(--mono); font-size: 0.6875rem; color: var(--blue); background: var(--info-soft); border: 1px solid var(--info-line); border-radius: 4px; padding: 2px 7px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
-  .note-uncounted { font-family: var(--mono); font-size: 0.6875rem; color: var(--grey); margin-top: 4px; }
+  .note-uncounted { font-family: var(--mono); font-size: 0.75rem; color: var(--grey); margin-top: 4px; }
   .decision { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; }
   .dissent { border-left: 3px solid var(--red); background: var(--bad-soft); border-radius: 4px; padding: 8px 12px; margin-top: 10px; font-size: 0.8125rem; }
   .dissent .who { font-size: 0.6875rem; font-family: var(--mono); color: var(--red); margin-bottom: 3px; }
@@ -514,8 +541,11 @@
   .checks .pass .m { color: var(--green); } .checks .fail .m { color: var(--red); } .checks .unknown .m { color: var(--yellow); }
   .disagree { border: 1px solid var(--bad-line); background: var(--bad-soft); border-radius: var(--radius-element); padding: 9px 12px; margin-top: 8px; font-size: 0.8125rem; }
 
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: var(--chrome); border-left: 1px solid var(--line); z-index: 40; display: none; flex-direction: column; box-shadow: var(--shadow-high); }
-  .drawer.open { display: flex; }
+  .drawer { position: fixed; inset: 0 0 0 auto; margin: 0; inline-size: min(540px, 100vw); max-inline-size: 100vw; block-size: 100dvh; max-block-size: 100dvh; padding: 0;
+    color: var(--text); background: var(--chrome); border: 0; border-left: 1px solid var(--line); box-shadow: var(--shadow-high); }
+  .drawer[open] { display: flex; flex-direction: column; }
+  .drawer:modal { overscroll-behavior: contain; }
+  .drawer::backdrop { background: var(--color-overlay); overflow: hidden; overscroll-behavior: contain; }
   .drawer .dh { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   .drawer .dn { padding: 8px 16px; font-size: 0.75rem; color: var(--muted); border-bottom: 1px solid var(--line); }
   .drawer pre { margin: 0; padding: 14px 16px; overflow: auto; flex: 1; font-family: var(--mono); font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -546,16 +576,17 @@
 </head>
 <body>
 <!-- UI icons: one stroke set, drawn in currentColor so they follow the text colour and every theme. -->
-<svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0"><defs><symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol><symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol><symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z"/></symbol><symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol><symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3M15.5 16.5L20 12l-4.5-4.5M20 12H9.5"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6.5L9.5 17 4 11.5"/></symbol><symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7.5a4.5 4.5 0 1 1 .9-8.9 6 6 0 0 1 11.3 2.3A3.4 3.4 0 0 1 17.5 19z"/></symbol><symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol><symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14"/></symbol><symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z"/></symbol><symbol id="i-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A9.6 9.6 0 0 1 12 5c5 0 8.6 4 9.5 7a11 11 0 0 1-2.3 3.3M6.5 6.5A11.4 11.4 0 0 0 2.5 12c.9 3 4.5 7 9.5 7a9.6 9.6 0 0 0 5.3-1.6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h8.5M16.5 3.6a2.1 2.1 0 1 1 3 3L7.5 18.6 3.5 19.5l.9-4z"/></symbol></defs></svg>
+<svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0"><defs><symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol><symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol><symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z"/></symbol><symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol><symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3M15.5 16.5L20 12l-4.5-4.5M20 12H9.5"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6.5L9.5 17 4 11.5"/></symbol><symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7.5a4.5 4.5 0 1 1 .9-8.9 6 6 0 0 1 11.3 2.3A3.4 3.4 0 0 1 17.5 19z"/></symbol><symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol><symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14"/></symbol><symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z"/></symbol><symbol id="i-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A9.6 9.6 0 0 1 12 5c5 0 8.6 4 9.5 7a11 11 0 0 1-2.3 3.3M6.5 6.5A11.4 11.4 0 0 0 2.5 12c.9 3 4.5 7 9.5 7a9.6 9.6 0 0 0 5.3-1.6"/></symbol><symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol><symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h8.5M16.5 3.6a2.1 2.1 0 1 1 3 3L7.5 18.6 3.5 19.5l.9-4z"/></symbol></defs></svg>
 <a class="skip" href="#main">Skip to content</a>
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar" aria-label="Sidebar">
     <a class="brand" href="#/" aria-label="Coven, all sessions"><b>COVEN</b><span>Kiro sessions</span></a>
     <nav id="nav" aria-label="Main"></nav>
+    <div class="me"><label for="me">Your name</label><input id="me" data-key="me" maxlength="40" autocomplete="nickname" placeholder="signs your notes and messages" /></div>
     <div class="side-foot">
-      <button class="act" id="theme-toggle" type="button">
-        <span class="to-dark"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-moon"/></svg><span><span class="vh">Switch to </span>Dark<span class="vh"> theme</span></span></span>
-        <span class="to-light"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sun"/></svg><span><span class="vh">Switch to </span>Light<span class="vh"> theme</span></span></span>
+      <button class="act icon-only" id="theme-toggle" type="button" title="Switch the colour scheme">
+        <span class="to-dark"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-moon"/></svg><span class="vh">Switch to dark theme</span></span>
+        <span class="to-light"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sun"/></svg><span class="vh">Switch to light theme</span></span>
       </button>
       <button class="act" id="nav-hide" type="button"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg><span>Hide<span class="vh"> sidebar</span></span></button>
       <button class="act" id="sign-out" type="button"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-logout"/></svg><span>Sign out</span></button>
@@ -576,11 +607,11 @@
   </div>
 </div>
 
-<aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title" tabindex="-1">
+<dialog class="drawer" id="drawer" closedby="any" aria-labelledby="drawer-title">
   <div class="dh"><h3 id="drawer-title">Detail</h3><button class="act quiet" id="drawer-close" type="button"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-x"/></svg><span>Close</span></button></div>
   <div class="dn">The stored, redacted record. Output, file contents and command arguments are never recorded.</div>
-  <pre id="drawer-body"></pre>
-</aside>
+  <pre id="drawer-body" tabindex="0"></pre>
+</dialog>
 
 <!-- One task, opened from its row in a column: a native modal (Esc, the back gesture and a click outside close it). -->
 <dialog class="task-dialog" id="task-dialog" closedby="any" aria-labelledby="task-dialog-title">
@@ -977,7 +1008,7 @@
      events never shows it, whatever else the fleet holds. */
   const seededProject = (id) => Boolean(id && (state.projects.find((p) => p.project_id === id) || {}).seeded);
   const demoBanner = (seeded) => (seeded
-    ? '<div class="banner demo">DEMO DATA — some of what is shown here is seeded example data, not real Kiro runs (it carries <code>source: "seed"</code>).</div>' : "");
+    ? '<div class="banner demo" role="note"><b>DEMO DATA</b><span>Some of this is seeded example data, not real Kiro runs (<code>source: "seed"</code>).</span></div>' : "");
 
   /* -------------------------------------------------------- screen 1: sessions */
   const isFailure = (run) => run.attention && (run.attention.includes("failing") || run.attention.includes("repeat failure"));
@@ -1216,7 +1247,7 @@
     return `<li class="card dev-card"><div class="body">
       <div class="row1"><span class="chip">possible deviation</span><span class="mono">${esc(p.observed || "—")}</span><span class="spacer"></span><span class="hint">${agoTag(d.ts)}</span></div>
       <div class="hint" style="margin-top:6px">${esc(d.project_id)} · task ${esc(taskLabel(p.spec, d.task_id) || "—")} declares <span class="mono">${esc(expected)}</span></div>
-      <div class="actions"><a href="#/run/${encodeURIComponent(d.run_id)}" data-key="dev-open-${esc(d.event_id)}">Open session</a>
+      <div class="actions"><a class="act primary" href="#/run/${encodeURIComponent(d.run_id)}" data-key="dev-open-${esc(d.event_id)}">${icon("open")}<span>Open session</span></a>
         <button class="act quiet" type="button" data-dismiss="${esc(d.event_id)}">${icon("eyeoff")}<span>Dismiss</span></button></div>
     </div></li>`;
   }
@@ -1403,12 +1434,17 @@
     const order = { working: 0, available: 1, full: 2, offline: 3 };
     roster.sort((x, y) => order[x.state] - order[y.state]);
     const text = { working: "Working", available: "Available", full: "Waiting for a slot", offline: "Not available" };
-    const html = roster.map((w) => {
+    const card = (w) => {
       const where = w.state === "working" ? w.jobs.map((j) => `${j.task.startsWith("chat#") ? "on a chat request" : "on " + esc(j.task)} · ${esc(j.host)}`).join("; ")
         : w.offers.length ? `on ${w.offers.map((o) => esc(o.host)).join(", ")}` : "no host runs it";
       return `<div class="witch ${w.state}" data-key="witch-${w.slug}">${avatar(w.slug)}<div class="nm">${esc(agentName(w.slug))}</div><div class="rl">${esc(AGENT_ROLE[w.slug])}</div>
         <div class="st"><span class="dot ${w.state === "working" ? "live" : w.state === "available" ? "live" : ""}" aria-hidden="true"></span>${text[w.state]}</div><div class="where">${where}</div>${roleCard(w.slug)}</div>`;
-    }).join("");
+    };
+    const active = roster.filter((w) => w.state !== "offline"), idle = roster.filter((w) => w.state === "offline");
+    // Who can work now gets a card; the witches no host runs fold behind one row of their ghosts (still a click away).
+    const folded = idle.length ? `<details class="more-witches" data-key="more-witches"${state.ui.allWitches ? " open" : ""}><summary><span class="faces" aria-hidden="true">${idle.map((w) => avatar(w.slug)).join("")}</span>
+      <span>${idle.length} ${idle.length === 1 ? "witch is" : "witches are"} not on any host</span></summary><div class="witches">${idle.map(card).join("")}</div></details>` : "";
+    const html = `${active.length ? `<div class="witches">${active.map(card).join("")}</div>` : ""}${folded}`;
     return { html, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
   }
   /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
@@ -1437,8 +1473,10 @@
     const plans = [...(b.plans || []).filter((p) => p.state === "proposed"), ...(b.plans || []).filter((p) => p.state !== "proposed").slice(0, 3)];
     const waitingPlans = plans.filter((p) => p.state === "proposed").length;
     // The board shows numbers only; a click on a number opens that column's tasks below.
-    const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : null;
-    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host · ` : ""}${open === key ? "Hide tasks" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
+    // A column is always open: the person's choice, else the most urgent one with tasks (review, then blocked, then ready).
+    const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => (cols[k] || []).length) || "ready";
+    const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : firstFull;
+    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host · ` : ""}${open === key ? "Showing below" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
     const detail = open ? `<section class="column-detail" id="col-detail" aria-label="${COLUMNS.find(([k]) => k === open)[1]}"><h3>${COLUMNS.find(([k]) => k === open)[1]} · ${plural(cols[open].length, "task")}</h3>${cols[open].length ? `<ul class="tlist">${cols[open].map(taskRow).join("")}</ul>` : '<div class="hint" style="padding:4px">No tasks here.</div>'}</section>` : "";
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
@@ -1446,15 +1484,15 @@
         <label class="sr" for="note-text">Note</label><textarea id="note-text" data-key="note-text" maxlength="400" placeholder="An idea, a question, a review… (everyone's agents read this as untrusted text)" required></textarea>
         <label class="sr" for="note-kind">Kind</label><select id="note-kind" data-key="note-kind">${["idea", "question", "answer", "review", "note"].map((k) => `<option>${k}</option>`).join("")}</select>
         <label class="sr" for="note-task">About</label><select id="note-task" data-key="note-task"><option value="">the whole project</option>${tasks.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
-        <label class="sr" for="note-author">Your name</label><input id="note-author" data-key="note-author" maxlength="40" placeholder="your name" value="${esc(author)}" />
+        <span class="signed hint">as <button class="link" type="button" data-edit-name>${esc(author || "someone")}</button></span>
         <button class="act primary" type="submit">${icon("pen")}<span>Post</span></button></form>`;
     return `${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Coven board · ${project}`,
         lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
       ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
-      <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? `<div class="witches">${members.html}</div>` : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
       ${plans.length ? `<h2>Plans${waitingPlans ? ` <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span>` : ""}</h2>${plans.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
+      <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? members.html : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
       <h2>Whiteboard</h2>${compose}
       <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">Nothing on the board yet. Post the first note.</p>'}</div>`;
   }
@@ -1546,7 +1584,7 @@
           <span class="spacer"></span>
           <label class="pick">To <select id="chat-to" data-key="chat-to"><option value="">the council (Chair)</option>${Object.entries(CHAT_ROLE_NAME).filter(([r]) => r !== "chair").map(([r, n]) => `<option value="${r}">${esc(n)}</option>`).join("")}<optgroup label="Other witches">${OTHER_WITCHES.map((r) => `<option value="${r}">${esc(PERSONA_OF[r])}</option>`).join("")}</optgroup></select></label>
           <label class="pick">About <select id="chat-task" data-key="chat-task"><option value="">the whole project</option>${tasks.map(([ref, title]) => `<option value="${esc(ref)}">${esc(ref)} ${esc(short(title, 40))}</option>`).join("")}</select></label>
-          <label class="pick">as <input id="chat-author" data-key="chat-author" maxlength="40" placeholder="your name" value="${esc(localStorage.getItem("coven_author") || "")}" /></label>
+          <span class="pick">as <button class="link" type="button" data-edit-name>${esc(localStorage.getItem("coven_author") || "someone")}</button></span>
         </div>
         <div class="write">
           <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="400" required aria-describedby="chat-keys" rows="1" placeholder="${esc(KIND_PLACEHOLDER.ask)}"></textarea>
@@ -1614,7 +1652,7 @@
       <div class="decision"><span class="hint">Chair</span> <span class="badge ${cls(c.chair_proposal)}">${esc(c.chair_proposal || "—")}</span>
         <span class="hint">Guard</span> <span class="badge ${cls(c.verdict)}">${esc(c.verdict || "pending")}</span>
         ${c.disagreement ? '<span class="chip red">disagreement</span>' : ""}</div>
-      ${dev ? `<div class="actions"><a href="#/run/${encodeURIComponent(dev)}/council/${encodeURIComponent(c.council_id)}" data-key="council-open-${esc(c.council_id)}">Open council</a></div>` : ""}
+      ${dev ? `<div class="actions"><a href="#/run/${encodeURIComponent(dev)}/council/${encodeURIComponent(c.council_id)}" data-key="council-open-${esc(c.council_id)}" class="act">${icon("open")}<span>Open council</span></a></div>` : ""}
     </div></li>`;
   }
   function councilsView() {
@@ -1685,7 +1723,7 @@
     return `<section class="deviation" aria-label="Possible spec deviation">
       <div class="dev-top"><span class="label">possible spec deviation</span>
         ${more > 0 ? `<button class="act" data-toggle-dev data-key="toggle-dev" type="button" aria-expanded="${state.expandDeviations}">${icon("plus")}<span>${more} more</span></button>` : ""}
-        <span class="spacer"></span><a href="#/run/${encodeURIComponent(top.run_id)}">open session</a>
+        <span class="spacer"></span><a class="act primary" href="#/run/${encodeURIComponent(top.run_id)}">${icon("open")}<span>Open session</span></a>
         <button class="act quiet" data-dismiss="${esc(top.event_id)}" type="button">${icon("eyeoff")}<span>Dismiss</span></button></div>
       <div style="margin-top:6px">Expected <span class="mono">${esc(expected)}</span> · Observed <span class="mono">${esc(p.observed || "—")}</span></div>
       <div class="hint mono">task ${esc(taskLabel(p.spec, top.task_id) || "—")} · ${esc(short(top.run_id, 22))} · severity ${esc(p.severity || "possible")}</div>
@@ -1721,7 +1759,11 @@
       crumbs.push({ label: projectName(run.project_id), href: listHash({ project: run.project_id }) });
     }
     crumbs.push({ label: short(run ? run.run_id : state.route.runId, 22) });
-    return pageHeader({ crumbs, title: run ? `Session ${short(run.run_id, 13)}` : "Session" });
+    // The title says what the session works on: its task, else what it last did; the id stays in the crumbs and the facts.
+    const lastCall = run ? [...state.events].reverse().find((e) => e.type === "tool_call") : null;
+    const did = intentOf((lastCall && lastCall.payload) || (run && run.last_action));
+    const title = !run ? "Session" : run.task_title || did || `Session ${short(run.run_id, 13)}`;
+    return pageHeader({ crumbs, title });
   }
 
   function sessionView() {
@@ -1981,18 +2023,19 @@
   }
 
   /* ------------------------------------------------------------------ drawer */
-  let lastFocus = null;
+  /* A native modal dialog: the browser makes the page inert, handles Esc, and returns focus to the row that opened it. */
   function openDrawer(title, value) {
-    lastFocus = document.activeElement;
     $("drawer-title").textContent = title;
     $("drawer-body").textContent = JSON.stringify(value, null, 2);
-    $("drawer").classList.add("open");
-    $("drawer").focus();
+    const drawer = $("drawer");
+    drawer.classList.add("open");
+    if (!drawer.open) drawer.showModal();
   }
   function closeDrawer() {
-    if (!$("drawer").classList.contains("open")) return false;
-    $("drawer").classList.remove("open");
-    if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+    const drawer = $("drawer");
+    if (!drawer.open && !drawer.classList.contains("open")) return false;
+    drawer.classList.remove("open");
+    if (drawer.open) drawer.close();
     return true;
   }
   const findEvent = (id) => state.events.find((e) => e.event_id === id) || (state.council && state.council.events.find((e) => e.event_id === id)) || null;
@@ -2029,7 +2072,9 @@
       render({ keepScroll: true });
     }));
     root.querySelectorAll("[data-task-open]").forEach((el) => el.addEventListener("click", () => openTask(el.dataset.taskOpen)));
-    root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { state.boardOpen = state.boardOpen === el.dataset.col ? null : el.dataset.col; render({ keepScroll: true }); }));
+    root.querySelectorAll("[data-edit-name]").forEach((el) => el.addEventListener("click", () => { if (narrow() && !$("app").classList.contains("nav-open")) toggleNav(); $("me").focus(); }));
+    root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
+    root.querySelectorAll("details.more-witches").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.allWitches)) { state.ui.allWitches = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try {
@@ -2142,8 +2187,7 @@
       state.chatError = problem;
       $("chat-error").textContent = problem;
       if (problem) return;
-      const author = $("chat-author").value.trim();
-      if (author) localStorage.setItem("coven_author", author);
+      const author = localStorage.getItem("coven_author") || "";
       const body = { project_id: defaultBoardProject(), kind, message, task, to: $("chat-to").value || undefined, author: author || undefined };
       if (form.dataset.sending) return; // a second Enter while the first is on its way sends nothing twice
       form.dataset.sending = "1";
@@ -2161,8 +2205,7 @@
       ev.preventDefault();
       const text = $("note-text").value.trim();
       if (!text) return;
-      const author = $("note-author").value.trim();
-      if (author) localStorage.setItem("coven_author", author);
+      const author = localStorage.getItem("coven_author") || "";
       const body = { project_id: defaultBoardProject(), note: text, kind: $("note-kind").value, task: $("note-task").value || undefined, author: author || undefined };
       try {
         await api("/v1/board/notes", { method: "POST", body: JSON.stringify(body) });
@@ -2202,8 +2245,8 @@
     const source = new EventSource(`/v1/stream?token=${encodeURIComponent(state.token)}`);
     state.source = source;
     const pill = $("stream-pill");
-    source.onopen = () => { pill.textContent = "LIVE STREAM"; pill.className = "pill ok"; };
-    source.onerror = () => { pill.textContent = "RECONNECTING"; pill.className = "pill bad"; };
+    source.onopen = () => { pill.textContent = "CONNECTED"; pill.className = "pill ok"; pill.title = "Live updates are streaming"; };
+    source.onerror = () => { pill.textContent = navigator.onLine === false ? "OFFLINE" : "RECONNECTING"; pill.className = "pill bad"; pill.title = "Live updates paused; retrying"; };
     ["event", "heartbeat", "dismiss", "board", "chat"].forEach((name) => source.addEventListener(name, onMessage));
   }
 
@@ -2244,14 +2287,16 @@
     start();
   });
   $("drawer-close").addEventListener("click", closeDrawer);
+  $("drawer").addEventListener("close", () => $("drawer").classList.remove("open"));
   $("task-dialog").addEventListener("close", () => { state.openTask = null; $("task-dialog-body").innerHTML = ""; $("task-dialog").returnValue = ""; });
   if (!("closedBy" in HTMLDialogElement.prototype)) {
     // Light dismiss where `closedby` is missing: a press and a release both outside the dialog's box close it.
-    const dialog = $("task-dialog");
-    const outside = (e) => { const r = dialog.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
-    let pressedOutside = false;
-    dialog.addEventListener("pointerdown", (e) => { pressedOutside = outside(e); });
-    dialog.addEventListener("pointerup", (e) => { if (pressedOutside && outside(e)) dialog.close(); });
+    for (const dialog of [$("task-dialog"), $("drawer")]) {
+      const outside = (e) => { const r = dialog.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
+      let pressedOutside = false;
+      dialog.addEventListener("pointerdown", (e) => { pressedOutside = outside(e); });
+      dialog.addEventListener("pointerup", (e) => { if (pressedOutside && outside(e)) dialog.close(); });
+    }
   }
 
   /* theme (guide: dark-mode-toggle). Two states shown: the system default, or an override stored literally.
@@ -2317,6 +2362,13 @@
   });
   document.querySelectorAll(".brand").forEach((el) => el.insertAdjacentHTML("afterbegin", avatar("coven")));
   $("login-ghost").innerHTML = avatar("coven");
+  // One name signs notes, chat messages and decisions; it is kept in this browser only.
+  $("me").value = localStorage.getItem("coven_author") || "";
+  $("me").addEventListener("change", () => {
+    const name = $("me").value.trim().slice(0, 40);
+    if (name) localStorage.setItem("coven_author", name); else localStorage.removeItem("coven_author");
+    render({ keepScroll: true });
+  });
   // The skip link moves focus to the content; it must not change the hash, which is the router's.
   document.querySelector("a.skip").addEventListener("click", (ev) => { ev.preventDefault(); $("main").focus(); });
   // Esc must not leave a signed-out person on an empty page: the sign-in stays until a password is given.

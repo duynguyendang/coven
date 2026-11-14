@@ -872,6 +872,43 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: what waits for you first, then tasks with a column open, then the witches; idle witches fold away", async () => {
+    await go("#/board/lab", 600);
+    const heads = [...doc().querySelectorAll("#main h2")].map((h) => h.childNodes[0].textContent!.trim());
+    assert.ok(heads.indexOf("Tasks") < heads.indexOf("Witches") && heads.indexOf("Witches") < heads.indexOf("Whiteboard"), heads.join(","));
+    assert.ok(doc().querySelector("section.column-detail"), "a column is open without a click");
+    const open = doc().querySelector('button.tile[aria-expanded="true"]') as HTMLButtonElement;
+    open.click(); await wait(50);
+    assert.equal(doc().querySelector('button.tile[aria-expanded="true"]'), doc().querySelector(`button.tile[data-col="${open.dataset.col}"]`), "clicking the open tile keeps it open");
+    const more = doc().querySelector("details.more-witches")!;
+    assert.match(more.querySelector("summary")!.textContent!, /\d+ witch(es are| is) not on any host/);
+    assert.ok(more.querySelector('[data-key="witch-herald"]'), "an idle witch's card is folded, not gone");
+    assert.equal(doc().querySelector('#main > .witches [data-key="witch-herald"], #main .witches:not(details .witches) [data-key="witch-herald"]'), null);
+    await go("#/");
+  });
+
+  test("the connection pill names the connection; a session is titled by its task", async () => {
+    assert.equal(doc().getElementById("stream-pill")!.textContent, "CONNECTED");
+    await go("#/run/run_fail", 500);
+    assert.equal(doc().querySelector("#main h1")!.textContent, "Run the tests once more", "titled by what it last did, not by its id");
+    assert.match(doc().querySelector("#main .facts")!.textContent!, /run_fail/, "the id stays in the facts");
+    await go("#/");
+  });
+
+  test("your name is set once, in the sidebar, and signs the composers", async () => {
+    await go("#/board/shop", 400);
+    assert.equal(doc().getElementById("note-author"), null, "no second name field on the board");
+    const me = doc().getElementById("me") as HTMLInputElement;
+    me.value = "ana"; me.dispatchEvent(new dom.window.Event("change"));
+    await wait(100);
+    assert.match(doc().querySelector("#note-form [data-edit-name]")!.textContent!, /ana/);
+    await go("#/chat/shop", 400);
+    assert.equal(doc().getElementById("chat-author"), null, "nor in the chat");
+    assert.match(doc().querySelector(".chat-compose [data-edit-name]")!.textContent!, /ana/);
+    me.value = ""; me.dispatchEvent(new dom.window.Event("change"));
+    await go("#/");
+  });
+
   test("board: notes are sticky notes, newest first, with author and task", async () => {
     await go("#/board/shop", 400);
     const first = doc().querySelector(".wall .sticky")!;
@@ -884,7 +921,7 @@ describe("session screen", () => {
     (doc().getElementById("note-text") as HTMLTextAreaElement).value = "<img src=x onerror=window.__xss2=1> pair on the cart?";
     (doc().getElementById("note-kind") as HTMLSelectElement).value = "idea";
     (doc().getElementById("note-task") as HTMLSelectElement).value = "shop#1";
-    (doc().getElementById("note-author") as HTMLInputElement).value = "duy";
+    { const me = doc().getElementById("me") as HTMLInputElement; me.value = "duy"; me.dispatchEvent(new dom.window.Event("change")); }
     doc().getElementById("note-form")!.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
     await wait(500);
     const first = doc().querySelector(".wall .sticky")!;
@@ -961,6 +998,8 @@ describe("keyboard, safety and states", () => {
     (doc().querySelector(".row") as HTMLElement).click();
     await wait(30);
     assert.ok(doc().getElementById("drawer")!.classList.contains("open"));
+    assert.equal(doc().getElementById("drawer")!.tagName, "DIALOG", "the detail is a native modal dialog");
+    assert.ok((doc().getElementById("drawer") as any).open);
     assert.match(doc().getElementById("drawer")!.textContent!, /never recorded/);
     key("Escape");
     await wait(30);
@@ -1043,7 +1082,7 @@ describe("council chat", () => {
     await go("#/chat/shop");
     type("chat-text", "Is the cart total cached?");
     (doc().getElementById("chat-to") as HTMLSelectElement).value = "red-team";
-    (doc().getElementById("chat-author") as HTMLInputElement).value = "duy";
+    { const me = doc().getElementById("me") as HTMLInputElement; me.value = "duy"; me.dispatchEvent(new dom.window.Event("change")); }
     await submit();
     assert.equal((doc().getElementById("chat-text") as HTMLTextAreaElement).value, "", "the box is cleared after sending");
     const [first] = bubbles();
