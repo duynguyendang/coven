@@ -270,6 +270,8 @@ def test_people_who_reject_a_submission_send_the_same_agent_back_to_the_same_bra
 def test_the_member_name_is_the_hosts(repo, monkeypatch):
     monkeypatch.undo()
     monkeypatch.setenv("COVEN_ROOT", str(repo))
+    for name in ("COVEN_MEMBER", "COVEN_HOST"):  # undo() brought back the ones a host run exports
+        monkeypatch.delenv(name, raising=False)
     assert board.join(repo, "wsl-9f") == "wsl-9f"
     cfg = json.loads((repo / ".coven" / "config.json").read_text())
     assert cfg["host"] == cfg["member"] == "wsl-9f" and board.host(repo) == board.member(repo) == "wsl-9f"

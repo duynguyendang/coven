@@ -17,6 +17,14 @@ coven() { python3 -m coven.cli "$@"; }
 
 command -v kiro-cli >/dev/null || { echo "run-host: kiro-cli is not on PATH" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "run-host: python3 is not on PATH" >&2; exit 1; }
+# The host runs the cloud's TypeScript natively in its checks (type stripping): Node 22.18 or newer.
+command -v node >/dev/null || { echo "run-host: node is not on PATH (Coven needs Node 22.18 or newer)" >&2; exit 1; }
+node_version="$(node -p 'process.versions.node' 2>/dev/null || echo 0.0.0)"
+IFS=. read -r node_major node_minor _ <<<"$node_version"
+if [ "${node_major:-0}" -lt 22 ] || { [ "$node_major" -eq 22 ] && [ "${node_minor:-0}" -lt 18 ]; }; then
+  echo "run-host: node $node_version is too old: Coven needs Node 22.18 or newer (see server/package.json engines)" >&2
+  exit 1
+fi
 
 agents=""; all=0; extra=()
 while [ $# -gt 0 ]; do
