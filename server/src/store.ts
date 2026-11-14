@@ -194,7 +194,7 @@ export class MemoryStore {
       this.publish({ kind: "event", event: this.view(event), run: { ...run } });
       // An answer or a note arrives from a relay as an ordinary event: tell the chat and board pages too.
       if (event.type === "chat_message") this.publish({ kind: "chat", project_id: event.project_id });
-      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch", "plan_proposed", "plan_decision"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
+      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch", "plan_proposed", "plan_decision", "push_request", "push_done"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
     }
     return true;
   }
@@ -457,6 +457,7 @@ export class MemoryStore {
         agent: typeof input.agent === "string" && input.agent ? input.agent : null,
         ...(typeof input.task_key === "string" && /^[0-9a-f]{16}$/.test(input.task_key) ? { task_key: input.task_key } : {}),
         ...(typeof input.attempt_id === "string" && /^[0-9a-f]{16}\.[0-9]+$/.test(input.attempt_id) ? { attempt_id: input.attempt_id } : {}),
+        ...(typeof input.host_id === "string" && /^h_[0-9a-f]{8}$/.test(input.host_id) ? { host_id: input.host_id } : {}),
       };
       const seconds = Math.min(MAX_LEASE_SECONDS, Math.max(60, Number(input.lease_seconds) || DEFAULT_LEASE_SECONDS));
       const leaseUntil = new Date(Date.now() + seconds * 1000).toISOString();
@@ -476,17 +477,17 @@ export class MemoryStore {
     });
   }
 
-  private owned(claimId: string, member: string): { status: number; body: Json } | Json {
+  private owned(claimId: string, member: string, hostId?: string | null): { status: number; body: Json } | Json {
     const claim = this.board.claims.get(claimId);
     if (!claim) return { status: 404, body: { error: "unknown claim" } };
-    if (claim.member !== member) return { status: 403, body: { error: "the claim belongs to another member", held_by: claim.member } };
+    if (claim.member !== member || (hostId && claim.host_id && claim.host_id !== hostId)) return { status: 403, body: { error: "the claim belongs to another member", held_by: claim.member } };
     if (claim.released_at) return { status: 410, body: { error: "the claim was released" } };
     return claim;
   }
 
-  renewClaim(claimId: string, member: string, leaseSeconds?: number): Promise<{ status: number; body: Json }> {
+  renewClaim(claimId: string, member: string, leaseSeconds?: number, hostId?: string | null): Promise<{ status: number; body: Json }> {
     return this.exclusive(async () => {
-      const claim = this.owned(claimId, member);
+      const claim = this.owned(claimId, member, hostId);
       if ("status" in claim && "body" in claim) return claim as { status: number; body: Json };
       if ((claim.lease_until || "") <= now()) return { status: 410, body: { error: "the lease expired; claim the task again" } };
       const seconds = Math.min(MAX_LEASE_SECONDS, Math.max(60, Number(leaseSeconds) || DEFAULT_LEASE_SECONDS));
@@ -497,9 +498,9 @@ export class MemoryStore {
     });
   }
 
-  releaseClaim(claimId: string, member: string, reason = "released"): Promise<{ status: number; body: Json }> {
+  releaseClaim(claimId: string, member: string, reason = "released", hostId?: string | null): Promise<{ status: number; body: Json }> {
     return this.exclusive(async () => {
-      const claim = this.owned(claimId, member);
+      const claim = this.owned(claimId, member, hostId);
       if ("status" in claim && "body" in claim) return claim as { status: number; body: Json };
       const event = this.boardEvent(claim.project_id, "task_released", member, { claim_id: claimId, task_id: claim.task_id, reason: String(reason).slice(0, 120) });
       await this.ingest(claim.project_id, event.run_id, [event]);
@@ -527,6 +528,16 @@ export class MemoryStore {
   /** A person decides a task runs in Kiro Web, or takes that back (a `task_dispatch`, from the web). */
   async postWebDispatch(projectId: string, payload: Json): Promise<Json> {
     const event = this.boardEvent(projectId, "task_dispatch", undefined, payload, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    this.publish({ kind: "board", project_id: projectId });
+    return event;
+  }
+
+  /** A person asks the host that holds a task's branch to push it, once (a `push_request`, from the web). Null when no branch waits on a host. */
+  async postWebPushRequest(projectId: string, task: string, author: string): Promise<Json | null> {
+    const where = this.board.submittedBranch(projectId, task);
+    if (!where) return null;
+    const event = this.boardEvent(projectId, "push_request", undefined, { task, ...where, author }, "web");
     await this.ingest(projectId, event.run_id, [event]);
     this.publish({ kind: "board", project_id: projectId });
     return event;

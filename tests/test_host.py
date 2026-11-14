@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 import threading
 
 import pytest
@@ -64,17 +65,18 @@ class FakeCloud:
             tasks = specmap.load(root)
             return [t for r, t in tasks.items() if r not in held and not t["done"]]
 
-        c.answers, c.statuses, c.created, c.stamps = [], [], [], []
+        c.answers, c.statuses, c.created, c.stamps, c.branches = [], [], [], [], []
+        c.lease_ok = True
         monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None: c.created.append(
             {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key}) or {})
         c.plans = []
         monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
             {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
-        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None: (c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt))) and {})
+        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None: (c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch))) and {})
         monkeypatch.setattr(board, "answer", lambda root, reply_to, message, role="chair", kind="answer": c.answers.append((reply_to, role, kind, message)) or {})
         for attr, fn in {
             "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root: [],
-            "held": lambda root: list(c.claims), "chat": lambda root: {"messages": c.chat, "waiting": []},
+            "held": lambda root: list(c.claims), "holds": lambda root, claim_id: c.lease_ok, "chat": lambda root: {"messages": c.chat, "waiting": []},
             "read": lambda root: {"notes": c.notes, "claims": [], "specs": c.specs}, "member": lambda root: name,
             "post": lambda root, note, **k: c.notes.append({"note": note, **k}) or {},
             "host_online": lambda root, agents_, slots, running=None, cloud=None: c.online.append((list(agents_), slots)) or {},
@@ -629,6 +631,7 @@ def test_kiro_web_branch_outside_the_paths_is_refused(repo, origin, tmp_path, mo
 
 def test_kiro_web_without_a_pushed_branch_fails(repo, origin, tmp_path, monkeypatch):
     FakeCloud().install(monkeypatch)
+    monkeypatch.setenv("COVEN_CLOUD_WAIT", "0")
     result = host.execute(repo, task_one(repo), "green-witch", CloudSession(origin, tmp_path, push=False))
     assert result["action"] == "failed" and "did not push" in result["error"]
 
@@ -646,9 +649,44 @@ def test_kiro_web_runner_uses_cloud_flags_for_builders_only(tmp_path, monkeypatc
     runner = host.run_cloud_agent("acme/shop", local)
     assert runner(tmp_path, "green-witch", "go", {}, 5) == ("ok", None)
     assert seen[0][:7] == ["kiro-cli", "chat", "--agent-engine", "v3", "--cloud", "--repo", "acme/shop"] and "--no-interactive" in seen[0]
+    assert "--agent" not in seen[0], "Kiro Web resolves --agent before it clones the repository: it is never passed"
+    assert seen[0][-1].startswith("Act as Green Witch — Dev: read .kiro/agents/green-witch.json") and seen[0][-1].endswith("go")
     assert runner(tmp_path, "elf", "think", {}, 5) == ("elf says hello", None) and len(seen) == 1, "thinkers stay on this machine"
     with pytest.raises(host.HostError):
         host.run_cloud_agent("not a repo")
+
+
+def test_kiro_web_is_judged_by_its_branch_not_its_exit_code(repo, origin, tmp_path, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    session = CloudSession(origin, tmp_path)
+    pushed = session.__call__
+
+    def exits_4(cwd, agent, prompt, env, timeout):
+        pushed(cwd, agent, prompt, env, timeout)
+        return None, 'agent "green-witch" not found, stopping (exit 4)'  # what the real service did, after pushing
+
+    exits_4.cloud = True
+    result = host.execute(repo, task_one(repo), "green-witch", exits_4)
+    assert result["action"] == "submitted", result
+
+
+def test_kiro_web_without_a_source_provider_fails_at_once_with_the_fix(tmp_path, monkeypatch):
+    def fake_run(command, **kwargs):
+        out = json.dumps({"type": "runError", "data": {"stage": "cloud", "message": "Attaching a repository (--repo) requires a connected source provider."}})
+        return subprocess.CompletedProcess(command, 1, out, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    text, error = host.run_cloud_agent("acme/shop", Runner())(tmp_path, "green-witch", "go", {}, 5)
+    assert text is None and "app.kiro.dev/settings" in error
+
+
+def test_waiting_for_a_branch_gives_up_at_the_limit(repo, origin):
+    now = [0.0]
+    slept = []
+    found = host.wait_for_branch(repo, "coven/nope", wait=30, poll=10, clock=lambda: now[0],
+                                 sleep=lambda s: (slept.append(s), now.__setitem__(0, now[0] + s)))
+    assert found is False and sum(slept) == 30
+    assert host.wait_for_branch(repo, "main", wait=0) is True
 
 
 def dispatched(cloud, task_id="1"):
@@ -802,3 +840,87 @@ def test_the_chair_is_told_what_each_witch_owns(repo):
     prompt = host.triage_prompt({"message_id": "m1", "message": "is the design right?", "kind": "ask", "author": "duy"}, "wsl-1", repo)
     assert "owns: design and architecture; the plan of a change." in prompt
     assert "Give each job to the witch who owns that kind of work" in prompt
+
+
+# ------------------------------------------------------------------ several hosts (spec multi-host)
+
+
+def test_a_host_has_a_stable_id_of_its_own(repo):
+    from coven import config
+
+    first = config.host_id(repo)
+    assert config.HOST_ID.match(first) and config.host_id(repo) == first, "made once, then kept"
+
+
+def test_a_submitted_branch_names_its_host(repo, monkeypatch):
+    from coven import config
+
+    cloud = FakeCloud().install(monkeypatch)
+    host.execute(repo, specmap.load(repo)["shop#1"], "green-witch", Runner({"green-witch": builds_cart}))
+    assert ("shop#1", "submitted", "coven/shop-1") in cloud.branches
+    assert host.Host(repo, slots=1, runner=Runner()).host_id == config.host_id(repo)
+
+
+def test_a_host_leaves_a_task_whose_branch_is_on_another_host(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "submitted", "branch_host": "h_00000000"}]}]
+    host.Host(repo, slots=4, runner=Runner({"green-witch": builds_cart}), only=["green-witch"]).run(once=True)
+    assert "shop#1" not in host.load(repo) and all(k["task_id"] != "1" for k in cloud.claims)
+
+
+def test_a_host_that_lost_its_lease_does_not_commit(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    task = specmap.load(repo)["shop#1"]
+    board.claim(repo, task, agent="green-witch")
+    cloud.lease_ok = False
+    result = host.execute(repo, task, "green-witch", Runner({"green-witch": builds_cart}))
+    assert result["action"] == "failed" and "lease lost" in result["error"]
+    assert not git(repo, "log", "--oneline", "main..coven/shop-1"), "nothing was committed on the task branch"
+    assert host.load(repo)["shop#1"].get("worktree"), "the worktree is kept"
+
+
+def test_a_host_pushes_only_when_a_person_asked_it_and_only_once(repo, origin, monkeypatch):
+    from coven import config
+
+    cloud = FakeCloud().install(monkeypatch)
+    pushed = []
+    monkeypatch.setattr(board, "push_done", lambda root, ref, branch, ok, detail=None: pushed.append((ref, branch, ok)) or {})
+    h = host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"])
+    host.execute(repo, specmap.load(repo)["shop#1"], "green-witch", Runner({"green-witch": builds_cart}))
+    assert not git(repo, "ls-remote", "--heads", "origin", "coven/shop-1"), "a submitted branch is not pushed"
+    other = {"state": "requested", "branch": "coven/shop-1", "host_id": "h_00000000", "request_id": "evt_p0", "by": "duy"}
+    mine = {**other, "host_id": config.host_id(repo), "request_id": "evt_p1"}
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "push": other}]}]
+    assert h._pushes(board.read(repo)) == [], "a request for another host is not ours"
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "push": mine}]}]
+    assert h._pushes(board.read(repo)) == ["shop#1"]
+    assert git(repo, "ls-remote", "--heads", "origin", "coven/shop-1"), "pushed once a person asked"
+    assert pushed == [("shop#1", "coven/shop-1", True)]
+    assert h._pushes(board.read(repo)) == [], "the same request is not acted on twice"
+
+
+def test_push_branch_refuses_anything_but_the_tasks_own_branch(repo):
+    assert host.push_branch(repo, "main", "main") == (False, "not a coven/ task branch")
+    assert host.push_branch(repo, "coven/x", "coven/y")[0] is False
+
+
+def test_no_code_path_pushes_except_a_persons_request():
+    src = Path(host.__file__).parent
+    calls = [(f.name, line.strip()) for f in sorted(src.glob("*.py")) for line in f.read_text().splitlines() if '"push"' in line and "git" in line]
+    assert len(calls) == 1 and calls[0][0] == "host.py" and "refs/heads/{branch}" in calls[0][1], calls
+
+
+def test_the_chair_sees_free_slots_and_tasks_that_can_run_at_once(repo):
+    context = {"online": ["elf"], "capacity": {"elf": ["wsl-a (1 free)", "wsl-b (0 free)"]}, "parallel": [["shop#1", "shop#5"]]}
+    prompt = host.triage_prompt({"message_id": "m1", "message": "go", "kind": "ask", "author": "duy"}, "wsl-1", repo, None, context)
+    assert "[online now] on wsl-a (1 free), wsl-b (0 free)" in prompt
+    assert "- shop#1, shop#5" in prompt and "you never send them" in prompt
+
+
+def test_tasks_with_disjoint_paths_form_a_parallel_group():
+    a = {"spec": "s", "task_id": "1", "paths": ["src/a/"]}
+    b = {"spec": "s", "task_id": "2", "paths": ["src/b/"]}
+    c = {"spec": "s", "task_id": "3", "paths": ["src/a/x.py"]}
+    assert specmap.parallel_groups([a, b, c]) == [["s#1", "s#2"]]
+    assert specmap.paths_overlap(["src/app*"], ["src/apple.py"]) and not specmap.paths_overlap(["src/app"], ["src/apple.py"])
+    assert specmap.paths_overlap(["**"], ["x"]) and not specmap.paths_overlap([], ["x"])

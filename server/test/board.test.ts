@@ -397,3 +397,51 @@ describe("the whiteboard", () => {
     } finally { await second.close(); }
   });
 });
+
+describe("several hosts (spec multi-host)", () => {
+  const ev = (type: string, payload: Json, member = "wsl-1", id = Math.random().toString(16).slice(2, 12)): Json => ({
+    event_id: `evt_mh_${id}`, project_id: "shop", run_id: `member_${member}`, type, ts: new Date().toISOString(), source: "coven-cli", member, payload,
+  });
+  const send = (base: string, events: Json[], member = "wsl-1") => postJson(base, "/v1/events", { project_id: "shop", run_id: `member_${member}`, events }, auth());
+  const board = async (base: string) => (await getJson(base, "/v1/board?project_id=shop")).body;
+
+  test("two hosts with one name are two claimants: their claims collide", async () => {
+    const s = await startServer();
+    try {
+      const a = await claim(s.base, { member: "wsl", task_id: "1", spec: "s", agent: "elf", host_id: "h_0000000a" });
+      const b = await claim(s.base, { member: "wsl", task_id: "1", spec: "s", agent: "elf", host_id: "h_0000000b" });
+      const again = await claim(s.base, { member: "wsl", task_id: "1", spec: "s", agent: "elf", host_id: "h_0000000a" });
+      assert.deepEqual([a.status, b.status, again.status], [201, 409, 200]);
+      const renew = await postJson(s.base, `/v1/claims/${a.body.claim.claim_id}/renew`, { member: "wsl", host_id: "h_0000000b" }, auth());
+      assert.equal(renew.status, 403, "the other host cannot renew it");
+    } finally { await s.close(); }
+  });
+
+  test("hosts announce free slots; two hosts with one name are both listed", async () => {
+    const s = await startServer();
+    try {
+      await send(s.base, [ev("host_online", { agents: ["elf"], slots: 2, running: [], host_id: "h_0000000a", free_slots: 2 }, "wsl")], "wsl");
+      await send(s.base, [ev("host_online", { agents: ["raven"], slots: 1, running: [], host_id: "h_0000000b", free_slots: 0 }, "wsl")], "wsl");
+      const chat = (await getJson(s.base, "/v1/chat?project_id=shop")).body;
+      assert.deepEqual(chat.hosts.map((h: Json) => [h.host_id, h.free_slots]).sort(), [["h_0000000a", 2], ["h_0000000b", 0]]);
+      const bad = await send(s.base, [ev("host_online", { agents: [], slots: 1, host_id: "nope" })]);
+      assert.equal(bad.body.accepted, 0);
+    } finally { await s.close(); }
+  });
+
+  test("a push is a person's request to the host that holds the branch; a relay cannot ask", async () => {
+    const s = await startServer();
+    try {
+      assert.equal((await postJson(s.base, "/v1/board/push", { project_id: "shop", task: "s#1" }, auth())).status, 409, "no submitted branch yet");
+      await send(s.base, [ev("task_status", { task: "s#1", state: "submitted", agent: "green-witch", branch: "coven/s-1", branch_host: "h_0000000a", host_id: "h_0000000a" })]);
+      const asked = await postJson(s.base, "/v1/board/push", { project_id: "shop", task: "s#1", author: "duy" }, auth());
+      assert.deepEqual([asked.status, asked.body.branch, asked.body.host_id], [201, "coven/s-1", "h_0000000a"]);
+      const sneaky = await send(s.base, [ev("push_request", { task: "s#1", branch: "coven/s-1", host_id: "h_0000000a" })]);
+      assert.equal(sneaky.body.accepted, 0, "only people ask for a push");
+      await send(s.base, [ev("push_done", { task: "s#1", branch: "coven/s-1", host_id: "h_0000000a", ok: true })]);
+      await send(s.base, [ev("spec_artifact_updated", { spec: "s", tasks: [{ task_id: "1", title: "x" }] })]);
+      const task = (await board(s.base)).specs.find((x: Json) => x.spec === "s").tasks[0];
+      assert.deepEqual([task.push.state, task.branch_host, task.branch_host_online], ["pushed", "h_0000000a", false]);
+    } finally { await s.close(); }
+  });
+});

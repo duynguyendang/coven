@@ -148,6 +148,9 @@ def final_text(stream: str) -> tuple[str | None, str | None]:
             record = json.loads(line)
         except ValueError:
             continue
+        if record.get("type") == "runError":  # the CLI says why it stopped (stage and message), e.g. an unknown agent
+            data = record.get("data") or {}
+            return None, f"the run failed at {data.get('stage') or 'an unknown stage'}: {str(data.get('message') or '')[:240]}"
         if record.get("type") == "runFinished":
             data = record.get("data") or {}
             if data.get("status") not in (None, "success"):

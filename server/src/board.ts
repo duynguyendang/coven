@@ -17,7 +17,7 @@
  */
 
 import { taskKey } from "./taskkey.ts";
-import { DISPATCH_STATES, DISPATCH_VIA, MAX_PLAN_TASKS, PEOPLE_STATES, PLAN_STATES, type Json } from "./events.ts";
+import { HOST_ID, DISPATCH_STATES, DISPATCH_VIA, MAX_PLAN_TASKS, PEOPLE_STATES, PLAN_STATES, type Json } from "./events.ts";
 
 export const DEFAULT_LEASE_SECONDS = 15 * 60;
 export const MAX_LEASE_SECONDS = 60 * 60;
@@ -82,6 +82,7 @@ export class Board {
   statuses = new Map<string, Map<string, Json>>(); // project -> "<spec>#<task>" -> where its doer says it stands
   plans = new Map<string, Map<string, Json>>(); // project -> plan ref -> the Elder Witch's proposal and people's decision
   dispatches = new Map<string, Map<string, Json>>(); // project -> task -> the latest decision of a person (task_dispatch)
+  pushes = new Map<string, Map<string, Json>>(); // project -> task ref -> the latest push request and its outcome
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
 
   /** The key an event carries; else the key of the task it names, as the board knows it; else the derived key. */
@@ -106,6 +107,7 @@ export class Board {
         claim_id: p.claim_id, project_id: project, spec: p.spec ?? null, task_id: String(p.task_id ?? ""),
         kind: CLAIM_KINDS.has(p.kind) ? p.kind : "task", member: p.member, host: p.member, agent: typeof p.agent === "string" ? p.agent : null, paths: Array.isArray(p.paths) ? p.paths : [],
         task_key: this.keyFor(project, p, p.spec ? `${p.spec}#${p.task_id}` : null), attempt_id: attemptOf(p),
+        host_id: typeof p.host_id === "string" && HOST_ID.test(p.host_id) ? p.host_id : null,
         claimed_at: event.ts, lease_until: known?.lease_until && known.lease_until > p.lease_until ? known.lease_until : p.lease_until,
         released_at: null, release_reason: null,
       });
@@ -165,6 +167,11 @@ export class Board {
           task_key: this.keyFor(project, p, p.task), attempt_id: attemptOf(p),
           // runs of this task so far: each `working` status starts one (the host builds its attempt id from this)
           attempts: (known?.attempts ?? 0) + (p.state === "working" ? 1 : 0),
+          host_id: typeof p.host_id === "string" && HOST_ID.test(p.host_id) ? p.host_id : null,
+          // where the commits of a submitted branch are (nothing pushes): a rework goes back to that host
+          branch_host: p.state === "submitted" && typeof p.branch_host === "string" && HOST_ID.test(p.branch_host) ? p.branch_host
+            : (known?.branch_host ?? null),
+          branch: typeof p.branch === "string" ? p.branch.slice(0, 110) : (known?.branch ?? null),
         });
       }
       this.statuses.set(project, all);
@@ -204,6 +211,16 @@ export class Board {
           this.tasks.set(project, specs);
         }
       }
+    } else if ((event.type === "push_request" || event.type === "push_done") && typeof p.task === "string") {
+      const all = this.pushes.get(project) ?? new Map<string, Json>();
+      const known = all.get(p.task);
+      if (!known || (event.ts || "") >= known.ts) {
+        all.set(p.task, event.type === "push_request"
+          ? { state: "requested", branch: p.branch, host_id: p.host_id, by: String(p.author ?? "someone").slice(0, 40), ts: event.ts, request_id: event.event_id }
+          : { ...(known ?? {}), state: p.ok ? "pushed" : "failed", branch: p.branch, host_id: p.host_id, ts: event.ts,
+              detail: typeof p.detail === "string" ? p.detail.slice(0, 200) : null });
+      }
+      this.pushes.set(project, all);
     } else if (event.type === "task_dispatch" && typeof p.task === "string" && DISPATCH_STATES.has(p.state) && DISPATCH_VIA.has(p.via)) {
       const all = this.dispatches.get(project) ?? new Map<string, Json>();
       const known = all.get(p.task);
@@ -213,10 +230,14 @@ export class Board {
       this.dispatches.set(project, all);
     } else if (event.type === "host_online" && typeof event.member === "string" && event.member) {
       const all = this.hosts.get(project) ?? new Map<string, Json>();
-      const known = all.get(event.member);
+      const id = typeof p.host_id === "string" && HOST_ID.test(p.host_id) ? p.host_id : null;
+      const slot = id ?? event.member; // two hosts with one name are two entries
+      const known = all.get(slot);
       if (!known || (event.ts || "") >= known.last_seen) {
-        all.set(event.member, {
-          host: event.member, last_seen: event.ts,
+        if (id) all.delete(event.member); // the same host before it had an id
+        all.set(slot, {
+          host: event.member, host_id: id, last_seen: event.ts,
+          free_slots: Number.isInteger(p.free_slots) ? Math.min(16, Math.max(0, p.free_slots)) : null,
           agents: Array.isArray(p.agents) ? p.agents.slice(0, 12).map(String) : [],
           slots: Number.isInteger(p.slots) ? Math.min(16, Math.max(1, p.slots)) : 1,
           running: Array.isArray(p.running) ? p.running.slice(0, 16).map(String) : [],
@@ -261,7 +282,7 @@ export class Board {
   /** Why a claim may not be taken, or null. Same member re-claiming is a renewal, not a conflict. */
   conflict(projectId: string, wanted: Json, at = new Date().toISOString()): Json | null {
     for (const c of this.active(projectId, at)) {
-      if (c.member === wanted.member) {
+      if (c.member === wanted.member && (!c.host_id || !wanted.host_id || c.host_id === wanted.host_id)) {
         // The same host: a renewal of its own claim. Legacy clients name no agent and may hold many tasks.
         // Agents on one host are separate claimants: another agent, or another task, can collide.
         if (!wanted.agent || !c.agent) continue;
@@ -279,7 +300,7 @@ export class Board {
   }
 
   mine(projectId: string, member: string, wanted: Json, at = new Date().toISOString()): Json | null {
-    return this.active(projectId, at).find((c) => c.member === member && c.spec === wanted.spec
+    return this.active(projectId, at).find((c) => c.member === member && (!c.host_id || !wanted.host_id || c.host_id === wanted.host_id) && c.spec === wanted.spec
       && c.task_id === wanted.task_id && c.kind === wanted.kind && (c.agent ?? null) === (wanted.agent ?? null)) ?? null;
   }
 
@@ -291,12 +312,13 @@ export class Board {
     const online = this.hosts.get(projectId);
     const members: Json[] = [...(this.members.get(projectId)?.values() ?? [])].map((m: Json) => {
       const mine = active.filter((c) => c.member === m.member);
-      const h = online?.get(m.member);
+      const h = [...(online?.values() ?? [])].filter((x) => x.host === m.member).sort((a, b) => ((a.last_seen || "") < (b.last_seen || "") ? 1 : -1))[0];
       return {
         ...m, host: m.member, claims: mine.map((c) => `${c.spec}#${c.task_id}`),
         // Who is working on this host right now: one entry per claim, with the agent that holds it.
         working: mine.filter((c) => c.kind === "task").map((c) => ({ agent: c.agent ?? null, task: `${c.spec}#${c.task_id}` })),
-        agents: h?.agents ?? [], cloud: h?.cloud ?? [], slots: h?.slots ?? null, announced_at: h?.last_seen ?? null,
+        agents: h?.agents ?? [], cloud: h?.cloud ?? [], slots: h?.slots ?? null, free_slots: h?.free_slots ?? null, host_id: h?.host_id ?? null,
+        announced_at: h?.last_seen ?? null,
       };
     }).sort((a: Json, b: Json) => ((a.last_seen || "") < (b.last_seen || "") ? 1 : -1));
     const specs = [...(this.tasks.get(projectId)?.entries() ?? [])].map(([spec, tasks]) => ({
@@ -307,7 +329,9 @@ export class Board {
         const doing = this.statuses.get(projectId)?.get(`${spec}#${t.task_id}`);
         const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
-        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
+        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0,
+          push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
+          branch_host: doing?.branch_host ?? null, branch_host_online: doing?.branch_host ? this.hostOnline(projectId, doing.branch_host, at) : null, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
           reviewers: held.filter((c) => c.kind === "review").map((c) => c.member) };
       }),
     }));
@@ -317,6 +341,18 @@ export class Board {
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
       plans: [...(this.plans.get(projectId)?.values() ?? [])].sort((a, b) => ((a.proposed_at || "") < (b.proposed_at || "") ? 1 : -1)).slice(0, 20),
     };
+  }
+
+  /** The branch and host of a submitted task, for a push request; null when none is waiting on a host. */
+  submittedBranch(projectId: string, ref: string): { branch: string; host_id: string } | null {
+    const doing = this.statuses.get(projectId)?.get(ref);
+    return doing?.branch_host && doing?.branch ? { branch: doing.branch, host_id: doing.branch_host } : null;
+  }
+
+  /** Whether the host with this id announced itself within the last few minutes. */
+  hostOnline(projectId: string, hostId: string, at = new Date().toISOString()): boolean {
+    const cutoff = new Date(Date.parse(at) - LISTENER_ONLINE_SECONDS * 1000).toISOString();
+    return [...(this.hosts.get(projectId)?.values() ?? [])].some((h) => h.host_id === hostId && (h.last_seen || "") >= cutoff);
   }
 
   /** The council chat of a project, oldest first, with who is listening and which messages wait. */

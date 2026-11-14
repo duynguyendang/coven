@@ -52,6 +52,8 @@ export const EVENT_TYPES = new Set([
   "task_created",
   // a person decides a task runs in Kiro Web (or takes that back) — contract §5.6, web only
   "task_dispatch",
+  "push_request",
+  "push_done",
   // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
   "plan_proposed",
   "plan_decision",
@@ -63,9 +65,10 @@ export const EVENT_TYPES = new Set([
 ]);
 
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
+export const HOST_ID = /^h_[0-9a-f]{8}$/;
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
 /** People's word, made by the cloud from the web (POST /v1/board/dispatch); a relay may not send it. */
-export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision"]);
+export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request"]);
 export const PLAN_STATES = new Set(["approved", "rejected"]);
 export const MAX_PLAN_TASKS = 5;
 const TASK_ID = /^[A-Za-z0-9._-]{1,20}$/;
@@ -171,6 +174,13 @@ export function validateEvent(event: Json): string[] {
     if (payload.task_key !== undefined && !/^[0-9a-f]{16}$/.test(String(payload.task_key))) errors.push("task_key must be 16 hex characters");
     if (payload.attempt_id !== undefined && !/^[0-9a-f]{16}\.[0-9]+$/.test(String(payload.attempt_id))) errors.push("attempt_id must be <task_key>.<n>");
   }
+  // A host id (`h_` + 8 hex) keeps two hosts that chose the same name apart (spec multi-host, R1).
+  if (["host_online", "task_status"].includes(event.type) && isObject(payload)) {
+    for (const field of ["host_id", "branch_host"]) {
+      if (payload[field] !== undefined && !HOST_ID.test(String(payload[field]))) errors.push(`${field} must be h_ and 8 hex characters`);
+    }
+    if (payload.free_slots !== undefined && !(Number.isInteger(payload.free_slots) && payload.free_slots >= 0 && payload.free_slots <= 16)) errors.push("free_slots must be 0 to 16");
+  }
   if (event.type === "board_note") {
     // The field is `note`, not `text`: redaction drops `text` (where prompts and contents live).
     const text = (isObject(payload) ? payload : {}).note;
@@ -187,6 +197,14 @@ export function validateEvent(event: Json): string[] {
     if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_dispatch needs task as <spec>#<task>");
     if (!DISPATCH_VIA.has(p.via)) errors.push(`task_dispatch via must be one of ${[...DISPATCH_VIA].join(", ")}`);
     if (!DISPATCH_STATES.has(p.state)) errors.push(`task_dispatch state must be one of ${[...DISPATCH_STATES].join(", ")}`);
+  }
+  // A branch is pushed only when a person asks (spec multi-host, R2.3): the request names the branch and the host that holds it.
+  if (event.type === "push_request" || event.type === "push_done") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push(`${event.type} needs task as <spec>#<task>`);
+    if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push(`${event.type} branch must be coven/<name>`);
+    if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push(`${event.type} needs the host_id that holds the branch`);
+    if (event.type === "push_done" && typeof p.ok !== "boolean") errors.push("push_done needs ok: true or false");
   }
   if (event.type === "plan_proposed") {
     const p = isObject(payload) ? payload : {};

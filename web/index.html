@@ -674,8 +674,11 @@
     if (hash) history.replaceState(null, "", location.pathname + location.search);
     return hash || new URLSearchParams(location.search).get("token") || localStorage.getItem("coven_token") || "";
   }
+  /** One key per click: a write the browser repeats (a flaky network) is replayed by the cloud, not done twice. */
+  const writeKey = () => (globalThis.crypto && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `w-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   async function api(path, options = {}) {
-    const response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${state.token}`, "Content-Type": "application/json", ...(options.headers || {}) } });
+    const keyed = options.method === "POST" ? { "Idempotency-Key": writeKey() } : {};
+    const response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${state.token}`, "Content-Type": "application/json", ...keyed, ...(options.headers || {}) } });
     if (response.status === 401) {
       $("login-error").hidden = !state.token;
       $("login").classList.add("show");
@@ -1201,6 +1204,16 @@
     const ok = state.cloudReady;
     return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>Run in Kiro Web</button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
   }
+  /** A submitted branch lives on one host (nothing pushes). A person may ask that host to push it, once. */
+  function pushLine(t) {
+    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return "";
+    const p = t.push;
+    if (p && p.state === "requested") return `<div class="who"><span class="badge working">Push requested</span> <span class="hint">by ${esc(p.by || "someone")}</span></div>`;
+    if (p && p.state === "pushed") return `<div class="who"><span class="badge accept">Pushed</span> <span class="hint">${esc(p.branch)} is on origin</span></div>`;
+    const failed = p && p.state === "failed" ? `<span class="hint">push failed: ${esc(short(p.detail || "", 100))}</span> ` : "";
+    const offline = t.branch_host_online === false ? `<span class="hint">its host is offline; the branch is only there.</span> ` : "";
+    return `<div class="who">${failed}${offline}<button class="act" type="button" data-push="${esc(t.ref)}" data-key="push-${esc(t.ref)}">Ask host to push</button></div>`;
+  }
   /** Ready and its turn has come, but no online host runs the witch it needs: it would wait for ever, unseen. */
   const isStuck = (t, runnable) => !t.claimed_by && !t.waits_for && t.status !== "completed" && !["done", "failed"].includes(t.doer_state)
     && !runnable.has(t.agent || "green-witch");
@@ -1215,7 +1228,7 @@
     const stuck = state.runnable && isStuck(t, state.runnable);
     const planLine = t.from_plan ? `<div class="hint">from plan ${esc(t.from_plan)}, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${dispatchLine(t, need)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -1252,7 +1265,7 @@
     const r = WITCH_ROLES[slug];
     if (!r) return "";
     const who = (list) => list.map((n) => (AGENT_NAME[n] ? agentName(n) : n)).join(", ");
-    const row = (label, value) => `<dt>${label}</dt><dd>${esc(value)}</dd>`;
+    const row = (label, value) => `<dt>${label}</dt> <dd>${esc(value)}</dd> `;
     return `<details class="duty" data-key="duty-${slug}"><summary>Responsibilities</summary><dl>${row("Owns", r.owns.join("; "))}${row("Produces", r.produces.join("; "))}
       ${row("Hands off to", who(r.hands_off_to))}${row("Never", r.never.join("; "))}</dl></details>`;
   }
@@ -1888,6 +1901,15 @@
       try {
         await api("/v1/board/dispatch", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.dispatch || el.dataset.undispatch,
           via: "kiro-web", state: el.dataset.dispatch ? "requested" : "cancelled", author: localStorage.getItem("coven_author") || undefined }) });
+        await loadBoard();
+        render({ keepScroll: true });
+      } catch (error) { el.disabled = false; quiet(error); }
+    }));
+    root.querySelectorAll("[data-push]").forEach((el) => el.addEventListener("click", async () => {
+      el.disabled = true;
+      try {
+        await api("/v1/board/push", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.push,
+          author: localStorage.getItem("coven_author") || undefined }) });
         await loadBoard();
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }

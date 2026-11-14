@@ -791,6 +791,36 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: each witch shows what she is responsible for", async () => {
+    await go("#/board/lab", 600);
+    const duty = doc().querySelector('[data-key="duty-elder-witch"]') as HTMLDetailsElement;
+    assert.ok(duty && duty.tagName === "DETAILS" && !duty.open, "folded by default");
+    const text = duty.textContent!.replace(/\s+/g, " ");
+    assert.match(text, /Owns design and architecture; the plan of a change/);
+    assert.match(text, /Never write code; approve your own plan; edit tasks\.md/);
+    assert.match(doc().querySelector('[data-key="duty-elf"]')!.textContent!.replace(/\s+/g, " "), /Hands off to Elder Witch/);
+    assert.equal(duty.querySelectorAll("dt").length, 4);
+    await go("#/");
+  });
+
+  test("board: a submitted branch can be pushed only by asking its host", async () => {
+    await send("shop", "member_ph", [{ ...ev("member_ph", "shop", "spec_artifact_updated", { artifact: "tasks", spec: "pushy", total: 1, done: 0, in_progress: 0,
+      queued: 0, optional: 0, tasks: [{ task_id: "1", title: "Far away", status: "not_started", paths: ["far/"] }] }, 1), member: "ph" },
+      { ...ev("member_ph", "shop", "task_status", { task: "pushy#1", state: "submitted", agent: "green-witch",
+      detail: "coven/pushy-1 at abc1234", branch: "coven/pushy-1", branch_host: "h_0000aaaa", host_id: "h_0000aaaa" }, 2), member: "ph" }]);
+    await go("#/");
+    await go("#/board/shop", 600);
+    openColumn("review");
+    const card = () => doc().querySelector('[data-key="task-pushy#1"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(card(), /its host is offline; the branch is only there\./);
+    (doc().querySelector('[data-key="push-pushy#1"]') as HTMLButtonElement).click();
+    await wait(900);
+    openColumn("review");
+    assert.match(card(), /Push requested by/);
+    assert.equal(doc().querySelector('[data-key="push-pushy#1"]'), null, "asked once");
+    await go("#/");
+  });
+
   test("board: notes are sticky notes, newest first, with author and task", async () => {
     await go("#/board/shop", 400);
     const first = doc().querySelector(".wall .sticky")!;

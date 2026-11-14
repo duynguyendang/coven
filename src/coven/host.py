@@ -76,10 +76,32 @@ def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_
 CLOUD_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
+CLOUD_POLL = 15
+
+
+def cloud_wait() -> float:
+    """How long a host waits for a Kiro Web branch to appear on origin (`COVEN_CLOUD_WAIT`, seconds, default 600)."""
+    try:
+        return max(0.0, float(os.environ.get("COVEN_CLOUD_WAIT") or 600))
+    except ValueError:
+        return 600.0
+NO_PROVIDER = "requires a connected source provider"
+
+
+def cloud_role_prompt(agent: str, prompt: str) -> str:
+    """Kiro Web resolves `--agent` before it clones the repository, so a repository agent is never found (spike 2026-11-14).
+
+    The session runs without `--agent`; the prompt names the witch and points at her file instead."""
+    who = agents.info(agent)
+    return "\n".join([f"Act as {who['label']}: read .kiro/agents/{agent}.json in this repository and follow the instructions in its \"prompt\" field,",
+                      "including its hard constraints. Then do the following.", "", prompt])
+
+
 def run_cloud_agent(repo: str, local: Runner = run_agent) -> Runner:
     """A runner that hands `build` agents to Kiro Web: a cloud session (`kiro-cli chat --cloud`) on the GitHub repository `repo`.
 
     The session works in Kiro's sandbox and delivers a branch through the user's source provider; Coven itself never pushes.
+    Its exit code is not trusted (a session can deliver its branch and still exit 4): the host judges it by the branch.
     Agents of the other kinds answer from this machine as before, through `local`.
     """
     if not CLOUD_REPO.match(repo):
@@ -89,17 +111,34 @@ def run_cloud_agent(repo: str, local: Runner = run_agent) -> Runner:
         if agents.kind(agent) != "build":
             return local(cwd, agent, prompt, env, timeout)
         command = ["kiro-cli", "chat", "--agent-engine", "v3", "--cloud", "--repo", repo, "--no-interactive", "--output-format", "stream-json",
-                   "--agent", agent, prompt]
+                   cloud_role_prompt(agent, prompt)]
         try:
             done = subprocess.run(command, cwd=cwd, env={**os.environ, **env}, capture_output=True, text=True, timeout=timeout, check=False)
         except FileNotFoundError:
             return None, "kiro-cli is not installed on this host"
         except subprocess.TimeoutExpired:
             return None, f"no result from the Kiro Web session within {timeout} s"
-        return council.final_text(done.stdout or "")
+        text, error = council.final_text(done.stdout or "")
+        if NO_PROVIDER in f"{error or ''} {done.stderr or ''} {done.stdout or ''}":
+            return None, ("Kiro Web needs a connected source provider: connect GitHub at https://app.kiro.dev/settings/general, "
+                          "then retry the task")
+        return text, error
 
     runner.cloud = True  # type: ignore[attr-defined]
     return runner
+
+
+def wait_for_branch(root: Path, branch: str, wait: float | None = None, poll: float = CLOUD_POLL,
+                    clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> bool:
+    """True once `branch` is on origin (`git ls-remote`), within `wait` seconds."""
+    deadline = clock() + (cloud_wait() if wait is None else max(0.0, wait))
+    while True:
+        found = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
+        if found.returncode == 0 and found.stdout.strip():
+            return True
+        if clock() >= deadline:
+            return False
+        sleep(min(poll, max(0.0, deadline - clock())))
 
 
 # ------------------------------------------------------------------------ prompt
@@ -274,12 +313,26 @@ def _role_warning(root: Path, agent: str, ref: str, produced: str) -> None:
         pass
 
 
-def _status(root: Path, ref: str, state: str, agent: str, detail: str | None = None) -> None:
+def _status(root: Path, ref: str, state: str, agent: str, detail: str | None = None, branch: str | None = None) -> None:
     """Tell the board where the task stands. A courtesy: the work never waits on it."""
     try:
-        board.task_status(root, ref, state, agent=agent, detail=detail, **_run_stamp(ref))
+        board.task_status(root, ref, state, agent=agent, detail=detail, branch=branch, **_run_stamp(ref))
     except Exception:  # noqa: BLE001
         pass
+
+
+def _lease_lost(root: Path, ref: str) -> dict | None:
+    """Before a host commits or submits, it asks the cloud whether it still holds the claim (spec multi-host, R3.1).
+
+    A lapsed lease ends the run without a commit; the worktree stays for whoever holds the task now."""
+    claim = board.claim_of(root, ref)
+    if not claim or board.holds(root, claim["claim_id"]):
+        return None
+    reason = "lease lost: another host may hold the task now; nothing was committed"
+    _note(root, f"{ref}: {reason}", (load(root).get(ref) or {}).get("agent") or agents.DEFAULT, ref, kind="question", host_says=True)
+    _update(root, ref, state="failed", error=reason, finished_at=events.now_iso())
+    _status(root, ref, "failed", (load(root).get(ref) or {}).get("agent") or agents.DEFAULT, reason)
+    return {"action": "failed", "task": ref, "agent": (load(root).get(ref) or {}).get("agent") or agents.DEFAULT, "error": reason}
 
 
 def _fail(root: Path, ref: str, agent: str, reason: str) -> dict:
@@ -354,6 +407,9 @@ def _build(root: Path, task: dict, agent: str, host: str, base: str, runner: Run
         if result["status"] != "pass":
             problem = f"the task's verify command did not pass ({result['status']}: {result.get('reason') or 'exit ' + str(result['exit_code'])}); see {log.name}"
             continue
+        lost = _lease_lost(root, ref)
+        if lost:
+            return lost
         record = load(root).get(ref) or {}
         rounds = len(record.get("commits") or []) + 1
         title = f"coven: {ref} {task.get('title') or ''}".strip() + ("" if rounds == 1 else f" (rework {rounds - 1})")
@@ -366,7 +422,7 @@ def _build(root: Path, task: dict, agent: str, host: str, base: str, runner: Run
                   f"Coven task {ref}, verify passed: {task.get('verify')}\nAgent: {agents.label(agent)}\nHost: {host}")
         sha = work._git(path, "rev-parse", "--short", "HEAD")
         _update(root, ref, state="submitted", submitted_at=events.now_iso(), commits=[*(record.get("commits") or []), sha], error=None)
-        _status(root, ref, "submitted", agent, f"{branch} at {sha}, {len(files)} file(s), verify passed")
+        _status(root, ref, "submitted", agent, f"{branch} at {sha}, {len(files)} file(s), verify passed", branch=branch)
         _note(root, f"Ready for review: {ref} {task.get('title') or ''}. {agents.label(agent)} on {host}: branch {branch} at {sha} "
                     f"(local, not pushed). Verify passed. Files: {', '.join(files[:8])}."[:400], agent, ref, kind="review-wanted")
         return {"action": "submitted", "task": ref, "agent": agent, "branch": branch, "commit": sha, "files": files, "rework": not first}
@@ -387,8 +443,11 @@ def _build_cloud(root: Path, task: dict, agent: str, host: str, base: str, runne
     _update(root, ref, task=ref, agent=agent, kind="build", state="running", branch=branch, base=base, via="kiro-web",
             started_at=record.get("started_at") or events.now_iso(), error=None)
     text, error = runner(root, agent, prompt_for(task, agent, host, notes, feedback, cloud_base=base), _env(root, host, agent, ref), RUN_TIMEOUT)
-    if error and not text:
-        return _fail(root, ref, agent, error)
+    if error and "source provider" in error:
+        return _fail(root, ref, agent, error)  # nothing can arrive: say how to fix it, once
+    # The exit code does not decide (a session can push its branch and still exit with an error): the branch on origin does.
+    if not wait_for_branch(root, branch):
+        return _fail(root, ref, agent, f"Kiro Web did not push {branch} to origin within {cloud_wait():.0f} s" + (f" ({error})" if error else ""))
     fetched = subprocess.run(["git", "fetch", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
     if fetched.returncode != 0:
         return _fail(root, ref, agent, f"Kiro Web did not push {branch} to origin: {(fetched.stderr or fetched.stdout).strip()[:200]}")
@@ -410,9 +469,12 @@ def _build_cloud(root: Path, task: dict, agent: str, host: str, base: str, runne
     if result["status"] != "pass":
         return _fail(root, ref, agent, f"the task's verify command did not pass on {branch} ({result['status']}: "
                                          f"{result.get('reason') or 'exit ' + str(result['exit_code'])}); see {log.name}")
+    lost = _lease_lost(root, ref)
+    if lost:
+        return lost
     sha = work._git(path, "rev-parse", "--short", "HEAD")
     _update(root, ref, state="submitted", worktree=str(path), submitted_at=events.now_iso(), commits=[*(record.get("commits") or []), sha], error=None)
-    _status(root, ref, "submitted", agent, f"{branch} at {sha} from Kiro Web, {len(files)} file(s), verify passed")
+    _status(root, ref, "submitted", agent, f"{branch} at {sha} from Kiro Web, {len(files)} file(s), verify passed", branch=branch)
     _note(root, f"Ready for review: {ref} {task.get('title') or ''}. {agents.label(agent)} in Kiro Web (host {host}): branch {branch} at {sha} "
                 f"on origin. Verify passed here. Files: {', '.join(files[:8])}."[:400], agent, ref, kind="review-wanted")
     return {"action": "submitted", "task": ref, "agent": agent, "branch": branch, "commit": sha, "files": files, "rework": not first, "via": "kiro-web"}
@@ -759,7 +821,9 @@ def triage_prompt(message: dict, host: str, root: Path, notes: list[dict] | None
                "think": "reads the code and the specs, changes nothing"}[info["kind"]]
         if a == SCRIBE:
             can = "prepares tasks: proposes the witch, paths and verify command for tasks in tasks.md that lack them, on a branch people merge"
-        lines.append(f"- {a} ({info['name']}, {info['role']}): {can}" + ("  [online now]" if a in online else ""))
+        room = (context.get("capacity") or {}).get(a)
+        lines.append(f"- {a} ({info['name']}, {info['role']}): {can}" + ("  [online now]" if a in online else "")
+                     + (f" on {', '.join(room)}" if room else ""))
         # route by responsibility, not only by name (spec task-keys-and-roles, R3.3)
         lines.append(f"    owns: {'; '.join(info['owns'])}. Hands off to: {', '.join(info['hands_off_to'])}.")
     lines += ["- green-witch (Green Witch, Dev) changes code, but only for an approved task: you never give her a job.",
@@ -779,6 +843,9 @@ def triage_prompt(message: dict, host: str, root: Path, notes: list[dict] | None
         lines.append("")
     if context.get("tasks"):
         lines += ["Open tasks on the board:"] + [f"- {t}" for t in context["tasks"][:15]] + [""]
+    if context.get("parallel"):
+        lines += ["These ready build tasks share no path, so they can run at the same time; a person may send them to Kiro Web. "
+                  "You may say so, but you never send them:"] + [f"- {', '.join(g)}" for g in context["parallel"][:5]] + [""]
     lines += [f"The person ({message.get('author') or 'someone'}) now says, as {message.get('kind')}:", f"<<<{message.get('message', '')}>>>", ""]
     if message.get("task"):
         lines += [f"It is about task {message['task']}.", ""]
@@ -1016,6 +1083,7 @@ class Host:
         self.can_run = [a for a in have if not only or a in only]
         self.pool = ThreadPoolExecutor(max_workers=self.slots, thread_name_prefix="coven-agent")
         self.running: dict[str, Future] = {}
+        self.host_id = config.host_id(root)
         self.attempts: dict[str, int] = {}  # ref -> runs of it the board has seen (`doer_attempts`), refreshed each tick
         self._presence_at: float | None = None
         self._recover()
@@ -1089,7 +1157,19 @@ class Host:
             seen = states.get(ref) or {}
             state = seen.get("doer_state") or ("held by " + seen["claimed_by"] if seen.get("claimed_by") else "")
             tasks.append(f"{ref} {t.get('title') or ''} (needs {agents.for_task(t)}{', ' + state if state else ''})")
-        return {"messages": chat.get("messages") or [], "online": sorted(online), "tasks": tasks}
+        # Who has room: the Chair prefers a host with a free slot (spec multi-host, R4.1).
+        capacity = {}
+        for h in view.get("hosts") or []:
+            free = h.get("free_slots")
+            for a in h.get("agents") or []:
+                capacity.setdefault(a, []).append(f"{h.get('host')} ({'?' if free is None else free} free)")
+        # Ready build tasks that touch no common path: they can run at once (a person may send them to Kiro Web).
+        try:
+            ready_builds = [t for t in board.ready(self.root, view) if agents.for_task(t) == agents.DEFAULT]
+        except Exception:  # noqa: BLE001
+            ready_builds = []
+        return {"messages": chat.get("messages") or [], "online": sorted(online), "tasks": tasks, "capacity": capacity,
+                "parallel": specmap.parallel_groups(ready_builds)}
 
     def _claim(self, ref: str, task: dict, agent: str) -> dict:
         """Claim `task` for `agent` as the next run of it: the claim, and every event of the run, carry its key and attempt id."""
@@ -1190,6 +1270,8 @@ class Host:
         ready = [t for t in board.ready(self.root, view) if f"{t['spec']}#{t['task_id']}" not in known]
         dispatched = {f"{sp.get('spec')}#{t.get('task_id')}" for sp in view.get("specs") or [] for t in sp.get("tasks") or []
                       if t.get("dispatch_via") == "kiro-web"}
+        branch_hosts = {f"{sp.get('spec')}#{t.get('task_id')}": t.get("branch_host") for sp in view.get("specs") or [] for t in sp.get("tasks") or []
+                        if t.get("branch_host") and t.get("doer_state") in ("submitted", "working", "failed")}
         ready.sort(key=lambda t: agents.for_task(t) == agents.DEFAULT)  # tasks that ask for a specific agent first (stable)
         for task in ready:
             if len(self.running) >= self.slots or waiting >= self.review_limit:
@@ -1198,6 +1280,9 @@ class Host:
             ref = f"{task['spec']}#{task['task_id']}"
             if agent not in self.can_run:
                 continue
+            elsewhere = branch_hosts.get(ref)
+            if elsewhere and elsewhere != self.host_id:
+                continue  # its commits are on another host (nothing pushes): only that host reworks it
             cloud = ref in dispatched and agents.kind(agent) == "build"
             if cloud and not self.cloud_runner:
                 continue  # a person chose Kiro Web: wait for a host that is set up for it, never run it here instead
@@ -1212,6 +1297,29 @@ class Host:
             self.running[ref] = self.pool.submit(execute, self.root, task, agent, self.cloud_runner if cloud else self.runner, None, notes, None)
             started.append(ref)
         return started
+
+    def _pushes(self, view: dict) -> list[str]:
+        """Push a branch only because a person asked this host to (spec multi-host, R2.3). Once per request; never anything else."""
+        done = []
+        handled = set(_handled_pushes(self.root))
+        for sp in view.get("specs") or []:
+            for t in sp.get("tasks") or []:
+                push = t.get("push") or {}
+                ref = f"{sp.get('spec')}#{t.get('task_id')}"
+                if push.get("state") != "requested" or push.get("host_id") != self.host_id or push.get("request_id") in handled:
+                    continue
+                branch = str(push.get("branch") or "")
+                record = load(self.root).get(ref) or {}
+                ok, detail = push_branch(self.root, branch, record.get("branch"))
+                handled.add(push.get("request_id"))
+                _remember_push(self.root, push.get("request_id"))
+                try:
+                    board.push_done(self.root, ref, branch, ok, detail)
+                except Exception:  # noqa: BLE001
+                    pass
+                self.out(f"host: pushed {branch} for {ref} because {push.get('by') or 'a person'} asked" if ok else f"host: could not push {branch}: {detail}")
+                done.append(ref)
+        return done
 
     def presence(self, force: bool = False) -> None:
         if force or self._presence_at is None or self.clock() - self._presence_at >= PRESENCE_EVERY:
@@ -1238,13 +1346,15 @@ class Host:
         tasks = specmap.load(self.root)
         # Plan tasks a person approved live on the board, not in tasks.md: settle and rework them the same way.
         tasks.update({ref: record["plan_task"] for ref, record in load(self.root).items() if record.get("plan_task")})
+        pushed = self._pushes(view)
         finished = self._release_finished(tasks, view)
         waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
         asked = self._requests(chat, notes) + self._jobs(view, chat, notes, waiting)
         reworked = self._rework(chat, notes, tasks)
         waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
         taken = self._take(view, notes, waiting)
-        return {"finished": finished, "requests": asked, "reworked": reworked, "taken": taken, "running": sorted(self.running)}
+        return {"finished": finished, "requests": asked, "reworked": reworked, "taken": taken, "running": sorted(self.running),
+                **({"pushed": pushed} if pushed else {})}
 
     def run(self, once: bool = False, interval: float = 15.0) -> dict:
         """Tick until stopped. With `once`: one tick, then wait for the runs it started and settle them."""
@@ -1263,6 +1373,41 @@ class Host:
 
     def status(self) -> dict:
         return host_status(self.root, self.can_run, self.slots)
+
+
+PUSHES_FILE = "pushes.json"
+
+
+def _handled_pushes(root: Path) -> list[str]:
+    try:
+        data = json.loads((config.state_dir(root) / PUSHES_FILE).read_text(encoding="utf-8"))
+        return [str(x) for x in data] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _remember_push(root: Path, request_id: str) -> None:
+    """The push requests this host answered, so a request is acted on once even after a restart."""
+    target = config.state_dir(root) / PUSHES_FILE
+    with _LOCK:
+        known = [*(x for x in _handled_pushes(root) if x != request_id), request_id][-200:]
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(json.dumps(known) + "\n", encoding="utf-8")
+        temporary.replace(target)
+
+
+def push_branch(root: Path, branch: str, held: str | None) -> tuple[bool, str]:
+    """`git push origin <branch>`, for a person's push request only: a `coven/` branch this host made for that task, nothing else."""
+    if not re.fullmatch(r"coven/[A-Za-z0-9._-]{1,100}", branch or ""):
+        return False, "not a coven/ task branch"
+    if held != branch:
+        return False, f"this host does not hold {branch} for that task"
+    if not work._git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False):
+        return False, f"{branch} does not exist here"
+    done = subprocess.run(["git", "push", "origin", f"refs/heads/{branch}:refs/heads/{branch}"], cwd=root, capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        return False, (done.stderr or done.stdout).strip()[:200] or f"git push exited {done.returncode}"
+    return True, f"pushed {branch} to origin"
 
 
 def host_status(root: Path, can_run: list[str] | None = None, slots: int | None = None) -> dict:

@@ -71,8 +71,8 @@ export class SqlStore extends MemoryStore {
     return known;
   }
 
-  override async renewClaim(claimId: string, member: string, leaseSeconds?: number): Promise<{ status: number; body: Json }> {
-    return this.keepLease(await super.renewClaim(claimId, member, leaseSeconds));
+  override async renewClaim(claimId: string, member: string, leaseSeconds?: number, hostId?: string | null): Promise<{ status: number; body: Json }> {
+    return this.keepLease(await super.renewClaim(claimId, member, leaseSeconds, hostId));
   }
 
   /** Re-claiming a task you hold renews it in memory, without an event: store that too. */

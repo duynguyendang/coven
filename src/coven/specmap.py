@@ -428,6 +428,44 @@ def relative_to_root(path: str, root: Path | None) -> str:
     return path
 
 
+def _stem(path: str) -> tuple[str, bool]:
+    text = re.sub(r"^(\./)+", "", str(path).strip())
+    at = re.search(r"[*?[]", text)
+    glob = at is not None
+    if at:
+        text = text[: at.start()]
+    return text.rstrip("/"), glob
+
+
+def paths_overlap(a: list[str], b: list[str]) -> bool:
+    """True when two declared path sets can touch the same file; the same rule as the cloud's `pathsOverlap` (board.ts)."""
+    for x in a:
+        for y in b:
+            (p, gx), (q, gy) = _stem(x), _stem(y)
+            if (gx and not p) or (gy and not q):
+                return True
+            if p == q or p.startswith(q + "/") or q.startswith(p + "/"):
+                return True
+            if (gx and q.startswith(p)) or (gy and p.startswith(q)):
+                return True
+    return False
+
+
+def parallel_groups(tasks: list[dict]) -> list[list[str]]:
+    """Ready build tasks that can run at the same time: no two in a group share a path (greedy, in order). Only groups of two or more."""
+    groups: list[list[dict]] = []
+    for task in tasks:
+        if not task.get("paths"):
+            continue
+        for group in groups:
+            if not any(paths_overlap(task["paths"], other["paths"]) for other in group):
+                group.append(task)
+                break
+        else:
+            groups.append([task])
+    return [[f"{t['spec']}#{t['task_id']}" for t in g] for g in groups if len(g) > 1]
+
+
 def covers(task: dict, path: str) -> bool:
     """A declared file, a declared directory (`tests/`) or a glob (`src/**`, `*.md`) covers the path."""
     observed = _normalise(path)

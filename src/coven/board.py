@@ -160,7 +160,7 @@ def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None, 
     request = {
         "project_id": project, "member": who, "spec": task.get("spec"), "task_id": task["task_id"],
         "kind": kind, "paths": list(task.get("paths") or []) if kind == "task" else [],
-        "task_key": key, "attempt_id": attempt_id,
+        "task_key": key, "attempt_id": attempt_id, "host_id": config.host_id(root),
     }
     if agent:
         request["agent"] = agent
@@ -178,7 +178,7 @@ def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None, 
 
 
 def release(root: Path, claim_id: str, reason: str = "released") -> dict:
-    status, body = _call(root, "POST", f"/v1/claims/{claim_id}/release", {"member": member(root), "reason": reason})
+    status, body = _call(root, "POST", f"/v1/claims/{claim_id}/release", {"member": member(root), "reason": reason, "host_id": config.host_id(root)})
     _remember(root, [c for c in held(root) if c["claim_id"] != claim_id])
     if status not in (200, 404, 410):
         raise BoardError(f"release refused ({status}): {body.get('error') or body}", status, body)
@@ -190,7 +190,7 @@ def renew_all(root: Path) -> list[str]:
     renewed, keep = [], []
     for c in held(root):
         try:
-            status, _body = _call(root, "POST", f"/v1/claims/{c['claim_id']}/renew", {"member": member(root)})
+            status, _body = _call(root, "POST", f"/v1/claims/{c['claim_id']}/renew", {"member": member(root), "host_id": config.host_id(root)})
         except BoardError:
             keep.append(c)  # offline: keep it and try again; the lease decides
             continue
@@ -202,6 +202,23 @@ def renew_all(root: Path) -> list[str]:
     if len(keep) != len(held(root)):
         _remember(root, keep)
     return renewed
+
+
+def holds(root: Path, claim_id: str) -> bool:
+    """Whether this host still holds the claim, asked of the cloud (not the local cache). A yes renews the lease.
+
+    A host checks before it commits or posts a result (spec multi-host, R3.1). Offline is not a no: the lease decides later."""
+    try:
+        status, _body = _call(root, "POST", f"/v1/claims/{claim_id}/renew", {"member": member(root), "host_id": config.host_id(root)})
+    except BoardError:
+        return True
+    return status == 200 or status >= 500
+
+
+def claim_of(root: Path, ref: str) -> dict | None:
+    """The claim this host holds on `<spec>#<task>` (local cache), if any."""
+    spec, _, task_id = ref.partition("#")
+    return next((c for c in held(root) if c.get("spec") == spec and str(c.get("task_id")) == task_id), None)
 
 
 # ------------------------------------------------------------------ the board
@@ -287,7 +304,7 @@ TASK_STATES = ("working", "submitted", "answered", "failed")
 
 
 def task_status(root: Path, ref: str, state: str, agent: str | None = None, detail: str | None = None,
-                key: str | None = None, attempt: int | None = None) -> dict:
+                key: str | None = None, attempt: int | None = None, branch: str | None = None) -> dict:
     """Say where a task stands, as its doer: working, submitted (for review), answered, or failed. Done is the spec's tick."""
     if state not in TASK_STATES:
         raise ValueError(f"state must be one of {', '.join(TASK_STATES)}")
@@ -297,6 +314,12 @@ def task_status(root: Path, ref: str, state: str, agent: str | None = None, deta
     if detail:
         payload["detail"] = " ".join(str(detail).split())[:200]
     _stamp(payload, key, attempt)
+    payload["host_id"] = config.host_id(root)
+    if state == "submitted":
+        # The commits are on this host only (nothing pushes): a rework comes back here (spec multi-host, R2).
+        payload["branch_host"] = payload["host_id"]
+        if branch:
+            payload["branch"] = branch
     return _member_event(root, "task_status", payload)
 
 
@@ -330,11 +353,13 @@ def plan_propose(root: Path, plan: str, tasks: list[dict], summary: str, source:
     return _member_event(root, "plan_proposed", payload)
 
 
-def host_online(root: Path, agents: list[str], slots: int, running: list[str] | None = None, cloud: list[str] | None = None) -> dict:
+def host_online(root: Path, agents: list[str], slots: int, running: list[str] | None = None, cloud: list[str] | None = None,
+                free_slots: int | None = None) -> dict:
     """Tell the coven this host is up: the agents it can run and how many at once (sent every minute).
 
     `cloud` names the repositories it may run Kiro Web sessions on; the dashboard offers "Run in Kiro Web" only when a host has one."""
-    payload = {"agents": list(agents)[:12], "slots": int(slots), "running": list(running or [])[:16]}
+    payload = {"agents": list(agents)[:12], "slots": int(slots), "running": list(running or [])[:16], "host_id": config.host_id(root),
+               "free_slots": max(0, int(slots) - len(running or [])) if free_slots is None else max(0, int(free_slots))}
     if cloud:
         payload["cloud"] = [str(x)[:80] for x in cloud][:4]
     return _member_event(root, "host_online", payload)
@@ -347,6 +372,14 @@ def role_warning(root: Path, agent: str, ref: str, produced: str, expected: list
     if key:
         payload["task_key"] = key
     return _member_event(root, "warning", payload)
+
+
+def push_done(root: Path, ref: str, branch: str, ok: bool, detail: str | None = None) -> dict:
+    """Report the outcome of a push a person asked for."""
+    payload = {"task": ref, "branch": branch, "host_id": config.host_id(root), "ok": bool(ok)}
+    if detail:
+        payload["detail"] = " ".join(str(detail).split())[:200]
+    return _member_event(root, "push_done", payload)
 
 
 def listening(root: Path, roles: tuple[str, ...] = CHAT_ROLES) -> dict:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 from contextlib import contextmanager
 from pathlib import Path
@@ -128,6 +129,30 @@ def state_dir(root: Path | None = None) -> Path:
     path = coven_dir(root) / "state"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+HOST_FILE = "host.json"
+HOST_ID = re.compile(r"^h_[0-9a-f]{8}$")
+
+
+def host_id(root: Path | None = None) -> str:
+    """This working copy's host id (`h_` + 8 hex), made once and kept in `.coven/host.json`.
+
+    The host's name is a label people choose; two machines can pick the same one. The id keeps their claims apart."""
+    path = coven_dir(root) / HOST_FILE
+    try:
+        known = json.loads(path.read_text(encoding="utf-8")).get("host_id")
+        if isinstance(known, str) and HOST_ID.match(known):
+            return known
+    except (OSError, ValueError, AttributeError):
+        pass
+    import secrets
+
+    made = f"h_{secrets.token_hex(4)}"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"host_id": made}) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return made
 
 
 # ------------------------------------------------------------ machine-wide relay

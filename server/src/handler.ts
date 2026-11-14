@@ -259,7 +259,7 @@ export function createHandler(options: HandlerOptions): Handler {
         }
         const problems = validateEvent(event);
         if (CLOUD_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is made by the cloud only (POST /v1/claims)`);
-        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch or /v1/board/plan), not a relay's`);
+        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch, /v1/board/plan or /v1/board/push), not a relay's`);
         if (event.type === "task_status" && (event.payload || {}).state === "done") {
           problems.push("done is people's word (POST /v1/board/done), not a doer's report");
         }
@@ -355,7 +355,7 @@ export function createHandler(options: HandlerOptions): Handler {
       if (agent !== null && !/^[a-z][a-z0-9-]{1,39}$/.test(agent)) throw validation("agent", "an agent slug such as elf or green-witch");
       const result = await store.claim({ project_id: projectId, member, task_id: taskId, spec: optionalString(body, "spec"), agent,
         kind: optionalString(body, "kind") ?? "task", paths: body.paths ?? [], lease_seconds: body.lease_seconds,
-        task_key: optionalString(body, "task_key"), attempt_id: optionalString(body, "attempt_id") });
+        task_key: optionalString(body, "task_key"), attempt_id: optionalString(body, "attempt_id"), host_id: optionalString(body, "host_id") });
       return json(result.status, result.body);
     }
 
@@ -365,8 +365,8 @@ export function createHandler(options: HandlerOptions): Handler {
       if (!isObject(body)) throw validation("", "body must be an object");
       const member = idField(body, "member");
       const result = seg[3] === "renew"
-        ? await store.renewClaim(seg[2], member, body.lease_seconds)
-        : await store.releaseClaim(seg[2], member, optionalString(body, "reason") ?? "released");
+        ? await store.renewClaim(seg[2], member, body.lease_seconds, optionalString(body, "host_id"))
+        : await store.releaseClaim(seg[2], member, optionalString(body, "reason") ?? "released", optionalString(body, "host_id"));
       return json(result.status, result.body);
     }
 
@@ -403,6 +403,19 @@ export function createHandler(options: HandlerOptions): Handler {
       if (problems.length) throw validation("task", problems.join("; "));
       const event = await store.postWebDispatch(projectId, redactEvent({ payload }).payload);
       return json(201, { event_id: event.event_id });
+    }
+
+    if (method === "POST" && path === "/v1/board/push") {
+      // The only way a branch is pushed: a person asks the host that holds it (spec multi-host, R2.3). Nothing pushes by itself.
+      need(request, url, "read");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = idField(body, "project_id");
+      const task = optionalString(body, "task") ?? "";
+      if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
+      const event = await store.postWebPushRequest(projectId, task, (optionalString(body, "author") ?? "someone").slice(0, 40));
+      if (!event) throw new HttpError(409, "no submitted branch of that task waits on a host");
+      return json(201, { event_id: event.event_id, branch: event.payload.branch, host_id: event.payload.host_id });
     }
 
     if (method === "POST" && path === "/v1/board/plan") {
