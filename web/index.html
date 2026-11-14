@@ -1238,12 +1238,13 @@
     const ok = state.cloudReady;
     return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>Run in Kiro Web</button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
   }
-  const openThreads = new Set(); // conversations a person opened stay open across redraws
+  const closedThreads = new Set(); // a task's conversation opens with it; one a person folded stays folded across redraws
+  const threadItems = new Map(); // the last conversation loaded per task, shown at once while a redraw reloads it
   const DELIVERY = { requested: "Requested", claimed: "Claimed", answered: "Answered", failed: "Failed", expired: "Expired: no host ran her in time" };
-  /** The task's conversation: notes, statuses, jobs and chat in one thread, loaded when a person opens it. */
+  /** The task's conversation: notes, statuses, jobs and chat in one thread. Open when the task opens, unless a person folded it. */
   function threadBox(t) {
-    const open = openThreads.has(t.ref) ? " open" : "";
-    return `<details class="convo" data-thread="${esc(t.ref)}" data-key="thread-${esc(t.ref)}"${open}><summary>Conversation</summary><ol class="items" aria-live="polite"><li class="hint">Loading…</li></ol></details>`;
+    const open = closedThreads.has(t.ref) ? "" : " open";
+    return `<details class="convo" data-thread="${esc(t.ref)}" data-key="thread-${esc(t.ref)}"${open}><summary>Conversation</summary><ol class="items" aria-live="polite">${threadItems.get(t.ref) ?? '<li class="hint">Loading…</li>'}</ol></details>`;
   }
   const THREAD_LABEL = { board_note: "note", task_status: "status", task_created: "job", chat_message: "chat", task_claimed: "claimed",
     task_released: "released", push_request: "push asked", push_done: "push", plan_proposed: "plan", plan_decision: "decision" };
@@ -1251,8 +1252,11 @@
     const list = box.querySelector(".items");
     try {
       const data = await api(`/v1/board/thread?project_id=${encodeURIComponent(defaultBoardProject())}&task=${encodeURIComponent(box.dataset.thread)}`);
-      list.innerHTML = (data.items || []).length ? data.items.map((i) => `<li><span class="hint">${agoTag(i.ts)} · ${esc(THREAD_LABEL[i.type] || i.type)}${i.state ? ` (${esc(i.state)})` : ""}</span>
+      const html = (data.items || []).length ? data.items.map((i) => `<li><span class="hint">${agoTag(i.ts)} · ${esc(THREAD_LABEL[i.type] || i.type)}${i.state ? ` (${esc(i.state)})` : ""}</span>
         <b>${esc(i.who && AGENT_NAME[i.who] ? agentName(i.who) : i.who || "")}</b> ${esc(i.note || "")}</li>`).join("") : '<li class="hint">Nothing said about it yet.</li>';
+      threadItems.set(box.dataset.thread, html);
+      if (threadItems.size > 50) threadItems.delete(threadItems.keys().next().value);
+      list.innerHTML = html;
     } catch (error) { list.innerHTML = '<li class="hint">Could not load the conversation.</li>'; quiet(error); }
   }
   /** A submitted branch lives on one host (nothing pushes). A person may ask that host to push it, once. */
@@ -1995,8 +1999,8 @@
     root.querySelectorAll("details[data-thread]").forEach((box) => {
       if (box.open) loadThread(box);
       box.addEventListener("toggle", () => {
-        if (box.open === openThreads.has(box.dataset.thread)) return; // a redraw, not the person
-        if (box.open) { openThreads.add(box.dataset.thread); loadThread(box); } else openThreads.delete(box.dataset.thread);
+        if (box.open !== closedThreads.has(box.dataset.thread)) return; // a redraw, not the person
+        if (box.open) { closedThreads.delete(box.dataset.thread); loadThread(box); } else closedThreads.add(box.dataset.thread);
       });
     });
     root.querySelectorAll("[data-push]").forEach((el) => el.addEventListener("click", async () => {
