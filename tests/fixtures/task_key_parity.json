@@ -1,0 +1,98 @@
+{
+  "cases": [
+    {
+      "project": "shop",
+      "kind": "spec",
+      "parts": [
+        "coven-relay",
+        "7"
+      ],
+      "key": "609290a46dee37a6"
+    },
+    {
+      "project": "shop",
+      "kind": "spec",
+      "parts": [
+        "coven-relay",
+        "7.1"
+      ],
+      "key": "5b88e365e936286d"
+    },
+    {
+      "project": "other",
+      "kind": "spec",
+      "parts": [
+        "coven-relay",
+        "7"
+      ],
+      "key": "1bb78c8cb2c241ee"
+    },
+    {
+      "project": "shop",
+      "kind": "job",
+      "parts": [
+        "msg_abc123",
+        "0"
+      ],
+      "key": "94b7ff90d24ae973"
+    },
+    {
+      "project": "shop",
+      "kind": "job",
+      "parts": [
+        "msg_abc123",
+        "1"
+      ],
+      "key": "afc4f3fe835b4437"
+    },
+    {
+      "project": "shop",
+      "kind": "plan",
+      "parts": [
+        "plan_9",
+        "t1"
+      ],
+      "key": "82a1e3e0ae9989a2"
+    },
+    {
+      "project": "",
+      "kind": "spec",
+      "parts": [
+        "s",
+        "1"
+      ],
+      "key": "301f50461f756871"
+    },
+    {
+      "project": "café",
+      "kind": "spec",
+      "parts": [
+        "spéc",
+        "ß"
+      ],
+      "key": "bd9c8b2400460ad6"
+    }
+  ],
+  "attempts": [
+    {
+      "key": "0123456789abcdef",
+      "n": 1,
+      "id": "0123456789abcdef.1"
+    },
+    {
+      "key": "0123456789abcdef",
+      "n": 2,
+      "id": "0123456789abcdef.2"
+    },
+    {
+      "key": "0123456789abcdef",
+      "n": 0,
+      "id": "0123456789abcdef.1"
+    },
+    {
+      "key": "0123456789abcdef",
+      "n": -3,
+      "id": "0123456789abcdef.1"
+    }
+  ]
+}

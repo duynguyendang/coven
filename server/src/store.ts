@@ -6,6 +6,7 @@
  * and a database at once, and it should not become one.
  */
 
+import { IdempotencyTable } from "./idempotency.ts";
 import { randomBytes } from "node:crypto";
 
 import { Board, CLAIM_KINDS, DEFAULT_LEASE_SECONDS, MAX_LEASE_SECONDS, boardRunId, isBoardRun } from "./board.ts";
@@ -86,6 +87,7 @@ export class MemoryStore {
   protected councilOrder = new Map<string, string[]>();
   protected flowOrder = new Map<string, string[]>();
   board = new Board();
+  idem = new IdempotencyTable();
   private boardLock: Promise<unknown> = Promise.resolve();
   protected subscribers = new Set<Subscriber>();
 
@@ -453,6 +455,8 @@ export class MemoryStore {
         spec: input.spec ?? null, task_id: String(input.task_id), member: String(input.member),
         kind: CLAIM_KINDS.has(input.kind) ? input.kind : "task", paths: Array.isArray(input.paths) ? input.paths.map(String) : [],
         agent: typeof input.agent === "string" && input.agent ? input.agent : null,
+        ...(typeof input.task_key === "string" && /^[0-9a-f]{16}$/.test(input.task_key) ? { task_key: input.task_key } : {}),
+        ...(typeof input.attempt_id === "string" && /^[0-9a-f]{16}\.[0-9]+$/.test(input.attempt_id) ? { attempt_id: input.attempt_id } : {}),
       };
       const seconds = Math.min(MAX_LEASE_SECONDS, Math.max(60, Number(input.lease_seconds) || DEFAULT_LEASE_SECONDS));
       const leaseUntil = new Date(Date.now() + seconds * 1000).toISOString();

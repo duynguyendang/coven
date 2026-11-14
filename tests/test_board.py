@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from coven import board, specmap
 
 WITHOUT_GRAPH = """- [x] 1. Done already
@@ -117,3 +119,68 @@ def test_cloud_calls_name_coven_as_the_client(root, monkeypatch):
     assert config.cloud_settings(root)[0] == "https://cloud.example"
     board._call(root, "GET", "/v1/board?project_id=shop")
     assert seen["agent"] == board.USER_AGENT and seen["agent"].startswith("coven/")
+
+
+def _cloud_with(root, monkeypatch, answers):
+    """A fake cloud over urllib: `answers` is a list of callables (request -> (status, body) or raise)."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    (root / ".coven").mkdir(exist_ok=True)
+    (root / ".coven" / "config.json").write_text(_json.dumps({"project_id": "shop", "cloud_url": "https://cloud.example", "token": "t"}))
+    seen = []
+
+    class Answer:
+        def __init__(self, status, body):
+            self.status, self.body = status, body
+
+        def read(self):
+            return _json.dumps(self.body).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        seen.append({"key": request.get_header("Idempotency-key"), "body": _json.loads(request.data or b"{}")})
+        status, body = answers.pop(0)(request)
+        return Answer(status, body)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(board.time, "sleep", lambda s: None)
+    return seen, urllib.error
+
+
+def test_a_claim_carries_the_task_key_attempt_and_an_idempotency_key(root, monkeypatch):
+    from coven import taskkey
+
+    claim = {"claim_id": "clm_1", "task_key": taskkey.task_key("shop", "spec", "shop", "1")}
+    seen, _ = _cloud_with(root, monkeypatch, [lambda r: (201, {"claim": claim})])
+    board.claim(root, {"spec": "shop", "task_id": "1", "paths": ["src/"]}, agent="elf", attempt=2)
+    (call,) = seen
+    key = taskkey.task_key("shop", "spec", "shop", "1")
+    assert call["body"]["task_key"] == key and call["body"]["attempt_id"] == f"{key}.2"
+    assert call["key"].startswith(f"{key}.2.claim.task.elf")
+
+
+def test_a_keyed_write_is_retried_after_a_network_failure_and_unkeyed_reads_are_not(root, monkeypatch):
+    import urllib.error
+
+    def down(request):
+        raise urllib.error.URLError("timeout")
+
+    seen, _ = _cloud_with(root, monkeypatch, [down, lambda r: (201, {"claim": {"claim_id": "clm_1"}})])
+    board.claim(root, {"spec": "shop", "task_id": "1"}, agent="elf")
+    assert len(seen) == 2 and seen[0]["key"] == seen[1]["key"], "the same key both times: the cloud replays"
+    seen2, _ = _cloud_with(root, monkeypatch, [down])
+    with pytest.raises(board.BoardError):
+        board.read(root)
+    assert len(seen2) == 1
+
+
+def test_idempotency_keys_keep_to_the_allowed_characters():
+    assert board.idempotency_key("abc.1", "claim", "task", "elf", "wsl 1/ä") == "abc.1.claim.task.elf.wsl-1--"
+    assert len(board.idempotency_key("x" * 300)) == 128

@@ -29,7 +29,7 @@ flowchart TD
 
 - Memory store: a `Map`. Durable Object store: SQL table `idempotency` beside the events, expired
   by the same pass that applies `ttlDays`.
-- Only responses with status below 500 are stored, so a server error can be retried for real.
+- Only 2xx responses are stored, so a refusal (such as a held claim) or a server error can be retried for real.
 - The cloud runs one instance, so there is no race between the lookup and the store.
 - `body_hash` is SHA-256 of the canonical JSON of the redacted body.
 

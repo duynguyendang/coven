@@ -15,6 +15,7 @@
  */
 
 import type { Json } from "./events.ts";
+import type { IdemEntry } from "./idempotency.ts";
 import { MemoryStore } from "./store.ts";
 
 /** The subset of the Durable Object `SqlStorage` API this store uses. */
@@ -38,6 +39,9 @@ export class SqlStore extends MemoryStore {
     super();
     this.sql = sql;
     for (const statement of SCHEMA) this.sql.exec(statement);
+    // Replayed responses survive an eviction of the object: they are kept in `state`, beside dismissals.
+    this.idem.onPut = (id: string, entry: IdemEntry) => this.putState(`idem:${id}`, JSON.stringify(entry));
+    this.idem.onDrop = (id: string) => { this.sql.exec("DELETE FROM state WHERE key = ?", `idem:${id}`); };
   }
 
   private putState(key: string, value: string): void {
@@ -108,11 +112,14 @@ export class SqlStore extends MemoryStore {
       const key = String(row.key);
       const value = String(row.value);
       if (key.startsWith("dismissed:")) await super.dismiss(key.slice("dismissed:".length));
-      else if (key.startsWith("lease:")) {
+      else if (key.startsWith("idem:")) {
+        try { this.idem.load(key.slice("idem:".length), JSON.parse(value)); } catch { /* skip an unreadable row */ }
+      } else if (key.startsWith("lease:")) {
         const claim = this.board.claims.get(key.slice("lease:".length));
         if (claim && !claim.released_at && value > (claim.lease_until || "")) claim.lease_until = value;
       }
     }
+    this.idem.expire();
     return events.length;
   }
 }

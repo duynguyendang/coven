@@ -166,6 +166,11 @@ export function validateEvent(event: Json): string[] {
   }
   if (event.flow_id !== undefined && !FLOW_ID.test(String(event.flow_id))) errors.push("malformed flow_id");
 
+  // A task key and an attempt id are derived values (src/coven/taskkey.py); the cloud accepts only their shape.
+  if (["board_note", "task_status", "task_created"].includes(event.type) && isObject(payload)) {
+    if (payload.task_key !== undefined && !/^[0-9a-f]{16}$/.test(String(payload.task_key))) errors.push("task_key must be 16 hex characters");
+    if (payload.attempt_id !== undefined && !/^[0-9a-f]{16}\.[0-9]+$/.test(String(payload.attempt_id))) errors.push("attempt_id must be <task_key>.<n>");
+  }
   if (event.type === "board_note") {
     // The field is `note`, not `text`: redaction drops `text` (where prompts and contents live).
     const text = (isObject(payload) ? payload : {}).note;

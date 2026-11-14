@@ -16,6 +16,7 @@
  * lives until its recorded lease ends, and a running member renews it within a minute.
  */
 
+import { taskKey } from "./taskkey.ts";
 import { DISPATCH_STATES, DISPATCH_VIA, MAX_PLAN_TASKS, PEOPLE_STATES, PLAN_STATES, type Json } from "./events.ts";
 
 export const DEFAULT_LEASE_SECONDS = 15 * 60;
@@ -63,6 +64,14 @@ export function pathsOverlap(a: string[], b: string[]): boolean {
   return false;
 }
 
+/** The key an event carries, else the key derived from its task reference `<spec>#<task>` (events from before task keys). */
+function keyOf(project: string, p: Json, ref?: unknown): string | null {
+  if (typeof p.task_key === "string" && /^[0-9a-f]{16}$/.test(p.task_key)) return p.task_key;
+  if (typeof ref === "string" && ref.includes("#")) return taskKey(project, "spec", ref.slice(0, ref.indexOf("#")), ref.slice(ref.indexOf("#") + 1));
+  return null;
+}
+const attemptOf = (p: Json): string | null => (typeof p.attempt_id === "string" && /^[0-9a-f]{16}\.[0-9]+$/.test(p.attempt_id) ? p.attempt_id : null);
+
 export class Board {
   claims = new Map<string, Json>();          // claim_id -> claim (newest state)
   notes = new Map<string, Json[]>();         // project -> notes, oldest first
@@ -75,6 +84,17 @@ export class Board {
   dispatches = new Map<string, Map<string, Json>>(); // project -> task -> the latest decision of a person (task_dispatch)
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
 
+  /** The key an event carries; else the key of the task it names, as the board knows it; else the derived key. */
+  private keyFor(project: string, p: Json, ref?: unknown): string | null {
+    if (typeof p.task_key === "string" && /^[0-9a-f]{16}$/.test(p.task_key)) return p.task_key;
+    if (typeof ref === "string" && ref.includes("#")) {
+      const [spec, id] = [ref.slice(0, ref.indexOf("#")), ref.slice(ref.indexOf("#") + 1)];
+      const known = this.tasks.get(project)?.get(spec)?.find((t) => t.task_id === id)?.task_key;
+      if (typeof known === "string") return known;
+    }
+    return keyOf(project, p, ref);
+  }
+
   /** Fold one stored event into the board. */
   apply(event: Json): void {
     const project = event.project_id;
@@ -85,6 +105,7 @@ export class Board {
       this.claims.set(p.claim_id, {
         claim_id: p.claim_id, project_id: project, spec: p.spec ?? null, task_id: String(p.task_id ?? ""),
         kind: CLAIM_KINDS.has(p.kind) ? p.kind : "task", member: p.member, host: p.member, agent: typeof p.agent === "string" ? p.agent : null, paths: Array.isArray(p.paths) ? p.paths : [],
+        task_key: this.keyFor(project, p, p.spec ? `${p.spec}#${p.task_id}` : null), attempt_id: attemptOf(p),
         claimed_at: event.ts, lease_until: known?.lease_until && known.lease_until > p.lease_until ? known.lease_until : p.lease_until,
         released_at: null, release_reason: null,
       });
@@ -100,6 +121,7 @@ export class Board {
         author: event.member || (event.source === "web" ? `${p.author || "someone"} (web)` : "unknown"),
         role: typeof event.role === "string" ? event.role : (typeof p.role === "string" ? p.role : null),
         agent: typeof p.agent === "string" ? p.agent : null, run_id: event.run_id,
+        task_key: this.keyFor(project, p, p.task), attempt_id: attemptOf(p),
       });
       if (list.length > MAX_NOTES) list.splice(0, list.length - MAX_NOTES);
       this.notes.set(project, list);
@@ -119,12 +141,15 @@ export class Board {
       // A job the Chair made from a person's request: a task of the spec `council`, for the witch it names.
       const [spec, taskId] = [p.task.slice(0, p.task.indexOf("#")), p.task.slice(p.task.indexOf("#") + 1)];
       const specs = this.tasks.get(project) ?? new Map<string, Json[]>();
+      // Insert-if-absent on the task key: a retry or a second host cannot make the same job twice.
+      const key = keyOf(project, p, p.task);
+      if (typeof p.task_key === "string" && [...specs.values()].some((l) => l.some((t) => t.task_key === key))) return;
       const list = (specs.get(spec) ?? []).filter((t) => t.task_id !== taskId);
       list.push({
         task_id: taskId, title: String(p.title ?? "").slice(0, 160), status: "not_started", optional: false, parent: null, wave: null,
         agent: typeof p.agent === "string" ? p.agent.slice(0, 40) : null, paths: [], leaf: true,
         detail: typeof p.detail === "string" ? p.detail.slice(0, 380) : null, source: typeof p.source === "string" ? p.source.slice(0, 80) : null,
-        created_by: event.member ?? null, created_at: event.ts,
+        created_by: event.member ?? null, created_at: event.ts, task_key: key,
         plan: p.plan === true, branch: typeof p.branch === "string" ? p.branch.slice(0, 110) : null,
         review_of: typeof p.review_of === "string" ? p.review_of.slice(0, 110) : null,
       });
@@ -137,6 +162,9 @@ export class Board {
         all.set(p.task, {
           state: p.state, ts: event.ts, host: event.member ?? null, agent: typeof p.agent === "string" ? p.agent : null,
           detail: typeof p.detail === "string" ? p.detail.slice(0, 200) : null,
+          task_key: this.keyFor(project, p, p.task), attempt_id: attemptOf(p),
+          // runs of this task so far: each `working` status starts one (the host builds its attempt id from this)
+          attempts: (known?.attempts ?? 0) + (p.state === "working" ? 1 : 0),
         });
       }
       this.statuses.set(project, all);
@@ -169,7 +197,8 @@ export class Board {
           for (const t of plan.tasks) {
             keep.push({ task_id: t.task_id, title: t.title, status: "not_started", optional: false, parent: null, wave: null, agent: "green-witch",
               paths: t.paths, verify: t.verify, leaf: true, detail: t.detail, source: plan.source, created_by: plan.proposed_by, created_at: event.ts,
-              plan: false, from_plan: plan.plan, approved_by: plan.decided_by, branch: null, review_of: null });
+              plan: false, from_plan: plan.plan, approved_by: plan.decided_by, branch: null, review_of: null,
+              task_key: taskKey(project, "plan", plan.plan, t.task_id) });
           }
           specs.set(spec, keep.slice(-MAX_TASKS_PER_SPEC));
           this.tasks.set(project, specs);
@@ -209,6 +238,7 @@ export class Board {
         status: typeof t.status === "string" ? t.status : "not_started", optional: Boolean(t.optional),
         parent: t.parent ?? null, wave: Number.isInteger(t.wave) ? t.wave : null, agent: typeof t.agent === "string" ? t.agent.slice(0, 40) : null,
         paths: Array.isArray(t.paths) ? t.paths.slice(0, 30).map(String) : [], leaf: t.leaf !== false,
+        task_key: taskKey(project, "spec", p.spec, String(t.task_id ?? "")),
       })));
       this.tasks.set(project, specs);
     }
@@ -277,7 +307,7 @@ export class Board {
         const doing = this.statuses.get(projectId)?.get(`${spec}#${t.task_id}`);
         const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
-        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
+        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
           reviewers: held.filter((c) => c.kind === "review").map((c) => c.member) };
       }),
     }));

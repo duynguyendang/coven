@@ -305,6 +305,23 @@ def cmd_host(args: argparse.Namespace) -> int:
             print(json.dumps({"action": "refused", "error": str(exc)}, indent=2))
             return 1
         return 0
+    if command == "agents" and (args.sync or args.check):
+        stale = agents.sync_prompts(root, check=args.check)
+        if args.check:
+            if stale:
+                print(f"coven host agents --check: the role block is out of date in {', '.join(stale)}; run `coven host agents --sync`", file=sys.stderr)
+                return 1
+            print("every agent prompt carries its current role block")
+            return 0
+        print(f"wrote the role block into {', '.join(stale)}" if stale else "every agent prompt already carries its current role block")
+        return 0
+    if command == "agents" and args.roles:
+        for slug in agents.AGENTS:
+            info = agents.info(slug)
+            print(f"{info['label']} ({slug}, {info['kind']})")
+            for field in agents.ROLE_FIELDS:
+                print(f"  {field.replace('_', ' ')}: {'; '.join(info[field])}")
+        return 0
     if command == "agents":
         for slug in agents.AGENTS:
             info = agents.info(slug)
@@ -655,7 +672,10 @@ def build_parser() -> argparse.ArgumentParser:
     host_prepare = host_sub.add_parser("prepare", help="the Scribe proposes the witch, paths and verify for tasks that lack them, on a branch to merge")
     host_prepare.add_argument("--only", help="one spec, or one <spec>#<task>")
     host_prepare.add_argument("--note", help="guidance for the Scribe")
-    host_sub.add_parser("agents", help="the eleven agents and which are installed here")
+    host_agents = host_sub.add_parser("agents", help="the eleven agents and which are installed here; --roles shows what each is responsible for")
+    host_agents.add_argument("--roles", action="store_true", help="print each witch's role: owns, produces, consumes, hands off to, never")
+    host_agents.add_argument("--sync", action="store_true", help="write each agent prompt's role block from src/coven/agents.py")
+    host_agents.add_argument("--check", action="store_true", help="fail when an agent prompt's role block is out of date (the harness runs this)")
     host_retry = host_sub.add_parser("retry", help="let this host take a failed task again")
     host_retry.add_argument("task", help="<spec>#<task>")
     host_parser.set_defaults(func=cmd_host)

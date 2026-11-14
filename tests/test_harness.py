@@ -44,6 +44,11 @@ def web_witches() -> dict[str, list]:
 # ------------------------------------------------------------------ the witches
 
 
+def test_the_role_blocks_are_current():
+    """Every agent prompt and the dashboard carry the role table of agents.py (`coven host agents --check`)."""
+    assert agents.sync_prompts(REPO, check=True) == [], "run `coven host agents --sync`"
+
+
 def test_the_witches_are_the_same_everywhere():
     """agents.py, the agent files, the cloud and the dashboard name the same eleven witches."""
     python = set(agents.AGENTS)

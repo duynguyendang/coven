@@ -266,6 +266,11 @@
   .witch.offline { background: transparent; border-style: dashed; }
   .witch.offline .nm, .witch.offline .st { color: var(--muted); }
   .witch .where { font-size: 0.7188rem; color: var(--muted); }
+  .witch .duty { grid-column: 2; font-size: 0.7188rem; color: var(--muted); }
+  .witch .duty summary { cursor: pointer; min-block-size: var(--target-size); display: flex; align-items: center; }
+  .witch .duty dl { margin: 4px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 8px; }
+  .witch .duty dt { font-weight: 600; color: var(--text); }
+  .witch .duty dd { margin: 0; overflow-wrap: anywhere; }
   .tcard .state { font-size: 0.75rem; margin-top: 4px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
   .tcard .state .badge.working { color: var(--info-ink); border-color: var(--info-line); background: var(--info-bg); }
   .tcard .state .badge.submitted, .tcard .state .badge.answered { color: var(--ok-ink); border-color: var(--ok-line); background: var(--ok-bg); }
@@ -574,6 +579,8 @@
     imp: ["Imp", "Cross-reviewer", null], raven: ["Raven", "Watcher", null], scribe: ["Scribe", "Steward", null],
     herald: ["Herald", "Reporter", null], weaver: ["Weaver", "Conductor", null],
   };
+  /** What each witch is responsible for: owns, produces, consumes, hands_off_to, never (the one table is src/coven/agents.py). */
+  const WITCH_ROLES = /* roles:start (generated from src/coven/agents.py by `coven host agents --sync`) */{"green-witch":{"owns":["the implementation of a ready task inside its declared paths","facts about the codebase: where things are and how they work"],"produces":["note:review-wanted","a commit on coven/<spec>-<task>"],"consumes":["the task and its spec","people's feedback on her branch"],"hands_off_to":["white-hat","black-hat","a person (merge)"],"never":["approve or merge your own work","write outside the task's declared paths","push"]},"white-hat":{"owns":["what the tests cover and whether they pass"],"produces":["note:review","test_result"],"consumes":["a task branch","its verify command"],"hands_off_to":["grey-witch","a person"],"never":["edit source","approve"]},"black-hat":{"owns":["how a change can break: misuse, edge cases, security"],"produces":["note:review","claim_challenged"],"consumes":["a task branch","the design"],"hands_off_to":["grey-witch","a person"],"never":["block on her own","edit source","a challenge without a reproducing test"]},"imp":{"owns":["a second pair of eyes on another member's task"],"produces":["note:review"],"consumes":["board notes","a task that wants review"],"hands_off_to":["the task's owner"],"never":["touch the other member's work","more than three notes on one task"]},"elder-witch":{"owns":["design and architecture","the plan of a change"],"produces":["note:idea","plan_proposed"],"consumes":["the spec","board notes","past plan decisions"],"hands_off_to":["a person (approves the plan)","grey-witch"],"never":["write code","approve your own plan","edit tasks.md"]},"elf":{"owns":["alternatives: other ways to do it"],"produces":["note:idea"],"consumes":["the request","the spec"],"hands_off_to":["elder-witch"],"never":["decide","more than one alternative per round"]},"grey-witch":{"owns":["triage of what people say","who does what","the summary of a round"],"produces":["chat answer","note:note","task_created","chair_proposal"],"consumes":["the chat","the board","each witch's role"],"hands_off_to":["the witch who owns the work","a person (decides)"],"never":["impose a decision","give a job to the Dev","build"]},"raven":{"owns":["whether a flow is on track"],"produces":["note:note"],"consumes":["the flow's recorded events"],"hands_off_to":["weaver","a person"],"never":["act"]},"scribe":{"owns":["task readiness: agent, paths and verify"],"produces":["note:note","a coven/prepare-* branch"],"consumes":["tasks.md","the codebase layout"],"hands_off_to":["a person (approves the annotations)"],"never":["write annotations nobody asked for","edit code"]},"herald":{"owns":["the hand-off text: pull request and status digest"],"produces":["note:note"],"consumes":["the flow's recorded results"],"hands_off_to":["a person"],"never":["merge","claim a verdict the guard did not give"]},"weaver":{"owns":["starting and steering a flow"],"produces":["note:note","flow events"],"consumes":["ready tasks","the flow's status"],"hands_off_to":["a person (the decision gate)"],"never":["decide for the person"]}}/* roles:end */;
   const witchEntries = Object.entries(WITCHES);
   const AGENT_NAME = Object.fromEntries(witchEntries.map(([slug, [name]]) => [slug, name]));
   const AGENT_ROLE = Object.fromEntries(witchEntries.map(([slug, [, role]]) => [slug, role]));
@@ -1236,9 +1243,18 @@
       const where = w.state === "working" ? w.jobs.map((j) => `${j.task.startsWith("chat#") ? "on a chat request" : "on " + esc(j.task)} · ${esc(j.host)}`).join("; ")
         : w.offers.length ? `on ${w.offers.map((o) => esc(o.host)).join(", ")}` : "no host runs it";
       return `<div class="witch ${w.state}" data-key="witch-${w.slug}">${avatar(w.slug)}<div class="nm">${esc(agentName(w.slug))}</div><div class="rl">${esc(AGENT_ROLE[w.slug])}</div>
-        <div class="st"><span class="dot ${w.state === "working" ? "live" : w.state === "available" ? "live" : ""}" aria-hidden="true"></span>${text[w.state]}</div><div class="where">${where}</div></div>`;
+        <div class="st"><span class="dot ${w.state === "working" ? "live" : w.state === "available" ? "live" : ""}" aria-hidden="true"></span>${text[w.state]}</div><div class="where">${where}</div>${roleCard(w.slug)}</div>`;
     }).join("");
     return { html, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
+  }
+  /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
+  function roleCard(slug) {
+    const r = WITCH_ROLES[slug];
+    if (!r) return "";
+    const who = (list) => list.map((n) => (AGENT_NAME[n] ? agentName(n) : n)).join(", ");
+    const row = (label, value) => `<dt>${label}</dt><dd>${esc(value)}</dd>`;
+    return `<details class="duty" data-key="duty-${slug}"><summary>Responsibilities</summary><dl>${row("Owns", r.owns.join("; "))}${row("Produces", r.produces.join("; "))}
+      ${row("Hands off to", who(r.hands_off_to))}${row("Never", r.never.join("; "))}</dl></details>`;
   }
   function boardView() {
     const project = defaultBoardProject();

@@ -44,12 +44,12 @@ class FakeCloud:
     def install(self, monkeypatch, name="wsl-1"):
         c = self
 
-        def claim(root, task, kind="task", agent=None):
+        def claim(root, task, kind="task", agent=None, attempt=1):
             with c.lock:
                 for k in c.claims:
                     if (k["spec"], k["task_id"]) == (task["spec"], task["task_id"]):
                         raise board.BoardError("held", 409, {"held_by": k["member"]})
-                got = {"claim_id": f"clm_{len(c.claims)}", "spec": task["spec"], "task_id": task["task_id"], "member": name, "agent": agent}
+                got = {"claim_id": f"clm_{len(c.claims)}", "spec": task["spec"], "task_id": task["task_id"], "member": name, "agent": agent, "attempt": attempt}
                 c.claims.append(got)
                 return got
 
@@ -64,13 +64,13 @@ class FakeCloud:
             tasks = specmap.load(root)
             return [t for r, t in tasks.items() if r not in held and not t["done"]]
 
-        c.answers, c.statuses, c.created = [], [], []
-        monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None: c.created.append(
-            {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of}) or {})
+        c.answers, c.statuses, c.created, c.stamps = [], [], [], []
+        monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None: c.created.append(
+            {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key}) or {})
         c.plans = []
         monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
             {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
-        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None: c.statuses.append((ref, state, agent, detail)) or {})
+        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None: (c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt))) and {})
         monkeypatch.setattr(board, "answer", lambda root, reply_to, message, role="chair", kind="answer": c.answers.append((reply_to, role, kind, message)) or {})
         for attr, fn in {
             "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root: [],
@@ -760,3 +760,45 @@ def test_a_review_of_the_working_copy_sees_uncommitted_changes(repo, monkeypatch
     host.Host(repo, slots=1, runner=Runner({"black-hat": look}), only=["black-hat"]).run(once=True)
     assert seen["new"] == "x = 1\n" and "tasks.md" in seen["status"] and "src/cart/new.py" in seen["status"]
     assert git(repo, "status", "--porcelain").count("\n") == 1, "the person's working copy is untouched"
+
+
+def test_every_event_of_a_run_carries_the_task_key_and_attempt(repo, monkeypatch):
+    from coven import config, taskkey
+
+    cloud = FakeCloud().install(monkeypatch)
+    runner = Runner({"elf": lambda cwd, prompt: ("An idea.", None)})
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "2", "doer_attempts": 1}]}]  # one earlier run of shop#2
+    host.Host(repo, slots=1, runner=runner, only=["elf"]).run(once=True)
+    key = taskkey.task_key(config.project_id(repo), "spec", "shop", "2")
+    assert [k["attempt"] for k in cloud.claims if k["task_id"] == "2"] == [2], "the next run is attempt 2"
+    assert {(s[2], s[3]) for s in cloud.stamps if s[0] == "shop#2"} == {(key, 2)}
+    assert all(n.get("key") == key and n.get("attempt") == 2 for n in cloud.notes)
+
+
+def test_a_council_job_is_made_with_a_key_from_its_message(repo, monkeypatch):
+    from coven import config, taskkey
+
+    reply = "evt_msg_abcdef"
+    message = {"message_id": reply, "role": "human", "kind": "ask", "message": "who reviews the cart?", "author": "duy"}
+    cloud = FakeCloud().install(monkeypatch)
+    text = '{"answer": "The Tester will.", "jobs": [{"agent": "white-hat", "title": "Test the cart", "detail": "run the cart tests"}]}'
+    host.execute_triage(repo, message, "wsl-1", Runner({"grey-witch": lambda cwd, prompt: (text, None)}), [], {})
+    (job,) = cloud.created
+    assert job["key"] == taskkey.task_key(config.project_id(repo), "job", reply, 0)
+
+
+def test_a_note_outside_a_witchs_role_is_a_warning_and_the_run_still_settles(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    warned = []
+    monkeypatch.setattr(board, "role_warning", lambda root, agent, ref, produced, expected, key=None: warned.append((agent, ref, produced, key)) or {})
+    host._note(repo, "a review", "elf", "shop#2", kind="review")  # the Elf produces ideas, not reviews
+    host._note(repo, "an idea", "elf", "shop#2")
+    host._note(repo, "could not finish", "elf", "shop#2", kind="question", host_says=True)
+    assert [w[:3] for w in warned] == [("elf", "shop#2", "note:review")]
+    assert len(cloud.notes) == 3, "nothing is refused"
+
+
+def test_the_chair_is_told_what_each_witch_owns(repo):
+    prompt = host.triage_prompt({"message_id": "m1", "message": "is the design right?", "kind": "ask", "author": "duy"}, "wsl-1", repo)
+    assert "owns: design and architecture; the plan of a change." in prompt
+    assert "Give each job to the witch who owns that kind of work" in prompt

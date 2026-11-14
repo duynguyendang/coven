@@ -18,12 +18,14 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import re
 import socket
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import __version__, agents, config, emit, events, specmap
+from . import __version__, agents, config, emit, events, specmap, taskkey
 from .redact import redact_event
 
 CLAIMS_FILE = "claims.json"
@@ -81,13 +83,36 @@ def _cloud(root: Path) -> tuple[str, str, str]:
     return url, token, config.project_id(root)
 
 
-def _call(root: Path, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
+RETRIES = 2  # a write that carries an Idempotency-Key is tried again after a network failure: the cloud replays, never repeats
+
+
+def idempotency_key(*parts: object) -> str:
+    """An Idempotency-Key from an attempt id and what is being done: letters, digits and . _ : - only, at most 128."""
+    return re.sub(r"[^A-Za-z0-9._:-]", "-", ".".join(str(p) for p in parts))[:128]
+
+
+def _call(root: Path, method: str, path: str, body: dict | None = None, key: str | None = None) -> tuple[int, dict]:
+    if key:
+        for attempt in range(RETRIES + 1):
+            try:
+                return _send(root, method, path, body, key)
+            except BoardError:
+                if attempt == RETRIES:
+                    raise
+                time.sleep(min(2.0, 0.25 * (attempt + 1)))
+    return _send(root, method, path, body, None)
+
+
+def _send(root: Path, method: str, path: str, body: dict | None, key: str | None) -> tuple[int, dict]:
     url, token, _project = _cloud(root)
     data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(f"{url}{path}", data=data, method=method, headers={
+    headers = {
         "Authorization": f"Bearer {token}", "Content-Type": "application/json",
         # Cloudflare refuses urllib's default "Python-urllib/x.y" signature (error 1010).
-        "User-Agent": USER_AGENT})
+        "User-Agent": USER_AGENT}
+    if key:
+        headers["Idempotency-Key"] = key
+    request = urllib.request.Request(f"{url}{path}", data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return response.status, json.loads(response.read() or b"{}")
@@ -124,17 +149,22 @@ def _remember(root: Path, claims: list[dict]) -> None:
     temporary.replace(target)
 
 
-def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None) -> dict:
-    """Claim a task (or a review of it) for an agent of this host. Raises BoardError on a conflict (409) or no cloud."""
+def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None, attempt: int = 1) -> dict:
+    """Claim a task (or a review of it) for an agent of this host. Raises BoardError on a conflict (409) or no cloud.
+
+    The claim carries the task's key and this run's attempt id, and an Idempotency-Key: a retry after a timeout is a replay."""
     _url, _token, project = _cloud(root)
     who = member(root)
+    key = taskkey.for_task(project, task)
+    attempt_id = taskkey.attempt_id(key, attempt)
     request = {
         "project_id": project, "member": who, "spec": task.get("spec"), "task_id": task["task_id"],
         "kind": kind, "paths": list(task.get("paths") or []) if kind == "task" else [],
+        "task_key": key, "attempt_id": attempt_id,
     }
     if agent:
         request["agent"] = agent
-    status, body = _call(root, "POST", "/v1/claims", request)
+    status, body = _call(root, "POST", "/v1/claims", request, key=idempotency_key(attempt_id, "claim", kind, agent or "-", who))
     if status == 409:
         where = f" (paths overlap {body.get('task')})" if body.get("task") else ""
         by = f"{body.get('held_agent')} on {body.get('held_by')}" if body.get("held_agent") else body.get("held_by")
@@ -186,7 +216,8 @@ def read(root: Path) -> dict:
 
 
 def post(root: Path, note: str, kind: str = "note", task: str | None = None, reply_to: str | None = None,
-         run_id: str | None = None, role: str | None = None, agent: str | None = None) -> dict:
+         run_id: str | None = None, role: str | None = None, agent: str | None = None, key: str | None = None,
+         attempt: int | None = None) -> dict:
     """A note on the whiteboard, sent like any event (relay, else the local log). Redacted, capped."""
     if kind not in NOTE_KINDS:
         raise ValueError(f"kind must be one of {', '.join(NOTE_KINDS)}")
@@ -202,6 +233,7 @@ def post(root: Path, note: str, kind: str = "note", task: str | None = None, rep
         payload["role"] = role
     if agent:
         payload["agent"] = agent
+    _stamp(payload, key, attempt)
     event = events.make_event(project_id=config.project_id(root), run_id=run_id or events.env_run_id() or f"member_{member(root)}"[:120],
                               type="board_note", payload_extra=payload, source="coven-cli")
     event = redact_event(event)
@@ -222,6 +254,14 @@ def chat(root: Path) -> dict:
     if status != 200:
         raise BoardError(f"chat unavailable ({status}): {body.get('detail') or body}", status, body)
     return body
+
+
+def _stamp(payload: dict, key: str | None, attempt: int | None) -> None:
+    """Put the task key (and, for a run, its attempt id) on an event payload."""
+    if key:
+        payload["task_key"] = key
+        if attempt:
+            payload["attempt_id"] = taskkey.attempt_id(key, attempt)
 
 
 def _member_event(root: Path, type_: str, payload: dict) -> dict:
@@ -246,7 +286,8 @@ def answer(root: Path, reply_to: str, message: str, role: str = "chair", kind: s
 TASK_STATES = ("working", "submitted", "answered", "failed")
 
 
-def task_status(root: Path, ref: str, state: str, agent: str | None = None, detail: str | None = None) -> dict:
+def task_status(root: Path, ref: str, state: str, agent: str | None = None, detail: str | None = None,
+                key: str | None = None, attempt: int | None = None) -> dict:
     """Say where a task stands, as its doer: working, submitted (for review), answered, or failed. Done is the spec's tick."""
     if state not in TASK_STATES:
         raise ValueError(f"state must be one of {', '.join(TASK_STATES)}")
@@ -255,11 +296,12 @@ def task_status(root: Path, ref: str, state: str, agent: str | None = None, deta
         payload["agent"] = agent
     if detail:
         payload["detail"] = " ".join(str(detail).split())[:200]
+    _stamp(payload, key, attempt)
     return _member_event(root, "task_status", payload)
 
 
 def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, detail: str | None = None, source: str | None = None,
-                plan: bool = False, branch: str | None = None, review_of: str | None = None) -> dict:
+                plan: bool = False, branch: str | None = None, review_of: str | None = None, key: str | None = None) -> dict:
     """A job for a witch, as a task on the board (the Chair makes them from a person's request).
 
     `plan`: a planning job (the Elder Witch proposes build tasks for people to approve). `branch` and `review_of`:
@@ -275,6 +317,7 @@ def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, det
         payload["detail"] = " ".join(str(detail).split())[:380]
     if source:
         payload["source"] = source
+    _stamp(payload, key, None)
     return _member_event(root, "task_created", payload)
 
 
@@ -295,6 +338,15 @@ def host_online(root: Path, agents: list[str], slots: int, running: list[str] | 
     if cloud:
         payload["cloud"] = [str(x)[:80] for x in cloud][:4]
     return _member_event(root, "host_online", payload)
+
+
+def role_warning(root: Path, agent: str, ref: str, produced: str, expected: list[str], key: str | None = None) -> dict:
+    """A witch delivered something outside her role (report only: nothing is refused; spec task-keys-and-roles, R4)."""
+    payload = {"raw_type": "role_mismatch", "message": f"{agent} produced {produced} on {ref}; her role produces {', '.join(expected)}"[:300],
+               "agent": agent, "task": ref, "produced": produced[:60]}
+    if key:
+        payload["task_key"] = key
+    return _member_event(root, "warning", payload)
 
 
 def listening(root: Path, roles: tuple[str, ...] = CHAT_ROLES) -> dict:

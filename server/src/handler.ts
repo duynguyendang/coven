@@ -15,6 +15,8 @@
 
 import { authorised, type Env, type Scope } from "./auth.ts";
 import { chatProblems, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES, WEB_ONLY_TYPES } from "./events.ts";
+import { IDEMPOTENT_PATHS, DEFAULT_TTL_SECONDS, KEY_PATTERN, bodyHash, idemId, scopeOf, type IdemEntry } from "./idempotency.ts";
+import { presented } from "./auth.ts";
 import { redactEvent } from "./redact.ts";
 import { type MemoryStore, now } from "./store.ts";
 
@@ -352,7 +354,8 @@ export function createHandler(options: HandlerOptions): Handler {
       const agent = optionalString(body, "agent");
       if (agent !== null && !/^[a-z][a-z0-9-]{1,39}$/.test(agent)) throw validation("agent", "an agent slug such as elf or green-witch");
       const result = await store.claim({ project_id: projectId, member, task_id: taskId, spec: optionalString(body, "spec"), agent,
-        kind: optionalString(body, "kind") ?? "task", paths: body.paths ?? [], lease_seconds: body.lease_seconds });
+        kind: optionalString(body, "kind") ?? "task", paths: body.paths ?? [], lease_seconds: body.lease_seconds,
+        task_key: optionalString(body, "task_key"), attempt_id: optionalString(body, "attempt_id") });
       return json(result.status, result.body);
     }
 
@@ -509,9 +512,40 @@ export function createHandler(options: HandlerOptions): Handler {
     throw new HttpError(404, "Not Found");
   }
 
+  store.idem.ttlSeconds = Number(env.COVEN_IDEMPOTENCY_TTL) > 0 ? Number(env.COVEN_IDEMPOTENCY_TTL) : DEFAULT_TTL_SECONDS;
+
+  /** A write with an Idempotency-Key: the first answer is kept and replayed (spec task-keys-and-roles, R2). */
+  async function idempotent(request: Request, url: URL, key: string): Promise<Response> {
+    need(request, url, "any");
+    if (!KEY_PATTERN.test(key)) throw validation("Idempotency-Key", "1 to 128 letters, digits, . _ : -");
+    const text = await request.clone().text();
+    if (text.length > MAX_BODY_BYTES) return (await route(request, url))!;
+    const id = idemId(scopeOf(presented(request.headers.get("authorization"), url, false) ?? ""), key);
+    const hash = bodyHash(text);
+    const replay = (entry: IdemEntry, replayed: boolean): Response => {
+      if (entry.body_hash !== hash) throw new HttpError(422, "this Idempotency-Key was used with a different request");
+      return new Response(entry.response, { status: entry.status, headers: { "content-type": entry.content_type, "idempotent-replayed": String(replayed) } });
+    };
+    const known = store.idem.get(id);
+    if (known) return replay(known, true);
+    let fresh = false;
+    const entry = await store.idem.once(id, async () => {
+      fresh = true;
+      const response = (await route(request, url)) as Response;
+      const out: IdemEntry = { body_hash: hash, status: response.status, response: await response.clone().text(),
+        content_type: response.headers.get("content-type") ?? "application/json", at: Date.now() / 1000 };
+      if (response.status >= 200 && response.status < 300) store.idem.put(id, out); // a refusal or an error can be retried for real
+      return out;
+    });
+    return replay(entry, !fresh);
+  }
+
   return async (request: Request): Promise<Response | null> => {
     try {
-      return await route(request, new URL(request.url));
+      const url = new URL(request.url);
+      const key = request.headers.get("idempotency-key");
+      if (key !== null && request.method === "POST" && IDEMPOTENT_PATHS.has(url.pathname)) return await idempotent(request, url, key);
+      return await route(request, url);
     } catch (error) {
       if (error instanceof HttpError) return json(error.status, { detail: error.detail });
       console.error("coven cloud: unhandled error:", error);
