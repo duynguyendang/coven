@@ -345,6 +345,10 @@ bubbles, full for pills. The ghost icons are the only organic shapes.
 - **Icons:** one stroke set (24 px grid, 1.8 stroke, round caps), as `<symbol>`s at the top of
   `<body>` drawn in `currentColor`, so they follow the text and both schemes; always decorative
   (`aria-hidden`), the label names the button. No text glyphs (☰ ✕ ☾) as icons.
+- **Sign-in:** a native modal `<dialog>` with the ghost, *COVEN* and *Sign in*; signed out, the
+  app chrome is not drawn behind it, and Esc does not dismiss it.
+- **Focus:** a 2 px info outline on every control (`:focus-visible`); `<main>` is a focus target
+  for the skip link and route changes and draws no ring.
 - **Empty states:** one sentence that says why it is empty and the command that fills it
   (`./run-host.sh --agents elf`), in mono.
 

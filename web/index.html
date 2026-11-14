@@ -6,6 +6,7 @@
 <meta name="text-scale" content="scale" />
 <meta name="color-scheme" content="light dark" />
 <title>Coven — Kiro sessions</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3c-6 0-10 4.5-10 10.5V27l3-2.2 3 2.2 4-2.4 4 2.4 3-2.2 3 2.2V13.5C26 7.5 22 3 16 3z' fill='%237c5cd6'/%3E%3Ccircle cx='12' cy='14' r='2' fill='%23fff'/%3E%3Ccircle cx='20' cy='14' r='2' fill='%23fff'/%3E%3C/svg%3E" />
 <script>
   // Apply the reader's override before the first paint (guide: dark-mode-toggle). No stored value follows the OS.
   try { const t = localStorage.getItem("coven_theme"); document.querySelector('meta[name="color-scheme"]').content = t === "light" || t === "dark" ? t : "light dark"; } catch { /* storage off */ }
@@ -81,7 +82,9 @@
   p, .empty, .note { text-wrap: pretty; }
   html { scrollbar-gutter: stable; }
   a:hover { text-decoration: underline; }
-  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  /* <main tabindex="-1"> takes focus only from script (a route change, the skip link); it is a landmark, not a control */
+  main:focus, main:focus-visible { outline: none; }
   .mono { font-family: var(--mono); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .hint { color: var(--muted); font-size: 0.7812rem; }
@@ -340,8 +343,10 @@
   .sticky.review { background: var(--color-background-red); color: var(--color-text-red); } .sticky.note { background: var(--color-background-gray); color: var(--color-text-gray); } .sticky.review-wanted { background: var(--color-background-purple); color: var(--color-text-purple); }
   .sticky a { color: inherit; text-decoration: underline; }
   .compose { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 8px; margin-bottom: 14px; align-items: center; }
-  @media (max-width: 760px) { .compose { grid-template-columns: 1fr 1fr; } .compose textarea { grid-column: 1 / -1; } }
-  .compose textarea, .compose select, .compose input { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
+  @media (max-width: 760px) { .compose { grid-template-columns: repeat(2, minmax(0, 1fr)); } .compose textarea { grid-column: 1 / -1; } }
+  @media (max-width: 420px) { .compose { grid-template-columns: minmax(0, 1fr); } }
+  .compose > * { min-inline-size: 0; }
+  .compose textarea, .compose select, .compose input { inline-size: 100%; max-inline-size: 100%; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
   .compose textarea { min-height: 40px; resize: vertical; }
   .gate { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: var(--radius-element); padding: 12px 16px; margin-bottom: 14px; }
   /* council chat: the page fills the window; only the conversation scrolls; people right, the council left */
@@ -353,7 +358,10 @@
   .chat-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.7812rem; color: var(--muted); }
   .chat-head .who-on { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--panel); }
   .chat-head .who-on .av { width: 22px; height: 22px; margin: 0; }
-  .chat-head .who-on.off { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn-ink); }
+  .chat-head .who-on.off { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn-ink); flex-wrap: wrap; row-gap: 2px; padding: 5px 12px;
+    border-radius: var(--radius-element); max-inline-size: 100%; }
+  .chat-head .who-on.off .how { color: var(--text); }
+  .chat-head .who-on.off code { white-space: nowrap; }
   .chat-head select { font: inherit; font-size: 0.7812rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
   .thread { flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: var(--line-strong) transparent; border: 1px solid var(--line); border-radius: var(--radius-element); background: var(--well); }
   .chat { list-style: none; margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
@@ -392,7 +400,7 @@
   .chat-compose .pick { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; color: var(--muted); }
   .chat-compose .pick select, .chat-compose .pick input { field-sizing: content; font: inherit; font-size: 0.7812rem; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 2px 4px; max-width: 260px; }
   .chat-compose .pick select:hover, .chat-compose .pick input:hover, .chat-compose .pick select:focus, .chat-compose .pick input:focus { border-color: var(--line); background: var(--bg); }
-  .chat-compose .pick input { width: 9ch; }
+  .chat-compose .pick input { width: auto; min-inline-size: 11ch; max-inline-size: 20ch; } /* field-sizing grows it; an explicit width would cut the placeholder */
   .chat-compose .write { display: flex; align-items: flex-end; gap: 8px; }
   .chat-compose textarea { flex: 1; font: inherit; font-size: 0.875rem; line-height: 1.45; color: var(--text); background: transparent; border: 0; padding: 6px 2px; resize: none; field-sizing: content; width: auto; min-height: 1.45em; max-height: 9lh; overflow-y: auto; outline: none; }
   .chat-compose textarea:focus-visible { outline: none; }
@@ -511,10 +519,18 @@
   .drawer .dh { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   .drawer .dn { padding: 8px 16px; font-size: 0.75rem; color: var(--muted); border-bottom: 1px solid var(--line); }
   .drawer pre { margin: 0; padding: 14px 16px; overflow: auto; flex: 1; font-family: var(--mono); font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .login { position: fixed; inset: 0; background: var(--color-overlay); display: none; place-items: center; z-index: 60; }
-  .login.show { display: grid; }
-  .login form { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-container); padding: 22px; width: min(420px, 92vw); display: flex; flex-direction: column; gap: 10px; }
-  .login h1 { margin: 0; font-size: 0.9375rem; letter-spacing: 0.18em; }
+  /* Sign-in: a native modal; nothing behind it is reachable. Signed out, the app chrome is not drawn at all (body.signed-out). */
+  .login { padding: 0; border: 1px solid var(--line); border-radius: var(--radius-container); background: var(--panel); color: var(--text); box-shadow: var(--shadow-high);
+    inline-size: min(420px, calc(100vw - 2rem)); }
+  .login:modal { overscroll-behavior: contain; }
+  .login::backdrop { background: var(--bg); overflow: hidden; overscroll-behavior: contain; }
+  .login form { padding: 22px; display: flex; flex-direction: column; gap: 10px; }
+  .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .login-brand .av { inline-size: 34px; block-size: 34px; margin: 0; }
+  .login h2 { margin: 0; display: flex; flex-direction: column; line-height: 1.2; }
+  .login h2 b { font-size: 1rem; letter-spacing: 0.22em; }
+  .login h2 span { font-size: 0.8125rem; font-weight: 400; color: var(--muted); letter-spacing: 0; text-transform: none; }
+  body.signed-out .app { display: none; }
   .login p { margin: 0; color: var(--muted); font-size: 0.7812rem; }
   .login input { background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 9px 10px; border-radius: 6px; font-family: var(--mono); font-size: 0.8125rem; }
   .login button { background: var(--color-accent); color: var(--color-on-accent); border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
@@ -573,17 +589,17 @@
   <div class="td-body" id="task-dialog-body"></div>
 </dialog>
 
-<div class="login" id="login">
+<dialog class="login" id="login" aria-labelledby="login-title" aria-describedby="login-why">
   <form id="login-form">
-    <h1>COVEN</h1>
+    <div class="login-brand"><span id="login-ghost"></span><h2 id="login-title"><b>COVEN</b><span>Sign in</span></h2></div>
     <p>Password for this Coven Cloud.<span id="dev-hint" hidden> A development server accepts <code>dev</code>.</span></p>
     <p class="error" id="login-error" hidden>Wrong password.</p>
     <label class="sr" for="token-input">Password</label>
     <input id="token-input" type="password" autocomplete="current-password" placeholder="password" />
     <button type="submit">Connect</button>
-    <p>The password stays in this browser and is sent as a bearer header. The live stream carries it once as a query parameter, because a browser cannot set headers on an event stream.</p>
+    <p id="login-why">The password stays in this browser and is sent as a bearer header. The live stream carries it once as a query parameter, because a browser cannot set headers on an event stream.</p>
   </form>
-</div>
+</dialog>
 <div class="toasts" role="region" aria-label="Notifications">
   <div class="toast" id="toast"><span id="toast-text"></span><button type="button" id="toast-close" aria-label="Close notification"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button></div>
   <!-- fallback announcer for browsers without ariaNotify(); present on load so screen readers register it -->
@@ -741,13 +757,24 @@
   /** One key per click: a write the browser repeats (a flaky network) is replayed by the cloud, not done twice. */
   /** A UI icon from the sprite at the top of <body>; decorative, so the button's text names it. */
   const icon = (name) => `<svg class="ico" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
+  /** Signed out: the sign-in dialog, modal, and no app behind it. Signed in: the app. */
+  function showLogin() {
+    document.body.classList.add("signed-out");
+    const dialog = $("login");
+    if (!dialog.open) dialog.showModal();
+    $("token-input").focus();
+  }
+  function hideLogin() {
+    document.body.classList.remove("signed-out");
+    if ($("login").open) $("login").close();
+  }
   const writeKey = () => (globalThis.crypto && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `w-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   async function api(path, options = {}) {
     const keyed = options.method === "POST" ? { "Idempotency-Key": writeKey() } : {};
     const response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${state.token}`, "Content-Type": "application/json", ...keyed, ...(options.headers || {}) } });
     if (response.status === 401) {
       $("login-error").hidden = !state.token;
-      $("login").classList.add("show");
+      showLogin();
       throw new Error("unauthorised");
     }
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -1502,7 +1529,7 @@
       ? `<span class="who-on" role="status" title="What you say to the council, the Chair understands and dispatches to the witches as tasks on the board.">${avatar("grey-witch")}The Chair is on <b>${chairs.map((h) => esc(h.host)).join(", ")}</b></span>${online.length ? `<span>· one witch's questions: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} listening</span>` : ""}`
       : online.length
       ? `<span class="who-on" role="status">${avatar("grey-witch")}Answering: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} · listening, seen ${agoTag(online[0].last_seen)}</span><span>An answer takes a Kiro run: about a minute.</span>`
-      : `<span class="who-on off" role="status"><b>No member is listening</b>&nbsp;· messages wait. Run <code>coven council listen</code> or <code>./run-host.sh</code></span>`;
+      : `<span class="who-on off" role="status"><b>No member is listening:</b> messages wait. <span class="how">Run <code>coven council listen</code> or <code>./run-host.sh</code>.</span></span>`;
     const byId = new Map((c.messages || []).map((m) => [m.message_id, m]));
     const waiting = new Set(c.waiting || []);
     const replies = (kinds) => new Set((c.messages || []).filter((m) => m.role === "council" && kinds.includes(m.kind)).map((m) => m.reply_to));
@@ -2185,9 +2212,9 @@
   $("dev-hint").hidden = !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   async function start() {
     state.token = state.token || tokenFromUrl();
-    if (!state.token) { $("login").classList.add("show"); $("token-input").focus(); return; }
+    if (!state.token) { showLogin(); return; }
     localStorage.setItem("coven_token", state.token);
-    $("login").classList.remove("show");
+    hideLogin();
     state.route = parseRoute();
     applyNav();
     await loadFleet();
@@ -2271,9 +2298,8 @@
     if (state.source) state.source.close();
     state.token = ""; state.runs = []; state.projects = []; state.deviations = []; state.councils = [];
     $("login-error").hidden = true;
-    $("login").classList.add("show");
     $("token-input").value = "";
-    $("token-input").focus();
+    showLogin();
   });
 
   document.addEventListener("keydown", (ev) => {
@@ -2290,6 +2316,11 @@
     if (state.route.view === "session" && !typing) go(sessionsHash());
   });
   document.querySelectorAll(".brand").forEach((el) => el.insertAdjacentHTML("afterbegin", avatar("coven")));
+  $("login-ghost").innerHTML = avatar("coven");
+  // The skip link moves focus to the content; it must not change the hash, which is the router's.
+  document.querySelector("a.skip").addEventListener("click", (ev) => { ev.preventDefault(); $("main").focus(); });
+  // Esc must not leave a signed-out person on an empty page: the sign-in stays until a password is given.
+  $("login").addEventListener("cancel", (ev) => { if (!state.token) ev.preventDefault(); });
   window.addEventListener("hashchange", onRoute);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) { loadFleet(); if (state.route.view === "session") loadSession().then(() => render({ keepScroll: true })); } });
 

@@ -1226,11 +1226,38 @@ describe("demo data is labelled only where it is shown", () => {
   });
 });
 
+describe("batch A: defects", () => {
+  test("the main landmark takes focus without a ring; the page has an icon", () => {
+    const css = doc().querySelector("style")!.textContent!;
+    assert.match(css, /main:focus, main:focus-visible \{ outline: none; \}/);
+    assert.match(doc().querySelector('link[rel="icon"]')!.getAttribute("href")!, /^data:image\/svg\+xml,/);
+  });
+  test("Skip to content focuses the content and stays on the page", async () => {
+    await go("#/councils");
+    (doc().querySelector("a.skip") as HTMLAnchorElement).click();
+    await wait(100);
+    assert.equal(dom.window.location.hash, "#/councils");
+    assert.equal(doc().activeElement!.id, "main");
+    await go("#/");
+  });
+  test("the note composer stacks on a narrow screen; the chat name field is not cut", () => {
+    const css = doc().querySelector("style")!.textContent!;
+    assert.match(css, /@media \(max-width: 420px\) \{ \.compose \{ grid-template-columns: minmax\(0, 1fr\); \} \}/);
+    assert.match(css, /\.chat-compose \.pick input \{ width: auto; min-inline-size: 11ch;/);
+  });
+});
+
 describe("signing out", () => {
   test("forgets the token and asks for it again", async () => {
     assert.equal(dom.window.localStorage.getItem("coven_token"), "dev");
     (doc().getElementById("sign-out") as HTMLElement).click();
     assert.equal(dom.window.localStorage.getItem("coven_token"), null);
-    assert.ok(doc().getElementById("login")!.classList.contains("show"));
+    const login = doc().getElementById("login") as any;
+    assert.equal(login.tagName, "DIALOG");
+    assert.ok(login.open, "the sign-in is a modal dialog");
+    assert.ok(doc().body.classList.contains("signed-out"), "and no app is drawn behind it");
+    assert.equal(doc().querySelectorAll("#login h1").length, 0, "the sign-in adds no second page heading");
+    assert.match(doc().getElementById("login-title")!.textContent!, /COVEN.*Sign in/s);
+    assert.ok(doc().querySelector("#login-ghost svg.av"), "the ghost, as everywhere else");
   });
 });
