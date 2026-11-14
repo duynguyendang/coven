@@ -1272,7 +1272,7 @@
     const ok = state.cloudReady;
     return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>${icon("cloud")}<span>Run in Kiro Web</span></button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
   }
-  const closedThreads = new Set(); // a task's conversation opens with it; one a person folded stays folded across redraws
+  const closedThreads = new Set(); // a task's conversation opens with it; folded by a person, it stays folded until the dialog closes
   const threadItems = new Map(); // the last conversation loaded per task, shown at once while a redraw reloads it
   const DELIVERY = { requested: "Requested", claimed: "Claimed", answered: "Answered", failed: "Failed", expired: "Expired: no host ran her in time" };
   /** The task's conversation: notes, statuses, jobs and chat in one thread. Open when the task opens, unless a person folded it. */
@@ -1336,6 +1336,7 @@
   }
   function openTask(ref) {
     state.openTask = ref;
+    closedThreads.delete(ref); // a task always opens with its conversation expanded
     const dialog = fillTaskDialog();
     // A row opens the dialog itself (command="show-modal"); open it here where invoker commands are missing.
     if (!("commandForElement" in HTMLButtonElement.prototype) && !dialog.open) dialog.showModal();

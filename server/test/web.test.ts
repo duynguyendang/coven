@@ -862,10 +862,12 @@ describe("session screen", () => {
     assert.match(items, /Try a materialised view/);
     box().open = false;
     box().dispatchEvent(new dom.window.Event("toggle"));
+    streams[0].emit("board", { kind: "board", project_id: "lab" });
+    await wait(600);
+    assert.equal(box().open, false, "folded by the person: a live redraw keeps it folded");
+    closeTask();
     openTask("lab#L1");
-    assert.equal(box().open, false, "folded by the person: it stays folded");
-    box().open = true;
-    box().dispatchEvent(new dom.window.Event("toggle"));
+    assert.equal(box().open, true, "opened again, the task shows its conversation expanded");
     closeTask();
     await go("#/");
   });
