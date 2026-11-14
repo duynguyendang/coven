@@ -445,3 +445,69 @@ describe("several hosts (spec multi-host)", () => {
     } finally { await s.close(); }
   });
 });
+
+describe("witches working together (spec witch-collaboration)", () => {
+  const ev = (type: string, payload: Json, member = "wsl-1", ts = new Date().toISOString(), id = Math.random().toString(16).slice(2, 12)): Json => ({
+    event_id: `evt_wc_${id}`, project_id: "shop", run_id: `member_${member}`, type, ts, source: "coven-cli", member, payload,
+  });
+  const send = (base: string, events: Json[]) => postJson(base, "/v1/events", { project_id: "shop", run_id: "member_wsl-1", events }, auth());
+  const council = async (base: string) => (await getJson(base, "/v1/board?project_id=shop")).body.specs.find((x: Json) => x.spec === "council").tasks;
+
+  test("a job is a typed handoff; the Dev may be asked a question, never given a build", async () => {
+    const s = await startServer();
+    try {
+      const r = await send(s.base, [
+        ev("task_created", { task: "council#q1-1", title: "Where are claims renewed?", agent: "green-witch", expects: "answer", from: "grey-witch", reply_to: "evt_m" }),
+        ev("task_created", { task: "council#q1-2", title: "Build it", agent: "green-witch" }),
+        ev("task_created", { task: "council#q1-3", title: "Bad", agent: "elf", expects: "everything" }),
+        ev("task_created", { task: "council#q1-4", title: "Deep", agent: "elf", depth: 3 })]);
+      assert.equal(r.body.accepted, 1);
+      const [job] = await council(s.base);
+      assert.deepEqual([job.agent, job.expects, job.from, job.reply_to, job.depth], ["green-witch", "answer", "grey-witch", "evt_m", 0]);
+    } finally { await s.close(); }
+  });
+
+  test("delivery: requested, claimed, answered, failed, and expired when nobody runs the witch", async () => {
+    const s = await startServer();
+    try {
+      const old = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+      await send(s.base, [
+        ev("task_created", { task: "council#d-1", title: "a", agent: "elf" }),
+        ev("task_created", { task: "council#d-2", title: "b", agent: "elf" }, "wsl-1", old),
+        ev("task_created", { task: "council#d-3", title: "c", agent: "elf" }),
+        ev("task_created", { task: "council#d-4", title: "d", agent: "elf" }),
+        ev("task_status", { task: "council#d-3", state: "answered", agent: "elf" }),
+        ev("task_status", { task: "council#d-4", state: "failed", agent: "elf" })]);
+      await claim(s.base, { member: "wsl-1", task_id: "d-1", spec: "council", agent: "elf" });
+      const states = Object.fromEntries((await council(s.base)).map((t: Json) => [t.task_id, t.delivery]));
+      assert.deepEqual(states, { "d-1": "claimed", "d-2": "expired", "d-3": "answered", "d-4": "failed" });
+    } finally { await s.close(); }
+  });
+
+  test("a task's thread gathers its notes, statuses and the chat replies, oldest first", async () => {
+    const s = await startServer();
+    try {
+      const t0 = Date.now();
+      const at = (n: number) => new Date(t0 + n * 1000).toISOString();
+      await send(s.base, [
+        ev("task_created", { task: "council#t-1", title: "Review it", agent: "white-hat" }, "wsl-1", at(0), "a"),
+        ev("task_status", { task: "council#t-1", state: "working", agent: "white-hat" }, "wsl-1", at(1), "b"),
+        ev("board_note", { note: "White Hat asks Green Witch: where?", kind: "question", task: "council#t-1", agent: "white-hat" }, "wsl-1", at(2), "c"),
+        ev("board_note", { note: "elsewhere", kind: "note", task: "council#t-9" }, "wsl-1", at(3), "d")]);
+      const thread = (await getJson(s.base, "/v1/board/thread?project_id=shop&task=council%23t-1")).body;
+      assert.deepEqual(thread.items.map((i: Json) => [i.type, i.state]), [["task_created", null], ["task_status", "working"], ["board_note", "question"]]);
+      assert.equal((await getJson(s.base, "/v1/board/thread?project_id=shop&task=nope")).status, 422);
+    } finally { await s.close(); }
+  });
+
+  test("a plan decision keeps the person's reasons", async () => {
+    const s = await startServer();
+    try {
+      await send(s.base, [ev("plan_proposed", { plan: "council#p-1", summary: "x", tasks: [{ task_id: "p-1b1", title: "t", paths: ["src/"], verify: "true" }] })]);
+      const r = await postJson(s.base, "/v1/board/plan", { project_id: "shop", plan: "council#p-1", state: "rejected", author: "duy", reasons: "too wide" }, auth());
+      assert.equal(r.status, 201);
+      const plan = (await getJson(s.base, "/v1/board?project_id=shop")).body.plans[0];
+      assert.deepEqual([plan.state, plan.reasons], ["rejected", "too wide"]);
+    } finally { await s.close(); }
+  });
+});

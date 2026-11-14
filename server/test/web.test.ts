@@ -738,9 +738,10 @@ describe("session screen", () => {
     assert.match(text, /Elder Witch.*plan council#rp1-1.*Waits for you/);
     assert.match(text, /Cart total.*paths src\/cart\/.*verify pytest -q tests\/test_cart\.py/);
     assert.match(doc().querySelector("#main")!.textContent!, /1 plan waits for you/);
+    (doc().querySelector('[data-key="why-council#rp1-1"]') as HTMLInputElement).value = "small and testable";
     (doc().querySelector('[data-key="approve-council#rp1-1"]') as HTMLButtonElement).click();
     await wait(900);
-    assert.match(card().textContent!.replace(/\s+/g, " "), /Approved by/);
+    assert.match(card().textContent!.replace(/\s+/g, " "), /Approved by .*: small and testable/);
     assert.equal(doc().querySelector('[data-key="approve-council#rp1-1"]'), null, "decided once");
     openColumn("ready");
     const build = doc().querySelector('[data-key="task-council#rp1-1b1"]')!.textContent!.replace(/\s+/g, " ");
@@ -818,6 +819,20 @@ describe("session screen", () => {
     openColumn("review");
     assert.match(card(), /Push requested by/);
     assert.equal(doc().querySelector('[data-key="push-pushy#1"]'), null, "asked once");
+    await go("#/");
+  });
+
+  test("board: a task's conversation opens in one thread", async () => {
+    await go("#/board/lab", 600);
+    openColumn("done");
+    const box = doc().querySelector('[data-key="thread-lab#L1"]') as HTMLDetailsElement;
+    assert.ok(box && !box.open);
+    box.open = true;
+    box.dispatchEvent(new dom.window.Event("toggle"));
+    await wait(600);
+    const items = box.textContent!.replace(/\s+/g, " ");
+    assert.match(items, /status \(answered\)/);
+    assert.match(items, /Try a materialised view/);
     await go("#/");
   });
 

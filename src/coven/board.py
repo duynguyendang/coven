@@ -324,7 +324,8 @@ def task_status(root: Path, ref: str, state: str, agent: str | None = None, deta
 
 
 def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, detail: str | None = None, source: str | None = None,
-                plan: bool = False, branch: str | None = None, review_of: str | None = None, key: str | None = None) -> dict:
+                plan: bool = False, branch: str | None = None, review_of: str | None = None, key: str | None = None,
+                sender: str | None = None, expects: str | None = None, reply_to: str | None = None, depth: int | None = None) -> dict:
     """A job for a witch, as a task on the board (the Chair makes them from a person's request).
 
     `plan`: a planning job (the Elder Witch proposes build tasks for people to approve). `branch` and `review_of`:
@@ -340,6 +341,14 @@ def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, det
         payload["detail"] = " ".join(str(detail).split())[:380]
     if source:
         payload["source"] = source
+    # a typed handoff: from whom, what comes back, in reply to what, how deep in a consultation
+    if sender:
+        payload["from"] = sender
+    payload["expects"] = expects or ("plan" if plan else "review" if review_of else "answer")
+    if reply_to:
+        payload["reply_to"] = reply_to
+    if depth:
+        payload["depth"] = int(depth)
     _stamp(payload, key, None)
     return _member_event(root, "task_created", payload)
 

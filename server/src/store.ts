@@ -557,6 +557,34 @@ export class MemoryStore {
     return this.board.view(projectId);
   }
 
+  /**
+   * One task's conversation (spec witch-collaboration, R5.2): its notes, statuses, jobs and chat messages, oldest first.
+   * Matched by the task reference or by its task key; messages that reply to one of them come along.
+   */
+  thread(projectId: string, ref: string, limit = 80): Json[] {
+    const spec = ref.slice(0, ref.indexOf("#")), id = ref.slice(ref.indexOf("#") + 1);
+    const key = this.board.tasks.get(projectId)?.get(spec)?.find((t) => t.task_id === id)?.task_key ?? null;
+    const kinds = new Set(["board_note", "task_status", "task_created", "chat_message", "task_claimed", "task_released", "push_request", "push_done", "plan_proposed", "plan_decision"]);
+    const mine: Json[] = [];
+    const ids = new Set<string>();
+    for (const e of this.events.values()) {
+      if (e.project_id !== projectId || !kinds.has(e.type)) continue;
+      const p = e.payload || {};
+      const about = p.task === ref || p.plan === ref || p.review_of === ref || (key && p.task_key === key)
+        || (e.type.startsWith("task_") && p.spec === spec && String(p.task_id) === id);
+      if (about) { mine.push(e); ids.add(e.event_id); }
+    }
+    for (const e of this.events.values()) {
+      if (e.project_id === projectId && e.type === "chat_message" && ids.has(e.payload?.reply_to) && !ids.has(e.event_id)) mine.push(e);
+    }
+    return mine.sort((a, b) => ((a.ts || "") < (b.ts || "") ? -1 : (a.ts || "") > (b.ts || "") ? 1 : 0)).slice(-limit).map((e) => {
+      const p = e.payload || {};
+      return { event_id: e.event_id, ts: e.ts, type: e.type, who: p.agent || p.persona || e.member || p.author || (e.source === "web" ? "a person" : null),
+        state: p.state ?? p.kind ?? null, note: String(p.note ?? p.message ?? p.detail ?? p.title ?? p.summary ?? p.reason ?? "").slice(0, 400),
+        task_key: p.task_key ?? key, attempt_id: p.attempt_id ?? null };
+    });
+  }
+
   /** A message from a person to the council (POST /v1/chat). Agents answer as ordinary events via the relay. */
   async postChat(projectId: string, payload: Json): Promise<Json> {
     const event = this.boardEvent(projectId, "chat_message", undefined, { ...payload, role: "human" }, "web");

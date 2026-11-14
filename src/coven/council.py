@@ -192,6 +192,25 @@ def clip(text: str, limit: int = board.MAX_CHAT_CHARS) -> str:
 def answer_one(root: Path, message: dict, chat: dict, notes: list[dict] | None = None, runner=run_agent) -> dict:
     """Answer one human message and post it. An agent that fails still gets a reply: the error."""
     role = message.get("to") if message.get("to") in PERSONAS else "chair"
+    # One voice per message, decided by a claim on the message (the same claim a host's Chair takes), not by timing.
+    try:
+        held = board.claim(root, {"spec": "chat", "task_id": message["message_id"], "paths": []}, agent="council-chat")
+    except board.BoardError as exc:
+        if exc.status == 409:
+            _remember(root, message["message_id"])
+            return {"message_id": message["message_id"], "role": role, "kind": "skipped", "answer": ""}
+        held = None  # the cloud cannot say: answer, and the timing check below still applies
+    try:
+        return _answer_held(root, message, chat, notes, runner, role)
+    finally:
+        if held:
+            try:
+                board.release(root, held["claim_id"], "answered")
+            except board.BoardError:
+                pass
+
+
+def _answer_held(root: Path, message: dict, chat: dict, notes, runner, role: str) -> dict:
     text, error = runner(root, prompt_for(root, message, chat, notes))
     if superseded(root, message):
         # While this run thought, a host's Chair (or another listener) answered: one voice per message, so stay quiet.

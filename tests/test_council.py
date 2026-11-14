@@ -155,3 +155,20 @@ def test_the_listener_stays_quiet_when_a_hosts_chair_answered_while_it_thought(r
     assert any("answered meanwhile" in line for line in lines)
     chat["waiting"], chat["hosts"] = ["m1"], [{"online": True, "agents": ["grey-witch"]}]
     assert council.superseded(root, chat["messages"][0]), "a host's Chair now takes what is said to the council"
+
+
+def test_one_voice_is_decided_by_a_claim_on_the_message(root, monkeypatch):
+    chat = {"waiting": ["m1"], "listeners": [], "hosts": [], "messages": [msg(1, "ask", ago=1)]}
+    chat["messages"][0]["ts"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    monkeypatch.setattr(board, "chat", lambda _root: chat)
+    monkeypatch.setattr(board, "read", lambda _root: {"notes": []})
+
+    def held(_root, task, kind="task", agent=None, attempt=1):
+        assert (task["spec"], task["task_id"], agent) == ("chat", "m1", "council-chat")
+        raise board.BoardError("held by the Chair on wsl-1", 409, {})
+
+    monkeypatch.setattr(board, "claim", held)
+    ran = []
+    assert council.listen(root, once=True, runner=lambda _r, p: ran.append(p) or ("x", None), out=lambda line: None) == []
+    assert ran == [], "the Chair holds it: the listener does not even think"
+    assert sent(root, "chat_message") == []

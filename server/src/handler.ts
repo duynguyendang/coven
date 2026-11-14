@@ -377,6 +377,15 @@ export function createHandler(options: HandlerOptions): Handler {
       return json(200, store.boardView(projectId));
     }
 
+    if (method === "GET" && path === "/v1/board/thread") {
+      need(request, url, "read");
+      const projectId = url.searchParams.get("project_id");
+      const task = url.searchParams.get("task") ?? "";
+      if (!projectId || projectId.length > 128) throw validation("project_id", "required");
+      if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
+      return json(200, { project_id: projectId, task, items: store.thread(projectId, task) });
+    }
+
     if (method === "POST" && path === "/v1/board/done") {
       // People accept a task's result: it moves to Done. A read token may, like a note or a chat message.
       need(request, url, "read");
@@ -425,8 +434,9 @@ export function createHandler(options: HandlerOptions): Handler {
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const projectId = idField(body, "project_id");
-      const payload = { plan: optionalString(body, "plan") ?? "", state: optionalString(body, "state") ?? "",
-        author: (optionalString(body, "author") ?? "someone").slice(0, 40) };
+      const reasons = optionalString(body, "reasons");
+      const payload: Json = { plan: optionalString(body, "plan") ?? "", state: optionalString(body, "state") ?? "",
+        author: (optionalString(body, "author") ?? "someone").slice(0, 40), ...(reasons ? { reasons: reasons.trim().slice(0, 300) } : {}) };
       const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "plan_decision", ts: now(), payload });
       if (problems.length) throw validation("plan", problems.join("; "));
       const event = await store.postWebPlanDecision(projectId, redactEvent({ payload }).payload);

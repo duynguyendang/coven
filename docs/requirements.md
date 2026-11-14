@@ -102,8 +102,12 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H8 | People's rejection or feedback on a submitted task sends the same witch back to the same branch with that feedback. | Must | Built |
 | FR-H9 | A failed run (error, 30 min timeout, refused twice) posts why, releases the claim and is not retried by that host until a person says so. | Must | Built |
 | FR-H10 | Hosts announce presence (`host_online`) every minute with their witches, slots and running work. | Must | Built |
-| FR-H11 | A host can hand a task to Kiro Web (a cloud session on a GitHub repository) and check the resulting branch like a local one. | Could | Partial: a person dispatches a ready task from the dashboard ("Run in Kiro Web"); a host started with `--kiro-web` runs it as a `kiro-cli chat --cloud` session; run against the real service (2026-11-14 spike). `--agent <slug>` fails at stage `init` (`agent not found`, exit 4): the cloud resolves it before the repository is cloned, so repository agents are not found. Without `--agent` a session runs in 16 s, exits 0, sees `.kiro/agents/`, and ends with `runFinished.finalText`; a build session delivers its branch and PR in about a minute. So a host must drop `--agent`, put the witch's role in the prompt, and confirm the branch with `git ls-remote`; rework starts a new session |
-| FR-H12 | Several hosts on one machine stay apart: one working copy and one host name each. | Should | Partial: by convention; no unique host id |
+| FR-H11 | A host can hand a task to Kiro Web (a cloud session on a GitHub repository) and check the resulting branch like a local one. | Could | Partial: a person dispatches a ready task ("Run in Kiro Web"); a host with `--kiro-web` runs a `kiro-cli chat --cloud` session without `--agent` (the cloud resolves it before cloning, so a repository agent is never found: spike 2026-11-14), with the witch's role in the prompt, and judges it by `git ls-remote` on the task branch up to `COVEN_CLOUD_WAIT`, not by the exit code (a session pushed its branch and still exited 4); a missing source provider fails at once with the fix. Tested with a fake session; one real build delivered its branch and PR in about a minute. Rework starts a new session |
+| FR-H12 | Several hosts stay apart: each has a `host_id` (`.coven/host.json`) beside its name; claims, renewals and releases carry it, so two hosts with one name are two claimants. | Should | Built |
+| FR-H13 | A submitted branch stays with the host that made it (`branch_host`): another host does not take it, and the board says when that host is offline. | Must | Built |
+| FR-H14 | Nothing pushes unless a person asks: **Ask host to push** (`POST /v1/board/push`) makes the host that holds the branch push that one `coven/` branch once and report `push_done`. | Must | Built |
+| FR-H15 | Before it commits or submits, a host asks the cloud whether it still holds its claim; a lapsed lease ends the run without a commit. | Must | Built |
+| FR-H16 | Hosts announce free slots; the Chair sees who has room, and which ready build tasks share no path (a person may send them to Kiro Web; the Chair never does). | Should | Built |
 
 ### 4.6 Task status
 
@@ -112,6 +116,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-ST1 | The doer reports `working`, `submitted` (with branch and commit), `answered` or `failed` (with the reason); the board follows the latest. | Must | Built |
 | FR-ST2 | Only people say `done`: *Mark done*, or the task's tick reaching the base branch. The cloud refuses `done` from any doer. | Must | Built |
 | FR-ST3 | A task marked done is released by its host and skipped by readiness. | Must | Built |
+| FR-ST4 | Every task has a derived `task_key` and every run an `attempt_id`; claims, statuses, notes and jobs carry them, the same in Python and Node; a job is created once per key. | Must | Built |
 
 ### 4.7 Council chat and dispatch
 
@@ -127,7 +132,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-CH8 | A request for a change becomes a planning job for the Elder Witch: she proposes at most five build tasks, each with narrow paths and one verify command, which the host checks and puts on the board as a plan. | Should | Built (not yet run with a real model) |
 | FR-CH9 | Only a person's approval of a plan (dashboard, `POST /v1/board/plan`) makes build tasks; the Dev builds each on its own branch and the host checks and commits it as for a spec task. | Must | Built |
 | FR-CH10 | A plan task's submitted branch gets review jobs for White Hat and Black Hat, run in a checkout of that branch; people read them and merge or reject. Reviews of "what I have" see the working copy's uncommitted changes. | Should | Built |
-| FR-CH11 | One voice per message: the listener stays quiet when a host's Chair answers first. | Should | Built |
+| FR-CH11 | One voice per message: the listener claims the message (`chat#<id>`) before it answers, as a host's Chair does, so only one answers. | Should | Built |
 
 ### 4.8 Preparing tasks
 
@@ -144,6 +149,19 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-F2 | Review claims carry evidence; a challenge without a reproducing test is shown as not counted. | Must | Built |
 | FR-F3 | The guard decides from what it measured itself (verify, scope, the reproducing tests, a person's reject), never from an agent's words; disagreement with the Chair is shown. | Must | Built |
 | FR-F4 | Nothing in a flow merges; the hand-off is text for a person. | Must | Built |
+
+### 4.10 Witches working together
+
+| Id | Requirement | Pri | Status |
+| :--- | :--- | :--- | :--- |
+| FR-CO1 | Each witch has a written role in one table (`agents.ROLES`: owns, produces, consumes, hands off to, never); the agent prompts and the dashboard carry a generated copy the harness checks; no witch approves. | Must | Built |
+| FR-CO2 | The Chair routes by responsibility: her prompt lists what each witch owns and hands off to. | Should | Built |
+| FR-CO3 | A delivery outside a witch's role is a `warning` (`role_mismatch`), never a refusal. | Should | Built (report only) |
+| FR-CO4 | A witch may ask another witch one question through the host: depth at most 2, at most three per task, only the owner of the question; the answerer runs read-only and both are notes on the task. | Must | Built |
+| FR-CO5 | The Dev answers questions about the code read-only (a job with `expects: answer`); the Chair asks the Elder Witch first on a design question and answers with her words, or says it waits. | Should | Built |
+| FR-CO6 | A planning session runs in stages: the Elf's alternative, the Elder Witch's plan, the Black Hat's challenge (up to three rounds), the Scribe's rules; a person decides, and the decision's reasons are read by the next round. | Should | Built (the Scribe's rules are the host's check, not a model run) |
+| FR-CO7 | Jobs are typed handoffs (`from`, `expects`, `reply_to`, `depth`); a task's conversation is one thread (`GET /v1/board/thread`); a job shows its delivery: requested, claimed, answered, failed or expired. | Should | Built |
+| FR-CO8 | Every witch prompt carries a short, redacted project brief (specs, open tasks, recent plan decisions) as data. | Could | Built |
 
 ## 5. Non-functional requirements
 
@@ -166,6 +184,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | NFR-REL1 | A hook never blocks or slows the agent beyond its local write; a relay or cloud outage loses no events (local log, retry, backfill). | Built |
 | NFR-REL2 | Claims are leased; a host that stops loses its claims when the lease ends, and a restarted host frees what it was running. | Built |
 | NFR-REL3 | The cloud is a single instance (the Durable Object on Cloudflare); scale-out is not claimed. | Built (stated limit) |
+| NFR-REL4 | Board writes are safe to retry: an `Idempotency-Key` replays the first answer for 24 hours (`COVEN_IDEMPOTENCY_TTL`), scoped to the token; the host retries keyed writes after a network failure. | Built |
 
 ### 5.3 Performance
 
@@ -201,5 +220,5 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 ## 7. Out of scope
 
 A policy engine, approvals or RBAC; multi-tenant isolation; an audit-grade ledger; any agent
-that merges, pushes, pauses or skips; editing `tasks.md` from the cloud or the web; a central
+that merges, pushes, pauses or skips (a host pushes a branch only when a person asks, FR-H14); editing `tasks.md` from the cloud or the web; a central
 scheduler that assigns work; showing code, diffs or prompts on the dashboard.

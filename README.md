@@ -136,9 +136,11 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
 | `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too) |
-| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch, which the host fetches and checks) |
+| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
 | `coven host prepare [--only <spec>] [--note …]` | The Scribe proposes the witch, paths and verify for tasks that lack them; the host writes them on branch `coven/prepare-all` for you to merge |
 | `coven host status \| agents \| retry <task>` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again |
+| `coven host agents [--roles] [--sync] [--check]` | The eleven witches; `--roles` prints what each owns, produces, hands off and never does; `--sync` writes that role table into each agent prompt and the dashboard; `--check` fails when they are out of date (the harness runs it) |
+| `coven host run` (several hosts) | Each host has an id in `.coven/host.json`; a submitted branch stays on its host; nothing pushes unless a person presses **Ask host to push** on the board |
 | `coven council listen [--once]` | Answer chat messages addressed to one witch (advice, read-only); everything when no host runs the Chair |
 | `coven board read \| ready \| next \| claim \| review \| release \| post \| sync` | The coven board: who holds what, take or give back a task, join a review, post a note |
 | `coven verify <spec>#<task>` | Run the task's `_Verify:_` command and record only its outcome (exit 0 pass, 1 fail, 3 no command) |
@@ -242,6 +244,20 @@ online host runs (*N need a host*).
 The doer reports where a task stands (**working → submitted / answered**, or **failed** with
 why), and the board follows. You merge the branch, or click **Mark done** on the card, to
 make it done. Design: `docs/ADD.md` §4.2–§4.4.
+
+**Working together.** Each witch has a written role (`coven host agents --roles`): what she
+owns, produces, hands off and never does; the board shows it under *Responsibilities*. A witch
+that needs a fact another one owns asks her through the host, one question at a time (at most two
+levels deep, three per task): the Dev answers about the code, the Elder Witch about design, White
+Hat about tests, Black Hat about what breaks. Each answering run is read-only, and both the question
+and the answer land on the task's *Conversation*. A change request becomes a planning session: the
+Elf offers an alternative, the Elder Witch plans, the Black Hat challenges it (up to three rounds),
+and you approve or reject, with a reason the next plan reads.
+
+**Several hosts, one project.** Each host has an id (`.coven/host.json`). A submitted branch stays
+on the host that built it; its rework goes back there. Nothing is pushed unless you press **Ask
+host to push** on the card. A host that lost its lease does not commit. Every board write carries
+an `Idempotency-Key`, so a retry is never a duplicate.
 
 ## The coven board: many kiro-cli, one project
 

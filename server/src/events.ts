@@ -66,6 +66,7 @@ export const EVENT_TYPES = new Set([
 
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
 export const HOST_ID = /^h_[0-9a-f]{8}$/;
+export const EXPECTS = new Set(["answer", "plan", "review", "test_result"]);
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
 /** People's word, made by the cloud from the web (POST /v1/board/dispatch); a relay may not send it. */
 export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request"]);
@@ -231,7 +232,13 @@ export function validateEvent(event: Json): string[] {
     if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_created needs task as <spec>#<task>");
     if (typeof p.title !== "string" || !p.title.trim()) errors.push("task_created needs a title");
     if (typeof p.agent !== "string" || !AGENT_SLUGS.has(p.agent)) errors.push("task_created needs the agent that should do it");
-    else if (BUILDERS.has(p.agent)) errors.push("the Dev builds from tasks.md; a council job is for the other witches");
+    // The Dev builds only from tasks.md or an approved plan; a job may only ask her a question (read-only, `expects: answer`).
+    else if (BUILDERS.has(p.agent) && p.expects !== "answer") errors.push("the Dev builds from tasks.md; a council job for her can only ask a question (expects: answer)");
+    // Typed handoffs (spec witch-collaboration, R5.1): who hands it to whom, in reply to what, and what comes back.
+    if (p.expects !== undefined && !EXPECTS.has(p.expects)) errors.push(`task_created expects must be one of ${[...EXPECTS].join(", ")}`);
+    if (p.from !== undefined && !(typeof p.from === "string" && (AGENT_SLUGS.has(p.from) || p.from === "person"))) errors.push("task_created from must be a witch or person");
+    if (p.depth !== undefined && !(Number.isInteger(p.depth) && p.depth >= 0 && p.depth <= 2)) errors.push("task_created depth must be 0 to 2");
+    if (p.reply_to !== undefined && (typeof p.reply_to !== "string" || p.reply_to.length > 80)) errors.push("task_created reply_to must be an event id");
   }
   if (event.type === "chat_message") errors.push(...chatProblems(isObject(payload) ? payload : {}));
   if (event.member !== undefined && (typeof event.member !== "string" || event.member.length > 80 || !event.member.trim())) {

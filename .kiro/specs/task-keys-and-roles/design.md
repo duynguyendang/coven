@@ -48,10 +48,10 @@ ROLES = {
 }
 ```
 
-`agents.py` is the one source. A small script, `python3 -m coven.cli agents sync`, writes the generated
-block between `<!-- roles:start -->` and `<!-- roles:end -->` in each agent prompt, and `--check`
-(used by the harness) fails when a file is out of date. `events.ts` and the dashboard receive the data
-through the existing four-place agreement, with a harness test that compares them.
+`agents.py` is the one source. `coven host agents --sync` writes the generated block between
+`<!-- roles:start -->` and `<!-- roles:end -->` in each agent prompt and the JSON copy between
+`/* roles:start … */` and `/* roles:end */` in the dashboard; `--check` (run by the harness) fails when
+either is out of date. `coven host agents --roles` prints the table.
 
 The report-only check lives in `host.py` after a run: for each witch it compares what was posted with
 `produces` and emits one `warning` per mismatch.

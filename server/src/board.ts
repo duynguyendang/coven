@@ -72,6 +72,18 @@ function keyOf(project: string, p: Json, ref?: unknown): string | null {
 }
 const attemptOf = (p: Json): string | null => (typeof p.attempt_id === "string" && /^[0-9a-f]{16}\.[0-9]+$/.test(p.attempt_id) ? p.attempt_id : null);
 
+/** How long a job may wait unclaimed while no online host runs its witch before it reads as expired (COVEN_JOB_EXPIRY, seconds). */
+export const JOB_EXPIRY_SECONDS = Number((globalThis as any).process?.env?.COVEN_JOB_EXPIRY) > 0 ? Number((globalThis as any).process.env.COVEN_JOB_EXPIRY) : 1800;
+
+/** Where a council job's delivery stands: requested, claimed, answered, failed or expired (spec witch-collaboration, R5.3). */
+export function delivery(task: Json, doing: Json | undefined, owner: Json | undefined, runnable: boolean, at: string): string {
+  if (doing?.state === "answered" || doing?.state === "submitted" || doing?.state === "done" || task.status === "completed") return "answered";
+  if (doing?.state === "failed") return "failed";
+  if (owner || doing?.state === "working") return "claimed";
+  const age = task.created_at ? (Date.parse(at) - Date.parse(task.created_at)) / 1000 : 0;
+  return !runnable && age > JOB_EXPIRY_SECONDS ? "expired" : "requested";
+}
+
 export class Board {
   claims = new Map<string, Json>();          // claim_id -> claim (newest state)
   notes = new Map<string, Json[]>();         // project -> notes, oldest first
@@ -154,6 +166,8 @@ export class Board {
         created_by: event.member ?? null, created_at: event.ts, task_key: key,
         plan: p.plan === true, branch: typeof p.branch === "string" ? p.branch.slice(0, 110) : null,
         review_of: typeof p.review_of === "string" ? p.review_of.slice(0, 110) : null,
+        from: typeof p.from === "string" ? p.from.slice(0, 40) : null, expects: typeof p.expects === "string" ? p.expects : null,
+        reply_to: typeof p.reply_to === "string" ? p.reply_to.slice(0, 80) : null, depth: Number.isInteger(p.depth) ? p.depth : 0,
       });
       specs.set(spec, list.slice(-MAX_TASKS_PER_SPEC));
       this.tasks.set(project, specs);
@@ -194,7 +208,8 @@ export class Board {
     } else if (event.type === "plan_decision" && typeof p.plan === "string" && PLAN_STATES.has(p.state)) {
       const plan = this.plans.get(project)?.get(p.plan);
       if (plan && plan.state === "proposed") {
-        Object.assign(plan, { state: p.state, decided_by: String(p.author ?? "someone").slice(0, 40), decided_at: event.ts });
+        Object.assign(plan, { state: p.state, decided_by: String(p.author ?? "someone").slice(0, 40), decided_at: event.ts,
+          reasons: typeof p.reasons === "string" ? p.reasons.slice(0, 300) : null });  // why, read by the next planning round
         if (p.state === "approved") {
           // A person approved: the plan's tasks become build tasks on the board, for the Dev. This is the only way a
           // builder gets a council task (a relay's task_created for the Dev is refused): no model can start a build alone.
@@ -331,6 +346,7 @@ export class Board {
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
         return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
+          delivery: spec === "council" ? delivery(t, doing, owner, this.runsAgent(projectId, t.agent, at), at) : null,
           branch_host: doing?.branch_host ?? null, branch_host_online: doing?.branch_host ? this.hostOnline(projectId, doing.branch_host, at) : null, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
           reviewers: held.filter((c) => c.kind === "review").map((c) => c.member) };
       }),
@@ -347,6 +363,12 @@ export class Board {
   submittedBranch(projectId: string, ref: string): { branch: string; host_id: string } | null {
     const doing = this.statuses.get(projectId)?.get(ref);
     return doing?.branch_host && doing?.branch ? { branch: doing.branch, host_id: doing.branch_host } : null;
+  }
+
+  /** Whether some online host runs this witch. */
+  runsAgent(projectId: string, agent: unknown, at = new Date().toISOString()): boolean {
+    const cutoff = new Date(Date.parse(at) - LISTENER_ONLINE_SECONDS * 1000).toISOString();
+    return [...(this.hosts.get(projectId)?.values() ?? [])].some((h) => (h.last_seen || "") >= cutoff && (h.agents || []).includes(agent));
   }
 
   /** Whether the host with this id announced itself within the last few minutes. */

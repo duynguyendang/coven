@@ -39,9 +39,10 @@ responsible for.
 - R3.1 One table, in `src/coven/agents.py`, gives every witch: `owns` (what she decides),
   `produces` (the note kind, event types or artefact she delivers), `consumes` (what she reads),
   `hands_off_to` (who acts on her output) and `never` (her hard limits).
-- R3.2 The same data reaches the cloud (`AGENT_SLUGS` and a roles map in `events.ts`), the dashboard
-  (`WITCHES` in `web/index.html`) and each `.kiro/agents/<slug>.json` prompt, which holds a generated
-  "Role and responsibilities" block. The harness fails if any of the four disagree.
+- R3.2 The same data reaches the dashboard (`WITCH_ROLES` in `web/index.html`) and each
+  `.kiro/agents/<slug>.json` prompt, which holds a generated "Role and responsibilities" block; the
+  cloud keeps only the slugs (`AGENT_SLUGS`), since it routes nothing by role. The harness fails if any
+  copy disagrees with `agents.py`.
 - R3.3 The Chair's prompt lists each witch's `owns` and `hands_off_to`, so she routes by responsibility
   and not only by name.
 - R3.4 The dashboard shows each witch's role card: owns, produces, hands off to, never.

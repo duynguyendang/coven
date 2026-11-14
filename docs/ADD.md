@@ -116,6 +116,20 @@ flowchart TD
 
 Trust per kind can be overridden with `COVEN_TRUST_BUILD|INSPECT|THINK`.
 
+**Several hosts on one project.** Each host has a `host_id`. A submitted branch stays on the host that
+made it (`branch_host`): another host does not take its rework, and the dashboard says when that host
+is offline. Nothing pushes, except when a person presses **Ask host to push**: the addressed host pushes
+that one `coven/` branch once and reports `push_done`. Before it commits or submits, a host asks the
+cloud whether it still holds its claim; a lapsed lease ends the run as `failed: lease lost`, without a
+commit. Hosts announce `free_slots`; the Chair sees who has room, and the host lists ready build tasks
+whose paths do not overlap (they can run at once, and a person may send them to Kiro Web).
+
+**Kiro Web.** A cloud session resolves `--agent` before it clones the repository, so a repository agent
+is never found (spike, 2026-11-14). The host runs the session without `--agent`, with the witch's role
+in the prompt, and judges it by the branch, not the exit code: it polls `git ls-remote` for
+`coven/<spec>-<task>` up to `COVEN_CLOUD_WAIT` seconds (default 600), then fetches and checks it as a
+local build. A missing source provider ends the run at once with the fix.
+
 ### 4.3 Council chat: people talk, the Chair dispatches (FR-CH1–CH7)
 
 ```mermaid
@@ -164,6 +178,57 @@ No model starts a build alone: the cloud makes a build task only from a person's
 `plan_decision`, and refuses a relay's `task_created` for the Dev. A person may also send an
 approved task to Kiro Web (§FR-H11) before a host takes it.
 
+### 4.3.2 Witches work together (FR-CO1–CO8)
+
+A witch that needs a fact another witch owns ends her reply with `{"ask": {"to", "question"}}`. The
+host checks it (`src/coven/consult.py`): depth at most 2 (the asker is depth 0, her answerer depth 1
+and may ask once more, a witch at depth 2 cannot), at most three per task, only a witch whose role
+owns the question, never herself or the Chair. It runs the answerer read-only (`COVEN_READ_ONLY`: the
+Dev answers with `fs_read` trust; inspect witches in a throw-away checkout), posts the question and the
+answer as notes on the task, and runs the asker again with the answer as data.
+
+```mermaid
+sequenceDiagram
+    participant W as Asking witch
+    participant H as Host
+    participant A as Owner of the question
+    W-->>H: reply ending in {"ask": {to, question}}
+    H->>H: depth ≤ 2 · ≤ 3 per task · owner only
+    H->>A: read-only run (question as data)
+    A-->>H: answer
+    H->>H: notes on the task (question, answer)
+    H->>W: run again with the answer as data
+```
+
+- **The Dev answers about the code.** The Chair may give her a job with `expects: answer`; she answers
+  read-only, with files and lines. A build still needs an approved task.
+- **The Elder Witch answers design for the Chair.** A question about design is put to her first, and
+  the Chair replies with her answer, naming her; when no host runs her, the Chair says it waits.
+- **A planning session.** The Elf offers at most one alternative; the Elder Witch plans; the Black Hat
+  challenges the plan (reply `OK` or objections), up to three rounds; the Scribe's rules (narrow paths,
+  one verify command) are checked by the host. After three rounds with objections, the person chooses.
+  A plan decision keeps its reasons, which the next round reads.
+- **A shared brief.** Each tick the host builds a redacted brief of at most 3000 characters (specs,
+  open tasks, recent plan decisions) and adds it to every witch prompt as data.
+- **Threads and delivery.** `GET /v1/board/thread` gathers one task's conversation; a council job's
+  `delivery` is `requested`, `claimed`, `answered`, `failed` or `expired` (unclaimed past
+  `COVEN_JOB_EXPIRY`, default 1800 s, while no online host runs its witch). The listener claims a
+  message (`chat#<id>`) before it answers, so one voice per message is decided by the claim.
+
+**Who is responsible for what.** Each witch's `owns`, `produces`, `consumes`, `hands_off_to` and
+`never` are one table in `src/coven/agents.py` (`coven host agents --roles`). The agent prompts and the
+dashboard carry a generated copy (`coven host agents --sync`; the harness runs `--check`). A delivery
+outside a witch's `produces` is a `warning`, never a refusal.
+
+| Work | Responsible | Consulted | Approves | Informed |
+| :--- | :--- | :--- | :--- | :--- |
+| Build a task | Green Witch | Elder Witch, White Hat (by consultation) | a person (merge) | the board |
+| Test and attack a branch | White Hat, Black Hat | Green Witch | a person | the Chair, the board |
+| Plan a change | Elder Witch | Elf, Black Hat | a person (the plan) | the chat |
+| Triage what people say | Grey Witch (Chair) | Elder Witch (design) | a person decides | the chat |
+| Prepare tasks | Scribe | Green Witch | a person (merge) | the board |
+| Watch and report a flow | Raven, Herald, Weaver | | a person | the board |
+
 ### 4.4 Preparing tasks: the Scribe (FR-P1–P2)
 
 The host lists ready leaf tasks lacking `_Agent:_`, `_Paths:_` or `_Verify:_` (≤ 15), asks the
@@ -206,6 +271,18 @@ leased. `tasks.md` stays in git: the cloud never edits it.
 `usage_source`). Strings ≤ 400 characters; payload ≤ 8 KB; the field `text` is dropped (use
 `note`, `message`).
 
+**Task keys.** Every task has a derived `task_key` (16 hex characters of SHA-256 over
+`project|kind|parts`: `spec` with spec and task id, `job` with the source message id and job index,
+`plan` with the plan and task id; `src/coven/taskkey.py`, `server/src/taskkey.ts`, one parity
+fixture). A run of it has an `attempt_id`, `<task_key>.<n>`, where `n` counts the task's `working`
+statuses. `task_claimed`, `task_status`, `board_note` and `task_created` carry them; the cloud
+accepts only their shape and derives the key for older events. `task_created` is insert-if-absent
+on its key.
+
+**Hosts.** A host has a `host_id` (`h_` + 8 hex, kept in `.coven/host.json`) beside its name. Claims,
+renewals, releases, `host_online` and `task_status` carry it, so two hosts with one name are two
+claimants.
+
 ### 6.2 Event types
 
 | Family | Types |
@@ -214,9 +291,12 @@ leased. `tasks.md` stays in git: the cloud never edits it.
 | Deviation and relay health | `spec_deviation`, `policy_block`, `warning`, `daemon_connected`, `daemon_disconnected` |
 | Council review | `council_opened`, `claim_proposed`, `claim_challenged`, `test_result`, `verify_result`, `chair_summary`, `chair_proposal`, `guard_verdict`, `council_closed` |
 | Flows | `flow_started`, `flow_step_started`, `flow_step_finished`, `flow_finished` |
-| Board | `task_claimed`, `task_released`, `board_note`, `task_status` (`{task, state, agent?, detail?}`; `done` refused from `/v1/events`), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?}`; never for the Dev; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author}`; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`) |
+| Board | `task_claimed` (`{claim_id, spec, task_id, member, agent, kind, paths, lease_until, task_key?, attempt_id?, host_id?}`), `task_released`, `board_note` (`{note, kind, task?, reply_to?, agent?, role?, task_key?, attempt_id?}`), `task_status` (`{task, state, agent?, detail?, task_key?, attempt_id?, host_id?, branch_host?, branch?}`; `done` refused from `/v1/events`; a `submitted` status names `branch_host`, the host that holds the commits), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?, task_key?, from?, expects?, reply_to?, depth?}`; `expects` is `answer`, `plan`, `review` or `test_result`, `depth` 0–2; for the Dev only with `expects: answer`, a read-only question about the code; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author, reasons?}`; the reasons are read by the next planning round; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`), `push_request` (`{task, branch, host_id, author}`; a person asks the host that holds a submitted branch to push it; refused from `/v1/events`; the only way anything pushes), `push_done` (`{task, branch, host_id, ok, detail?}`; that host's report) |
 | Chat | `chat_message` (kinds ask, idea, suggestion, do, reject, answer, working, error), `council_listening` |
-| Hosts | `host_online` (`{agents, slots, running, cloud?}`; `cloud` names the repositories this host may run Kiro Web sessions on) |
+| Hosts | `host_online` (`{agents, slots, running, cloud?, host_id?, free_slots?}`; `cloud` names the repositories this host may run Kiro Web sessions on; `free_slots` is what the Chair routes by) |
+
+A `warning` with `raw_type: role_mismatch` (`{agent, task, produced, task_key?}`) says a witch delivered
+something outside her role's `produces`; it is a report and never blocks a run.
 
 An unrecognised input type becomes `warning` with the raw type. The field-level validation is
 `server/src/events.ts`; the detailed working contract is kept in `docs/internal/` (not published).
@@ -235,15 +315,26 @@ Bearer token (`Authorization: Bearer …`, constant-time compare); `?token=` onl
 | `GET /v1/flows`, `GET /v1/flows/{id}` | read | flows |
 | `GET /v1/deviations` | read | open `spec_deviation` events |
 | `POST /v1/events/{id}/dismiss` | any token (admin planned) | dismiss a deviation |
-| `POST /v1/claims`, `POST /v1/claims/{id}/renew`, `POST /v1/claims/{id}/release` | ingest | claims with `agent`; 409 held or paths overlap |
+| `POST /v1/claims`, `POST /v1/claims/{id}/renew`, `POST /v1/claims/{id}/release` | ingest | claims with `agent`, `task_key`, `attempt_id`, `host_id`; 409 held or paths overlap; 403 for another host's claim |
 | `GET /v1/board` | read | board view: tasks, claims, notes, status, hosts |
 | `POST /v1/board/notes` | read | a person's note (untrusted, redacted) |
 | `POST /v1/board/done` | read | a person accepts a task (`task_status done`) |
 | `POST /v1/board/plan` | read | a person approves or rejects a proposed plan (`plan_decision`); 409 when no such plan waits; the board view lists `plans` |
+| `POST /v1/board/push` | read | a person asks the host that holds a task's submitted branch to push it once (`push_request`); 409 when no submitted branch waits on a host |
+| `GET /v1/board/thread?project_id&task` | read | one task's conversation: its notes, statuses, jobs, claims and the chat replies to them, oldest first |
 | `POST /v1/board/dispatch` | read | a person sends a ready build task to Kiro Web, or takes that back (`task_dispatch`); the board view then shows `dispatch_via`/`dispatch_by` on the task |
 | `GET /v1/chat`, `POST /v1/chat` | read | the council chat; a Do it to the Dev is 422 |
 | `GET /v1/stream` | read | SSE: events and view updates |
 | `POST /v1/seed/purge` | ingest | remove demo data |
+
+**Idempotency-Key.** `POST /v1/claims`, `/v1/board/notes`, `/v1/board/done`, `/v1/board/plan`,
+`/v1/board/dispatch`, `/v1/board/push` and `/v1/chat` accept an `Idempotency-Key` header (1–128 of
+`A-Z a-z 0-9 . _ : -`). The first 2xx answer for a key is kept for `COVEN_IDEMPOTENCY_TTL` seconds
+(default 86400), scoped to the caller's token, and replayed for the same key and body
+(`idempotent-replayed: true`); the same key with another body is 422; a refusal or an error is not
+kept, so it can be retried for real; without the header a write behaves as before. Only the body's
+SHA-256 is kept. The host sends `<attempt_id>.<action>…` and retries a keyed write after a network
+failure; the dashboard sends one random key per click.
 
 ## 7. Security and trust
 

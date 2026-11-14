@@ -67,8 +67,8 @@ class FakeCloud:
 
         c.answers, c.statuses, c.created, c.stamps, c.branches = [], [], [], [], []
         c.lease_ok = True
-        monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None: c.created.append(
-            {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key}) or {})
+        monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None, sender=None, expects=None, reply_to=None, depth=None: c.created.append(
+            {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key, "from": sender, "expects": expects, "reply_to": reply_to}) or {})
         c.plans = []
         monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
             {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
@@ -724,7 +724,7 @@ def test_the_chair_sends_a_change_to_the_elder_witch_as_a_planning_job(repo, mon
                                                                   {"agent": "elf", "title": "Ideas", "plan": True}]})
     runner = Runner({"grey-witch": lambda cwd, prompt: (plan, None)})
     host.Host(repo, slots=1, runner=runner, only=["grey-witch"]).run(once=True)
-    assert "planning job" in runner.calls[0]["prompt"] and "you never give her a job" in runner.calls[0]["prompt"]
+    assert "planning job" in runner.calls[0]["prompt"] and "you never give her a build job" in runner.calls[0]["prompt"]
     assert [(c["agent"], c["plan"]) for c in cloud.created] == [("elder-witch", True), ("elf", False)], "only the Elder Witch plans"
 
 
@@ -749,7 +749,7 @@ def test_the_elder_witch_proposes_checked_tasks_and_nothing_builds_before_approv
         "outside paths, the whole repo and a second command are dropped"
     said = " ".join(a[3] for a in cloud.answers)
     assert "Nothing is built until a person approves" in said and all(a[1] == "elder-witch" for a in cloud.answers)
-    assert [c["agent"] for c in runner.calls if c["env"]["COVEN_TASK"].startswith("council")] == ["elder-witch"], "the Dev is not started by a proposal"
+    assert "green-witch" not in [c["agent"] for c in runner.calls if c["env"]["COVEN_TASK"].startswith("council")], "the Dev is not started by a proposal"
 
 
 def test_an_approved_plan_task_is_built_then_reviewed_on_its_branch(repo, monkeypatch):

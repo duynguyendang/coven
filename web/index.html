@@ -266,6 +266,9 @@
   .witch.offline { background: transparent; border-style: dashed; }
   .witch.offline .nm, .witch.offline .st { color: var(--muted); }
   .witch .where { font-size: 0.7188rem; color: var(--muted); }
+  .tcard .thread { margin-top: 6px; font-size: 0.75rem; }
+  .tcard .thread summary { cursor: pointer; color: var(--muted); min-block-size: var(--target-size); display: flex; align-items: center; }
+  .tcard .thread .items { margin: 4px 0 0; padding-left: 1.1rem; display: grid; gap: 4px; max-block-size: 16rem; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
   .witch .duty { grid-column: 2; font-size: 0.7188rem; color: var(--muted); }
   .witch .duty summary { cursor: pointer; min-block-size: var(--target-size); display: flex; align-items: center; }
   .witch .duty dl { margin: 4px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 8px; }
@@ -381,6 +384,7 @@
   .plan li { margin-bottom: 8px; overflow-wrap: anywhere; }
   .plan li code { font-size: 0.75rem; }
   .plan .decide { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .plan .decide .why { flex: 1 1 14rem; min-inline-size: 0; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
   .card > .head { padding: 11px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .empty { padding: 26px 16px; color: var(--muted); font-size: 0.8125rem; }
   .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
@@ -1183,10 +1187,11 @@
     const items = (p.tasks || []).map((t) => `<li><b>${esc(t.title)}</b>${t.detail ? ` <span class="hint">${esc(short(t.detail, 200))}</span>` : ""}
       <div class="hint">paths ${(t.paths || []).map((x) => `<code>${esc(x)}</code>`).join(" ")} · verify <code>${esc(t.verify)}</code></div></li>`).join("");
     const decided = p.state !== "proposed";
-    const status = decided ? `<span class="badge ${p.state === "approved" ? "accept" : "reject"}">${p.state === "approved" ? "Approved" : "Rejected"}</span> <span class="hint">by ${esc(p.decided_by || "someone")}</span>`
+    const status = decided ? `<span class="badge ${p.state === "approved" ? "accept" : "reject"}">${p.state === "approved" ? "Approved" : "Rejected"}</span> <span class="hint">by ${esc(p.decided_by || "someone")}${p.reasons ? `: ${esc(short(p.reasons, 120))}` : ""}</span>`
       : `<span class="badge warn">Waits for you</span>`;
     const buttons = decided ? "" : `<div class="decide"><button class="act" type="button" data-plan="${esc(p.plan)}" data-plan-state="approved" data-key="approve-${esc(p.plan)}">Approve plan</button>
       <button class="act" type="button" data-plan="${esc(p.plan)}" data-plan-state="rejected" data-key="reject-${esc(p.plan)}">Reject</button>
+      <label class="sr" for="why-${esc(p.plan)}">Why (optional)</label><input class="why" id="why-${esc(p.plan)}" data-why="${esc(p.plan)}" data-key="why-${esc(p.plan)}" maxlength="300" placeholder="why (optional; the next plan reads it)" />
       <span class="hint">On approval the Dev builds each task on its own branch; White Hat and Black Hat review it; you merge.</span></div>`;
     return `<section class="card plan" data-key="plan-${esc(p.plan)}" aria-label="Plan ${esc(p.plan)}"><div class="head"><h3>${avatar(p.agent || "elder-witch")}${esc(agentName(p.agent || "elder-witch"))} · plan ${esc(p.plan)}</h3>${status}</div>
       <div class="body">${p.summary ? `<p style="margin:0 0 8px">${esc(p.summary)}</p>` : ""}${decided ? "" : `<ol>${items}</ol>`}${buttons}</div></section>`;
@@ -1203,6 +1208,23 @@
     }
     const ok = state.cloudReady;
     return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>Run in Kiro Web</button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
+  }
+  const openThreads = new Set(); // conversations a person opened stay open across redraws
+  const DELIVERY = { requested: "Requested", claimed: "Claimed", answered: "Answered", failed: "Failed", expired: "Expired: no host ran her in time" };
+  /** The task's conversation: notes, statuses, jobs and chat in one thread, loaded when a person opens it. */
+  function threadBox(t) {
+    const open = openThreads.has(t.ref) ? " open" : "";
+    return `<details class="thread" data-thread="${esc(t.ref)}" data-key="thread-${esc(t.ref)}"${open}><summary>Conversation</summary><ol class="items" aria-live="polite"><li class="hint">Loading…</li></ol></details>`;
+  }
+  const THREAD_LABEL = { board_note: "note", task_status: "status", task_created: "job", chat_message: "chat", task_claimed: "claimed",
+    task_released: "released", push_request: "push asked", push_done: "push", plan_proposed: "plan", plan_decision: "decision" };
+  async function loadThread(box) {
+    const list = box.querySelector(".items");
+    try {
+      const data = await api(`/v1/board/thread?project_id=${encodeURIComponent(defaultBoardProject())}&task=${encodeURIComponent(box.dataset.thread)}`);
+      list.innerHTML = (data.items || []).length ? data.items.map((i) => `<li><span class="hint">${agoTag(i.ts)} · ${esc(THREAD_LABEL[i.type] || i.type)}${i.state ? ` (${esc(i.state)})` : ""}</span>
+        <b>${esc(i.who && AGENT_NAME[i.who] ? agentName(i.who) : i.who || "")}</b> ${esc(i.note || "")}</li>`).join("") : '<li class="hint">Nothing said about it yet.</li>';
+    } catch (error) { list.innerHTML = '<li class="hint">Could not load the conversation.</li>'; quiet(error); }
   }
   /** A submitted branch lives on one host (nothing pushes). A person may ask that host to push it, once. */
   function pushLine(t) {
@@ -1228,7 +1250,7 @@
     const stuck = state.runnable && isStuck(t, state.runnable);
     const planLine = t.from_plan ? `<div class="hint">from plan ${esc(t.from_plan)}, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -1890,8 +1912,9 @@
       const pair = [...(el.closest(".plan") || el.parentElement).querySelectorAll("[data-plan]")];
       pair.forEach((b) => { b.disabled = true; });
       try {
+        const why = [...root.querySelectorAll("[data-why]")].find((x) => x.dataset.why === el.dataset.plan);
         await api("/v1/board/plan", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), plan: el.dataset.plan,
-          state: el.dataset.planState, author: localStorage.getItem("coven_author") || undefined }) });
+          state: el.dataset.planState, author: localStorage.getItem("coven_author") || undefined, reasons: (why && why.value.trim()) || undefined }) });
         await loadBoard();
         render({ keepScroll: true });
       } catch (error) { pair.forEach((b) => { b.disabled = false; }); quiet(error); }
@@ -1905,6 +1928,13 @@
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }
     }));
+    root.querySelectorAll("details[data-thread]").forEach((box) => {
+      if (box.open) loadThread(box);
+      box.addEventListener("toggle", () => {
+        if (box.open === openThreads.has(box.dataset.thread)) return; // a redraw, not the person
+        if (box.open) { openThreads.add(box.dataset.thread); loadThread(box); } else openThreads.delete(box.dataset.thread);
+      });
+    });
     root.querySelectorAll("[data-push]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try {
