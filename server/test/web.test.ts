@@ -144,6 +144,13 @@ before(async () => {
         close() {}
       };
       (window as any).HTMLElement.prototype.scrollIntoView = () => {};
+      // jsdom has <dialog> without showModal(): open and close it as a browser would, with a close event.
+      const D = (window as any).HTMLDialogElement.prototype;
+      if (typeof D.showModal !== "function") {
+        D.showModal = function () { this.setAttribute("open", ""); };
+        D.close = function (value?: string) { if (!this.hasAttribute("open")) return; this.removeAttribute("open"); if (value !== undefined) this.returnValue = value; this.dispatchEvent(new window.Event("close")); };
+        Object.defineProperty(D, "open", { get() { return this.hasAttribute("open"); }, configurable: true });
+      }
     },
   });
   await wait(600);
@@ -156,6 +163,14 @@ const openColumn = (col: string) => {
   const tile = doc().querySelector(`button.tile[data-col="${col}"]`) as HTMLButtonElement;
   if (tile.getAttribute("aria-expanded") !== "true") tile.click();
 };
+/** Select a task in its column: it opens in the task dialog. Returns the dialog's card. */
+const openTask = (ref: string): HTMLElement => {
+  const dialog = doc().getElementById("task-dialog") as any;
+  if (dialog.open) dialog.close();
+  (doc().querySelector(`[data-key="row-${ref}"]`) as HTMLButtonElement).click();
+  return doc().querySelector(`#task-dialog [data-key="task-${ref}"]`) as HTMLElement;
+};
+const closeTask = () => { const dialog = doc().getElementById("task-dialog") as any; if (dialog.open) dialog.close(); };
 
 describe("sessions screen", () => {
   test("is served by the Node server with a restrictive CSP", async () => {
@@ -691,39 +706,46 @@ describe("session screen", () => {
     assert.equal(doc().querySelector(".tcard"), null, "no task cards until a number is clicked");
     const column = (label: string) => {
       if (tile(label).getAttribute("aria-expanded") !== "true") tile(label).click();
-      return [...doc().querySelector(`section.column-detail[aria-label="${label}"]`)!.querySelectorAll(".tcard .id")].map((e) => e.textContent);
+      return [...doc().querySelector(`section.column-detail[aria-label="${label}"]`)!.querySelectorAll(".trow .id")].map((e) => e.textContent);
     };
     assert.deepEqual(column("Ready"), ["shop#4"]);
-    assert.equal(doc().querySelector(".tcard.stuck"), null, "an online member from before hosts can still run the Dev: not stuck");
+    assert.equal(doc().querySelector(".trow.stuck"), null, "an online member from before hosts can still run the Dev: not stuck");
     assert.deepEqual(column("Claimed"), ["shop#2"]);
     assert.deepEqual(column("In review"), ["shop#1"], "a task with a reviewer is in review");
     assert.deepEqual(column("Done"), ["shop#3"]);
     column("In review");
-    const cart = doc().querySelector('[data-key="task-shop#1"]')!.textContent!;
+    assert.equal(doc().querySelector("#main .tcard"), null, "a column lists rows; a task opens in a dialog");
+    const cart = openTask("shop#1").textContent!;
     assert.match(cart, /ana is on it.*reviewing: cy.*1 note/s);
+    const dialog = doc().getElementById("task-dialog") as any;
+    assert.ok(dialog.open && dialog.getAttribute("closedby") === "any" && dialog.getAttribute("aria-labelledby") === "task-dialog-title");
+    assert.match(doc().getElementById("task-dialog-title")!.textContent!, /^shop#1/);
+    closeTask();
+    assert.equal(doc().getElementById("task-dialog-body")!.innerHTML, "", "closing empties it");
   });
 
   test("board: a person dispatches a ready task to Kiro Web, once a host is set up for it", async () => {
     await go("#/board/shop", 600);
     openColumn("ready");
     const button = () => doc().querySelector('[data-key="dispatch-shop#4"]') as HTMLButtonElement;
+    assert.match(openTask("shop#4").textContent!, /no online host is set up for Kiro Web/);
     assert.ok(button().disabled, "no online host can run Kiro Web");
-    assert.match(doc().querySelector('[data-key="task-shop#4"]')!.textContent!, /no online host is set up for Kiro Web/);
+    closeTask();
     await send("shop", "member_kw", [{ ...ev("member_kw", "shop", "host_online", { agents: ["green-witch"], slots: 1, running: [], cloud: ["acme/shop"] }, 1), member: "kw" }]);
     await go("#/");
     await go("#/board/shop", 600);
     openColumn("ready");
+    openTask("shop#4");
     assert.equal(button().disabled, false);
     button().click();
     await wait(900);
-    openColumn("ready");
-    const card = doc().querySelector('[data-key="task-shop#4"]')!.textContent!.replace(/\s+/g, " ");
-    assert.match(card, /Kiro Web requested by/);
+    const card = doc().querySelector('#task-dialog [data-key="task-shop#4"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(card, /Kiro Web requested by/, "the open dialog follows the board");
     assert.equal(button(), null, "the request replaces the button");
     (doc().querySelector('[data-key="undispatch-shop#4"]') as HTMLButtonElement).click();
     await wait(900);
-    openColumn("ready");
     assert.ok(button(), "taken back: the button returns");
+    closeTask();
     await go("#/");
   });
   test("board: a plan shows every task with its paths and verify; a person approves it and the Dev's tasks appear", async () => {
@@ -744,7 +766,8 @@ describe("session screen", () => {
     assert.match(card().textContent!.replace(/\s+/g, " "), /Approved by .*: small and testable/);
     assert.equal(doc().querySelector('[data-key="approve-council#rp1-1"]'), null, "decided once");
     openColumn("ready");
-    const build = doc().querySelector('[data-key="task-council#rp1-1b1"]')!.textContent!.replace(/\s+/g, " ");
+    const build = openTask("council#rp1-1b1").textContent!.replace(/\s+/g, " ");
+    closeTask();
     assert.match(build, /Cart total.*Green Witch.*from plan council#rp1-1, approved by/);
     await go("#/");
   });
@@ -768,22 +791,26 @@ describe("session screen", () => {
     assert.equal(label("ready"), "Ready: 1 task, 1 needs a host", "the Chair's job waits for a White Hat host, and nobody online runs her");
     assert.match(doc().querySelector('button.tile[data-col="ready"] .go')!.textContent!, /1 need a host/);
     openColumn("ready");
-    const jobCard = doc().querySelector('[data-key="task-council#rq9-1"]')!;
+    assert.ok(doc().querySelector('[data-key="row-council#rq9-1"]')!.classList.contains("stuck"), "the row says it needs a host");
+    const jobCard = openTask("council#rq9-1");
     const job = jobCard.textContent!.replace(/\s+/g, " ");
     assert.match(job, /Run the relay tests/);
     assert.match(job, /White Hat Witch needed/);
     assert.ok(jobCard.classList.contains("stuck"));
     assert.match(job, /No online host runs White Hat Witch\. It waits until one does: \.\/run-host\.sh --agents white-hat/);
+    closeTask();
     openColumn("review");
-    const held = doc().querySelector('[data-key="task-lab#L1"]')!.textContent!.replace(/\s+/g, " ");
+    const held = openTask("lab#L1").textContent!.replace(/\s+/g, " ");
     assert.match(held, /Elf on wsl-7/);
     assert.match(held, /Answered.*Try a materialised view/);
     (doc().querySelector('[data-key="done-lab#L1"]') as HTMLButtonElement).click();
     await wait(900);
+    closeTask();
     assert.equal(label("review"), "In review: 0 tasks", "accepted by a person: it leaves review");
     assert.equal(label("done"), "Done: 1 task");
     openColumn("failed");
-    const blocked = doc().querySelector('[data-key="task-lab#L2"]')!.textContent!.replace(/\s+/g, " ");
+    const blocked = openTask("lab#L2").textContent!.replace(/\s+/g, " ");
+    closeTask();
     assert.match(blocked, /Raven needed/);
     assert.match(blocked, /Failed.*no answer within 5 s/);
     const sticky = doc().querySelector(".wall .sticky")!;
@@ -812,19 +839,21 @@ describe("session screen", () => {
     await go("#/");
     await go("#/board/shop", 600);
     openColumn("review");
-    const card = () => doc().querySelector('[data-key="task-pushy#1"]')!.textContent!.replace(/\s+/g, " ");
+    openTask("pushy#1");
+    const card = () => doc().querySelector('#task-dialog [data-key="task-pushy#1"]')!.textContent!.replace(/\s+/g, " ");
     assert.match(card(), /its host is offline; the branch is only there\./);
     (doc().querySelector('[data-key="push-pushy#1"]') as HTMLButtonElement).click();
     await wait(900);
-    openColumn("review");
     assert.match(card(), /Push requested by/);
     assert.equal(doc().querySelector('[data-key="push-pushy#1"]'), null, "asked once");
+    closeTask();
     await go("#/");
   });
 
   test("board: a task's conversation opens in one thread", async () => {
     await go("#/board/lab", 600);
     openColumn("done");
+    openTask("lab#L1");
     const box = doc().querySelector('[data-key="thread-lab#L1"]') as HTMLDetailsElement;
     assert.ok(box && !box.open);
     box.open = true;
@@ -833,6 +862,7 @@ describe("session screen", () => {
     const items = box.textContent!.replace(/\s+/g, " ");
     assert.match(items, /status \(answered\)/);
     assert.match(items, /Try a materialised view/);
+    closeTask();
     await go("#/");
   });
 
@@ -871,11 +901,28 @@ describe("session screen", () => {
     await go("#/");
     await go("#/board/shop", 600);
     openColumn("ready");
-    const second = doc().querySelector('[data-key="task-steps#5.2"]')!;
+    const second = doc().querySelector('[data-key="row-steps#5.2"]')!;
     assert.ok(second.classList.contains("waiting"));
     assert.match(second.textContent!, /waits for 5\.1/);
-    assert.ok(!doc().querySelector('[data-key="task-steps#5.1"]')!.classList.contains("waiting"));
-    assert.equal(doc().querySelector('[data-key="task-steps#5"]'), null, "a parent is a summary, not a card");
+    assert.ok(!doc().querySelector('[data-key="row-steps#5.1"]')!.classList.contains("waiting"));
+    assert.equal(doc().querySelector('[data-key="row-steps#5"]'), null, "a parent is a summary, not a row");
+  });
+
+  test("board: a selected task is a native modal dialog; Esc is the dialog's, not the page's", async () => {
+    await go("#/board/shop", 600);
+    openColumn("ready");
+    const dialog = doc().getElementById("task-dialog")!;
+    assert.equal(dialog.tagName, "DIALOG");
+    assert.ok(!dialog.hasAttribute("role") && !dialog.hasAttribute("aria-modal"), "the native modal gives its own semantics");
+    const row = doc().querySelector('[data-key="row-shop#4"]')!;
+    assert.deepEqual([row.getAttribute("command"), row.getAttribute("commandfor"), row.getAttribute("aria-haspopup")], ["show-modal", "task-dialog", "dialog"]);
+    openTask("shop#4");
+    key("Escape");
+    await wait(50);
+    assert.equal(dom.window.location.hash, "#/board/shop", "Esc never navigates while the dialog is open");
+    assert.ok(doc().querySelector('#task-dialog form[method="dialog"] button[autofocus]'), "a Close button, focused first");
+    closeTask();
+    await go("#/");
   });
 
   test("board: a live update refreshes it", async () => {
@@ -884,7 +931,7 @@ describe("session screen", () => {
     streams[0].emit("board", { kind: "board", project_id: "shop" });
     await wait(900);
     openColumn("claimed");
-    assert.deepEqual([...doc().querySelector('section.column-detail[aria-label="Claimed"]')!.querySelectorAll(".tcard .id")].map((e) => e.textContent), ["shop#2", "shop#4"]);
+    assert.deepEqual([...doc().querySelector('section.column-detail[aria-label="Claimed"]')!.querySelectorAll(".trow .id")].map((e) => e.textContent), ["shop#2", "shop#4"]);
     await go("#/");
   });
 

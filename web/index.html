@@ -266,9 +266,9 @@
   .witch.offline { background: transparent; border-style: dashed; }
   .witch.offline .nm, .witch.offline .st { color: var(--muted); }
   .witch .where { font-size: 0.7188rem; color: var(--muted); }
-  .tcard .thread { margin-top: 6px; font-size: 0.75rem; }
-  .tcard .thread summary { cursor: pointer; color: var(--muted); min-block-size: var(--target-size); display: flex; align-items: center; }
-  .tcard .thread .items { margin: 4px 0 0; padding-left: 1.1rem; display: grid; gap: 4px; max-block-size: 16rem; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+  .tcard .convo { margin-top: 6px; font-size: 0.75rem; }
+  .tcard .convo summary { cursor: pointer; color: var(--muted); min-block-size: var(--target-size); display: flex; align-items: center; }
+  .tcard .convo .items { margin: 4px 0 0; padding-left: 1.1rem; display: grid; gap: 4px; max-block-size: 16rem; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
   .witch .duty { grid-column: 2; font-size: 0.7188rem; color: var(--muted); }
   .witch .duty summary { cursor: pointer; min-block-size: var(--target-size); display: flex; align-items: center; }
   .witch .duty dl { margin: 4px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 8px; }
@@ -296,8 +296,29 @@
   .tile .go { font-size: 0.7188rem; color: var(--muted); }
   .column-detail { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; margin-bottom: 18px; }
   .column-detail h3 { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; }
-  .column-detail .tlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
-  .column-detail .tcard { margin: 0; }
+  .column-detail .tlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .trow { inline-size: 100%; font: inherit; font-size: 0.8125rem; color: var(--text); text-align: start; cursor: pointer; background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius-element); padding: 8px 10px; display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+  .trow:hover { border-color: var(--line-strong); background: var(--panel-2); }
+  .trow .id { font-family: var(--mono); font-size: 0.7188rem; color: var(--muted); }
+  .trow .tt { overflow-wrap: anywhere; }
+  .trow .who-row { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); flex-wrap: wrap; justify-content: end; }
+  .trow .who-row .av { inline-size: 18px; block-size: 18px; margin: 0; }
+  .trow.waiting { opacity: 0.6; border-style: dashed; }
+  .trow.stuck { border-color: var(--warn-line); background: var(--warn-soft); }
+  @media (max-width: 640px) { .trow { grid-template-columns: minmax(0, 1fr); } .trow .who-row { justify-content: start; } }
+  /* the selected task: a native modal dialog in the top layer */
+  .task-dialog { inline-size: min(40rem, calc(100vw - 2rem)); max-block-size: calc(100dvh - 2rem); padding: 0; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line-strong); border-radius: var(--radius-element); box-shadow: var(--shadow-high); overflow: auto; }
+  .task-dialog:modal { overscroll-behavior: contain; }
+  .task-dialog::backdrop { background: var(--color-overlay); overflow: hidden; overscroll-behavior: contain; }
+  .task-dialog .td-head { position: sticky; inset-block-start: 0; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--chrome); border-bottom: 1px solid var(--line); }
+  .task-dialog .td-head h2 { flex: 1; margin: 0; font-size: 0.9375rem; font-weight: 600; overflow-wrap: anywhere; text-transform: none; letter-spacing: 0; color: var(--text); }
+  .task-dialog .td-head form { margin: 0; }
+  .task-dialog .td-body { padding: 12px 14px 16px; }
+  .task-dialog .tcard > .id, .task-dialog .tcard > .tt { display: none; } /* the dialog title already names the task */
+  .task-dialog .tcard { margin: 0; border: 0; padding: 0; background: transparent; font-size: 0.875rem; }
+  @media (max-width: 640px) { .task-dialog { inline-size: 100vw; max-inline-size: 100vw; max-block-size: 100dvh; margin: auto 0 0; border-radius: var(--radius-element) var(--radius-element) 0 0; } }
   .tcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 8px 10px; margin-bottom: 8px; font-size: 0.8125rem; }
   .tcard .id { font-family: var(--mono); font-size: 0.7188rem; color: var(--muted); }
   .tcard .who { font-size: 0.75rem; margin-top: 4px; color: var(--muted); }
@@ -512,6 +533,13 @@
   <div class="dn">The stored, redacted record. Output, file contents and command arguments are never recorded.</div>
   <pre id="drawer-body"></pre>
 </aside>
+
+<!-- One task, opened from its row in a column: a native modal (Esc, the back gesture and a click outside close it). -->
+<dialog class="task-dialog" id="task-dialog" closedby="any" aria-labelledby="task-dialog-title">
+  <div class="td-head"><h2 id="task-dialog-title">Task</h2>
+    <form method="dialog"><button class="act" type="submit" value="close" autofocus>Close</button></form></div>
+  <div class="td-body" id="task-dialog-body"></div>
+</dialog>
 
 <div class="login" id="login">
   <form id="login-form">
@@ -863,6 +891,7 @@
     }
     wire(nav);
     wire(main);
+    if (state.openTask && $("task-dialog").open) fillTaskDialog(); // live updates reach the open task too
     side.scrollTop = sideScroll;
     if (keepScroll && window.scrollY !== scroll) window.scrollTo(0, scroll);
     const newChat = main.querySelector("#chat-thread");
@@ -1214,7 +1243,7 @@
   /** The task's conversation: notes, statuses, jobs and chat in one thread, loaded when a person opens it. */
   function threadBox(t) {
     const open = openThreads.has(t.ref) ? " open" : "";
-    return `<details class="thread" data-thread="${esc(t.ref)}" data-key="thread-${esc(t.ref)}"${open}><summary>Conversation</summary><ol class="items" aria-live="polite"><li class="hint">Loading…</li></ol></details>`;
+    return `<details class="convo" data-thread="${esc(t.ref)}" data-key="thread-${esc(t.ref)}"${open}><summary>Conversation</summary><ol class="items" aria-live="polite"><li class="hint">Loading…</li></ol></details>`;
   }
   const THREAD_LABEL = { board_note: "note", task_status: "status", task_created: "job", chat_message: "chat", task_claimed: "claimed",
     task_released: "released", push_request: "push asked", push_done: "push", plan_proposed: "plan", plan_decision: "decision" };
@@ -1239,6 +1268,40 @@
   /** Ready and its turn has come, but no online host runs the witch it needs: it would wait for ever, unseen. */
   const isStuck = (t, runnable) => !t.claimed_by && !t.waits_for && t.status !== "completed" && !["done", "failed"].includes(t.doer_state)
     && !runnable.has(t.agent || "green-witch");
+  /** One line per task in a column; selecting it opens the task in a dialog. */
+  function taskRow(t) {
+    const need = t.agent || "green-witch";
+    const holder = t.claimed_agent || need;
+    const stuck = state.runnable && isStuck(t, state.runnable);
+    const status = t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
+      ? `<span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>`
+      : stuck ? '<span class="badge warn">Needs a host</span>' : t.waits_for && !t.claimed_by ? `<span class="hint">waits for ${esc(t.waits_for)}</span>` : "";
+    return `<li><button class="trow ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" type="button" data-task-open="${esc(t.ref)}" data-key="row-${esc(t.ref)}"
+      command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span class="id">${esc(t.ref)}</span><span class="tt">${esc(t.title || "")}</span>
+      <span class="who-row">${avatar(holder)}<span>${esc(agentName(holder))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : ""}</span>${status}</span></button></li>`;
+  }
+  /** The task a person selected, as the board knows it now (null when it left the board). */
+  function selectedTask() {
+    if (!state.openTask || !state.board) return null;
+    const cols = boardColumns(state.board);
+    for (const [key] of COLUMNS) for (const t of cols[key] || []) if (t.ref === state.openTask) return t;
+    return null;
+  }
+  /** Fill the task dialog from the board; called when it opens and on every redraw while it is open. */
+  function fillTaskDialog() {
+    const dialog = $("task-dialog"), body = $("task-dialog-body");
+    const t = selectedTask();
+    $("task-dialog-title").textContent = t ? `${t.ref}${t.title ? ` · ${t.title}` : ""}` : state.openTask || "Task";
+    body.innerHTML = t ? taskCard(t) : '<p class="hint">This task is no longer on the board.</p>';
+    wire(body);
+    return dialog;
+  }
+  function openTask(ref) {
+    state.openTask = ref;
+    const dialog = fillTaskDialog();
+    // A row opens the dialog itself (command="show-modal"); open it here where invoker commands are missing.
+    if (!("commandForElement" in HTMLButtonElement.prototype) && !dialog.open) dialog.showModal();
+  }
   function taskCard(t) {
     const who = [t.waits_for && !t.claimed_by ? `waits for ${esc(t.waits_for)}` : "", t.claimed_by ? `${esc(t.claimed_agent ? agentName(t.claimed_agent) : t.claimed_by)} is on it` : "", (t.reviewers || []).length ? `reviewing: ${(t.reviewers).map(esc).join(", ")}` : "",
       t.notes ? `${plural(t.notes, "note")}` : ""].filter(Boolean).join(" · ");
@@ -1250,7 +1313,7 @@
     const stuck = state.runnable && isStuck(t, state.runnable);
     const planLine = t.from_plan ? `<div class="hint">from plan ${esc(t.from_plan)}, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div>${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">Mark done</button></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -1310,7 +1373,7 @@
     // The board shows numbers only; a click on a number opens that column's tasks below.
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : null;
     const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host · ` : ""}${open === key ? "Hide tasks" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
-    const detail = open ? `<section class="column-detail" id="col-detail" aria-label="${COLUMNS.find(([k]) => k === open)[1]}"><h3>${COLUMNS.find(([k]) => k === open)[1]} · ${plural(cols[open].length, "task")}</h3>${cols[open].length ? `<div class="tlist">${cols[open].map(taskCard).join("")}</div>` : '<div class="hint" style="padding:4px">No tasks here.</div>'}</section>` : "";
+    const detail = open ? `<section class="column-detail" id="col-detail" aria-label="${COLUMNS.find(([k]) => k === open)[1]}"><h3>${COLUMNS.find(([k]) => k === open)[1]} · ${plural(cols[open].length, "task")}</h3>${cols[open].length ? `<ul class="tlist">${cols[open].map(taskRow).join("")}</ul>` : '<div class="hint" style="padding:4px">No tasks here.</div>'}</section>` : "";
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
     const compose = `<form class="compose" id="note-form" aria-label="Post a note">
@@ -1899,6 +1962,7 @@
       saveUi();
       render({ keepScroll: true });
     }));
+    root.querySelectorAll("[data-task-open]").forEach((el) => el.addEventListener("click", () => openTask(el.dataset.taskOpen)));
     root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { state.boardOpen = state.boardOpen === el.dataset.col ? null : el.dataset.col; render({ keepScroll: true }); }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
@@ -2114,6 +2178,15 @@
     start();
   });
   $("drawer-close").addEventListener("click", closeDrawer);
+  $("task-dialog").addEventListener("close", () => { state.openTask = null; $("task-dialog-body").innerHTML = ""; $("task-dialog").returnValue = ""; });
+  if (!("closedBy" in HTMLDialogElement.prototype)) {
+    // Light dismiss where `closedby` is missing: a press and a release both outside the dialog's box close it.
+    const dialog = $("task-dialog");
+    const outside = (e) => { const r = dialog.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
+    let pressedOutside = false;
+    dialog.addEventListener("pointerdown", (e) => { pressedOutside = outside(e); });
+    dialog.addEventListener("pointerup", (e) => { if (pressedOutside && outside(e)) dialog.close(); });
+  }
 
   /* theme (guide: dark-mode-toggle). Two states shown: the system default, or an override stored literally.
      The toggle picks the opposite of what is rendered; a target equal to the system scheme clears the override
@@ -2171,6 +2244,7 @@
     if (ev.key === "/" && !typing && $("q")) { ev.preventDefault(); $("q").focus(); return; }
     if (ev.key === "[" && !typing && !ev.ctrlKey && !ev.metaKey) { toggleNav(); return; }
     if (ev.key !== "Escape") return;
+    if ($("task-dialog").open) return; // the native dialog handles its own Esc
     if (narrow() && $("app").classList.contains("nav-open")) { closeNav(); return; }
     if (active && active.id === "q" && state.query) { state.query = ""; active.value = ""; refreshList(); return; }
     if (closeDrawer()) return;
