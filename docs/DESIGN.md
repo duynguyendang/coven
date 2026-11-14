@@ -249,7 +249,7 @@ to say something about state (working, ready, needs a host, failed, deviation). 
 - **Honesty is a visual rule:** seeded, estimated or unproven data is labelled as such, in the UI,
   never hidden by styling.
 - **Both schemes are first-class.** The page follows the system scheme unless the reader picks one
-  (`html[data-theme]`); every token is a `light-dark()` pair.
+  (a single toggle sets `<meta name="color-scheme">`, which CSS maps to `color-scheme` with `:has()`; no stored value means System); every token is a `light-dark()` pair.
 
 ## Colors
 

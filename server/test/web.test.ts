@@ -175,16 +175,18 @@ describe("sessions screen", () => {
     assert.match(await css.text(), /--color-background-body: light-dark\(/);
   });
 
-  test("the theme switch: System follows the OS; Light and Dark are remembered", () => {
+  test("the theme toggle sets <meta color-scheme>; an override equal to the system scheme is cleared, not stored", () => {
     const doc = dom.window.document;
-    const pick = (choice: string) => (doc.querySelector(`[data-theme-choice="${choice}"]`) as HTMLButtonElement).click();
-    const pressed = () => [...doc.querySelectorAll("[data-theme-choice]")].filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => (b as HTMLElement).dataset.themeChoice);
-    pick("light");
-    assert.deepEqual([doc.documentElement.dataset.theme, pressed(), dom.window.localStorage.getItem("coven_theme")], ["light", ["light"], "light"]);
-    pick("dark");
-    assert.deepEqual([doc.documentElement.dataset.theme, pressed(), dom.window.localStorage.getItem("coven_theme")], ["dark", ["dark"], "dark"]);
-    pick("system");
-    assert.deepEqual([doc.documentElement.hasAttribute("data-theme"), pressed(), dom.window.localStorage.getItem("coven_theme")], [false, ["system"], "system"]);
+    const meta = () => doc.querySelector('meta[name="color-scheme"]')?.getAttribute("content");
+    const stored = () => dom.window.localStorage.getItem("coven_theme");
+    const click = () => (doc.getElementById("theme-toggle") as HTMLButtonElement).click();
+    // jsdom has no matchMedia match: the system scheme reads as light
+    dom.window.matchMedia = ((q: string) => ({ matches: false, media: q })) as never;
+    assert.deepEqual([meta(), stored()], ["light dark", null]);
+    click(); // rendered light -> dark differs from system: stored
+    assert.deepEqual([meta(), stored()], ["dark", "dark"]);
+    click(); // target light equals system: cleared
+    assert.deepEqual([meta(), stored()], ["light dark", null]);
   });
 
   test("no colour is hard-coded: every colour in the stylesheet is a theme token", () => {
@@ -594,6 +596,8 @@ describe("session screen", () => {
       (doc().getElementById("menu") as HTMLElement).click();
       assert.ok(app.classList.contains("nav-open"));
       assert.equal(doc().getElementById("menu")!.getAttribute("aria-expanded"), "true");
+      const side = doc().getElementById("sidebar")!;
+      assert.deepEqual([side.getAttribute("role"), side.getAttribute("aria-modal"), (doc().querySelector(".col") as HTMLElement).inert], ["dialog", "true", true], "an open overlay is modal");
       await go("#/deviations");
       assert.ok(!app.classList.contains("nav-open"), "choosing a place closes it");
       (doc().getElementById("menu") as HTMLElement).click();
