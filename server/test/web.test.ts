@@ -895,6 +895,23 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: a long column is grouped by spec, done work folds away, and a filter finds a task", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ task_id: String(i + 1), title: `Done thing ${i + 1}`, status: "completed", paths: ["x/"] }));
+    await send("long", "sess_long", [{ ...ev("sess_long", "long", "spec_artifact_updated", { artifact: "tasks", spec: "big", total: 12, done: 12, in_progress: 0, queued: 0, optional: 0, tasks: many }, 5), member: "ana" }]);
+    await go("#/board/long", 600);
+    openColumn("done");
+    const group = doc().querySelector('details.tgroup[data-group="done:big"]') as HTMLDetailsElement;
+    assert.ok(group && !group.open, "done work is folded into its spec");
+    assert.match(group.querySelector("summary")!.textContent!, /big\s*12/);
+    const filter = doc().getElementById("col-filter") as HTMLInputElement;
+    filter.value = "thing 7"; filter.dispatchEvent(new dom.window.Event("input"));
+    assert.ok(group.open, "a match opens its group");
+    assert.deepEqual([...group.querySelectorAll(".tlist > li")].filter((li) => !(li as HTMLElement).hidden).map((li) => li.querySelector(".id")!.textContent), ["big#7"]);
+    filter.value = "nothing like it"; filter.dispatchEvent(new dom.window.Event("input"));
+    assert.equal((doc().querySelector(".col-none") as HTMLElement).hidden, false);
+    await go("#/");
+  });
+
   test("your name is set once, in the sidebar, and signs the composers", async () => {
     await go("#/board/shop", 400);
     assert.equal(doc().getElementById("note-author"), null, "no second name field on the board");

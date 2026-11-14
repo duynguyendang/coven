@@ -322,6 +322,20 @@
   .column-detail { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; margin-bottom: 18px; }
   .column-detail h3 { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; }
   .column-detail .tlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .column-detail .col-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .column-detail .col-head h3 { margin: 2px 4px; }
+  .column-detail .col-filter { flex: 1 1 14rem; min-inline-size: 0; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  .column-detail .tgroups { display: grid; gap: 6px; }
+  .tgroup > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 8px; min-block-size: var(--target-size); border-radius: 6px; font-size: 0.8125rem; color: var(--text); }
+  .tgroup > summary:hover { background: var(--hover); }
+  .tgroup > summary { list-style: none; }
+  .tgroup > summary::-webkit-details-marker { display: none; }
+  .tgroup > summary::before { content: ""; inline-size: 6px; block-size: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); rotate: -45deg; transition: rotate 120ms ease-out; margin-inline: 2px 4px; }
+  .tgroup[open] > summary::before { rotate: 45deg; }
+  @media (prefers-reduced-motion: reduce) { .tgroup > summary::before { transition: none; } }
+  .tgroup > summary .n { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-full); padding: 0 7px; }
+  .tgroup[open] > summary { margin-bottom: 6px; }
+  .tgroup > .tlist { padding-left: 4px; }
   .trow { inline-size: 100%; font: inherit; font-size: 0.8125rem; color: var(--text); text-align: start; cursor: pointer; background: var(--panel); border: 1px solid var(--line);
     border-radius: var(--radius-element); padding: 8px 10px; display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
   .trow:hover { border-color: var(--line-strong); background: var(--panel-2); }
@@ -331,7 +345,7 @@
   .trow .who-row .av { inline-size: 18px; block-size: 18px; margin: 0; }
   .trow.waiting { opacity: 0.6; border-style: dashed; }
   .trow.stuck { border-color: var(--warn-line); background: var(--warn-soft); }
-  @media (max-width: 640px) { .trow { grid-template-columns: minmax(0, 1fr); } .trow .who-row { justify-content: start; } }
+  @media (max-width: 640px) { .trow { grid-template-columns: max-content minmax(0, 1fr); padding: 6px 10px; } .trow .who-row { grid-column: 1 / -1; justify-content: start; } }
   /* the selected task: a native modal dialog in the top layer */
   .task-dialog { inline-size: min(40rem, calc(100vw - 2rem)); max-block-size: calc(100dvh - 2rem); padding: 0; color: var(--text); background: var(--panel);
     border: 1px solid var(--line-strong); border-radius: var(--radius-element); box-shadow: var(--shadow-high); overflow: auto; }
@@ -1364,6 +1378,29 @@
   /** Ready and its turn has come, but no online host runs the witch it needs: it would wait for ever, unseen. */
   const isStuck = (t, runnable) => !t.claimed_by && !t.waits_for && t.status !== "completed" && !["done", "failed"].includes(t.doer_state)
     && !runnable.has(t.agent || "green-witch");
+  /** A long column is grouped by spec, newest first, with a filter: done work folds away, what needs you stays open. */
+  const LONG_COLUMN = 8;
+  const openGroups = new Map(); // "column:spec" -> open or not, as the person left it
+  function columnDetail(key, label, list) {
+    const head = `<h3>${esc(label)} · ${plural(list.length, "task")}</h3>`;
+    if (!list.length) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<div class="hint" style="padding:4px">No tasks here.</div></section>`;
+    if (list.length <= LONG_COLUMN) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<ul class="tlist">${list.map(taskRow).join("")}</ul></section>`;
+    const groups = new Map();
+    for (const t of list) groups.set(t.spec, [...(groups.get(t.spec) || []), t]);
+    const newest = (g) => g.reduce((m, t) => ((t.created_at || "") > m ? t.created_at || "" : m), "");
+    const ordered = [...groups.entries()].sort((a, b) => (newest(a[1]) < newest(b[1]) ? 1 : newest(a[1]) > newest(b[1]) ? -1 : a[0].localeCompare(b[0])));
+    const body = ordered.map(([spec, items]) => {
+      const id = `${key}:${spec}`;
+      const isOpen = openGroups.has(id) ? openGroups.get(id) : key !== "done" && items.length <= LONG_COLUMN;
+      const sorted = [...items].sort((a, b) => ((a.created_at || "") < (b.created_at || "") ? 1 : (a.created_at || "") > (b.created_at || "") ? -1 : 0));
+      return `<details class="tgroup" data-group="${esc(id)}"${isOpen ? " open" : ""}><summary><span class="mono">${esc(spec)}</span><span class="n">${items.length}</span></summary>
+        <ul class="tlist">${sorted.map(taskRow).join("")}</ul></details>`;
+    }).join("");
+    return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">
+      <div class="col-head">${head}<label class="sr" for="col-filter">Filter ${esc(label)}</label>
+        <input id="col-filter" class="col-filter" type="search" data-key="col-filter" placeholder="Filter ${esc(label.toLowerCase())} by id, title or witch" autocomplete="off" /></div>
+      <div class="tgroups">${body}</div><p class="hint col-none" hidden>No task matches.</p></section>`;
+  }
   /** One line per task in a column; selecting it opens the task in a dialog. */
   function taskRow(t) {
     const need = t.agent || "green-witch";
@@ -1477,7 +1514,7 @@
     const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => (cols[k] || []).length) || "ready";
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : firstFull;
     const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host · ` : ""}${open === key ? "Showing below" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
-    const detail = open ? `<section class="column-detail" id="col-detail" aria-label="${COLUMNS.find(([k]) => k === open)[1]}"><h3>${COLUMNS.find(([k]) => k === open)[1]} · ${plural(cols[open].length, "task")}</h3>${cols[open].length ? `<ul class="tlist">${cols[open].map(taskRow).join("")}</ul>` : '<div class="hint" style="padding:4px">No tasks here.</div>'}</section>` : "";
+    const detail = open ? columnDetail(open, COLUMNS.find(([k]) => k === open)[1], cols[open]) : "";
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
     const compose = `<form class="compose" id="note-form" aria-label="Post a note">
@@ -2073,7 +2110,7 @@
     }));
     root.querySelectorAll("[data-task-open]").forEach((el) => el.addEventListener("click", () => openTask(el.dataset.taskOpen)));
     root.querySelectorAll("[data-edit-name]").forEach((el) => el.addEventListener("click", () => { if (narrow() && !$("app").classList.contains("nav-open")) toggleNav(); $("me").focus(); }));
-    root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
+    root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { if (state.boardOpen !== el.dataset.col) state.colFilter = ""; state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
     root.querySelectorAll("details.more-witches").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.allWitches)) { state.ui.allWitches = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
@@ -2103,6 +2140,23 @@
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }
     }));
+    root.querySelectorAll("details.tgroup").forEach((el) => el.addEventListener("toggle", () => openGroups.set(el.dataset.group, el.open)));
+    root.querySelectorAll(".col-filter").forEach((input) => input.addEventListener("input", () => {
+      // Filter in place, without a redraw: each row stays, hidden or not; a group with a match opens.
+      state.colFilter = input.value;
+      const q = input.value.trim().toLowerCase();
+      const section = input.closest(".column-detail");
+      let any = false;
+      section.querySelectorAll("details.tgroup").forEach((g) => {
+        let hits = 0;
+        g.querySelectorAll(".tlist > li").forEach((li) => { const hit = !q || li.textContent.toLowerCase().includes(q); li.hidden = !hit; if (hit) hits += 1; });
+        g.hidden = hits === 0;
+        if (q && hits) g.open = true;
+        any = any || hits > 0;
+      });
+      section.querySelector(".col-none").hidden = any;
+    }));
+    root.querySelectorAll(".col-filter").forEach((input) => { if (state.colFilter) { input.value = state.colFilter; input.dispatchEvent(new Event("input")); } }); // a live redraw keeps the filter
     root.querySelectorAll("details[data-thread]").forEach((box) => {
       if (box.open) loadThread(box);
       box.addEventListener("toggle", () => {

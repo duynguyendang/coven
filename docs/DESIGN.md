@@ -330,6 +330,7 @@ bubbles, full for pills. The ghost icons are the only organic shapes.
   answered, failed) and the detail line; *Mark done* only on cards in review. Yellow tint and a
   how-to line when no online host runs its witch.
 - **Board order:** plans that wait for you, then Tasks (a column is always open: the person's choice, else the most urgent with tasks), then Witches (cards only for those working, available or waiting for a slot; the rest fold behind one row of their ghosts), then the Whiteboard.
+- **Long columns:** more than 8 tasks are grouped by spec (newest first), each group a fold with its count; Done folds by default, other columns stay open; a filter above the list finds a task by id, title or witch and opens its group.
 - **Notes:** neutral cards (surface, hairline); only the kind tag carries colour (idea amber, question blue, answer green, review red, review wanted purple).
 - **Your name:** one field in the sidebar signs notes, chat messages and decisions; the composers show *as <name>*, which focuses that field.
 - **Session title:** what the session works on (its task title, else its last tool call); the id stays in the crumbs and the facts.
