@@ -1,6 +1,8 @@
 .PHONY: install test test-relay test-cloud test-e2e harness verify check relay cloud seed seed-watch doctor host deploy hooks
 
+# The Python used by every recipe; run-host.sh reads it as COVEN_PY.
 PY ?= python3
+export COVEN_PY := $(PY)
 
 # Relay + CLI run on the developer machine (Python). Coven Cloud is Node.js (server/).
 install:
