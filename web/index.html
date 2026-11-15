@@ -1305,6 +1305,11 @@
       // sub-tasks of one parent go in order and top-level tasks are independent.
       const waitsFor = (t) => {
         if (t.wave != null) return leaves.filter((o) => o.wave != null && o.wave < t.wave && o.status !== "completed").map((o) => o.task_id)[0] || null;
+        // An approved plan's tasks go in order: each waits until the one before it is done (merged).
+        if (t.from_plan) {
+          const before = leaves.slice(0, leaves.indexOf(t)).filter((o) => o.from_plan === t.from_plan && o.status !== "completed" && o.doer_state !== "done");
+          return before.length ? before[0].task_id : null;
+        }
         if (!t.parent) return null;
         const earlier = leaves.slice(0, leaves.indexOf(t)).filter((o) => o.parent === t.parent && o.status !== "completed");
         return earlier.length ? earlier[0].task_id : null;
@@ -1325,7 +1330,7 @@
     return cols;
   }
   const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"]];
-  const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed" };
+  const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed", queued: "Queued again" };
   /** The witches some online host can run now; a host from before hosts (no list) can still run the Dev. */
   function runnableWitches(b) {
     const out = new Set();
@@ -1490,7 +1495,7 @@
       : t.doer_verdict ? `<div class="state"><span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes needed"}</span>${t.review_of ? `<span class="hint">review of ${esc(t.review_of)}</span>` : ""}</div>` : "";
     const planLine = t.from_plan ? `<div class="hint">from plan ${esc(t.from_plan)}, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -2163,6 +2168,14 @@
       el.disabled = true;
       try {
         await api("/v1/board/done", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.done, author: localStorage.getItem("coven_author") || undefined }) });
+        await loadBoard();
+        render({ keepScroll: true });
+      } catch (error) { el.disabled = false; quiet(error); }
+    }));
+    root.querySelectorAll("[data-retry]").forEach((el) => el.addEventListener("click", async () => {
+      el.disabled = true;
+      try {
+        await api("/v1/board/retry", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.retry, author: localStorage.getItem("coven_author") || undefined }) });
         await loadBoard();
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }

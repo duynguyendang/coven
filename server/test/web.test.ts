@@ -816,6 +816,7 @@ describe("session screen", () => {
     assert.equal(label("done"), "Done: 1 task");
     openColumn("failed");
     const blocked = openTask("lab#L2").textContent!.replace(/\s+/g, " ");
+    assert.match(blocked, /Retry the next host that runs Raven takes it again/, "a blocked task can be sent back to the queue");
     closeTask();
     assert.match(blocked, /Raven needed/);
     assert.match(blocked, /Failed.*no answer within 5 s/);

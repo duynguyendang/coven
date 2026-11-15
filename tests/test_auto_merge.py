@@ -160,3 +160,18 @@ def test_no_verdict_is_a_hold_and_the_status_line_is_read_when_the_field_is_miss
     for t in view["specs"][0]["tasks"]:
         t["doer_verdict"] = None  # an older cloud: only the status line carries it
     assert host.review_state(view, record["review_jobs"])[record["review_jobs"][0]]["verdict"] == "pass"
+
+
+def test_a_plans_steps_go_in_order_built_and_merged_one_after_the_other(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    step = lambda n, **k: {"task_id": f"r1-1b{n}", "title": f"Step {n}", "agent": "green-witch", "paths": ["src/cart/"], "verify": "true",  # noqa: E731
+                           "detail": "do it", "from_plan": "council#r1-1", "approved_by": "duy", **k}
+    view = {"specs": [{"spec": "council", "tasks": [step(1), step(2)]}], "notes": [], "claims": []}
+    assert host.plan_waits_for(view, "council#r1-1b1") is None
+    assert host.plan_waits_for(view, "council#r1-1b2") == "council#r1-1b1"
+    monkeypatch.setattr(board, "read", lambda root: view)
+    h = host.Host(repo, slots=2, runner=Runner({"green-witch": builds_cart}), only=["green-witch"])
+    h.run(once=True)
+    assert "council#r1-1b1" in host.load(repo) and "council#r1-1b2" not in host.load(repo), "step 2 waits for step 1"
+    view["specs"][0]["tasks"][0]["doer_state"] = "done"
+    assert host.plan_waits_for(view, "council#r1-1b2") is None, "once step 1 is merged, step 2 may start"

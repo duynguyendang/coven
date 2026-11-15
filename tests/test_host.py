@@ -1104,3 +1104,68 @@ def test_tasks_with_disjoint_paths_form_a_parallel_group():
     assert specmap.parallel_groups([a, b, c]) == [["s#1", "s#2"]]
     assert specmap.paths_overlap(["src/app*"], ["src/apple.py"]) and not specmap.paths_overlap(["src/app"], ["src/apple.py"])
     assert specmap.paths_overlap(["**"], ["x"]) and not specmap.paths_overlap([], ["x"])
+
+
+# ---------------------------------------------- worktrees the Dev can test in (installed dependencies, Kiro's rewrites)
+
+
+def test_a_worktree_gets_the_installed_dependencies_linked_and_they_never_count_as_the_tasks_change(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    (repo / "server" / "node_modules" / "jsdom").mkdir(parents=True)
+    (repo / "server" / "keep.txt").write_text("tracked\n")
+    git(repo, "add", "server/keep.txt"), git(repo, "commit", "-q", "-m", "server dir")
+    task = specmap.load(repo)["shop#1"]
+    path, _ = host.prepare_worktree(repo, task, "main")
+    link = path / "server" / "node_modules"
+    assert link.is_symlink() and (link / "jsdom").is_dir(), "the tests can import what the main checkout installed"
+    builds_cart(path, "")
+    assert host.task_changes(repo, path, task) == ["src/cart/total.py"], "the link is the host's, not the task's"
+
+
+def test_a_file_kiro_rewrites_by_itself_is_put_back_not_held_against_the_task(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    task = specmap.load(repo)["shop#1"]
+
+    def builds_and_kiro_upgrades(cwd, prompt):
+        builds_cart(cwd, prompt)
+        (cwd / ".kiro" / "agents" / "elf.json").write_text('{"kiroUpgrade": {"version": 2}}\\n')  # what Kiro does on start
+        return "added total", None
+
+    result = host.execute(repo, task, "green-witch", Runner({"green-witch": builds_and_kiro_upgrades}))
+    assert result["action"] == "submitted", result
+    assert result["files"] == [".kiro/specs/shop/tasks.md", "src/cart/total.py"]
+    assert git(repo, "show", "coven/shop-1:.kiro/agents/elf.json") == "{}", "the agent file is not part of the commit"
+
+
+def test_recheck_submits_work_a_host_problem_had_failed_without_a_model_run(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    task = specmap.load(repo)["shop#1"]
+    calls = []
+
+    def leaves_junk(cwd, prompt):
+        calls.append(1)
+        builds_cart(cwd, prompt)
+        (cwd / "junk").write_text("x\n")  # outside the paths: the run fails
+        return "added total", None
+
+    failed = host.execute(repo, task, "green-witch", Runner({"green-witch": leaves_junk}))
+    assert failed["action"] == "failed" and "outside the task's paths" in failed["error"]
+    path = host.worktree_dir(repo, "shop-1")
+    (path / "junk").unlink()  # what the host's fix removes: the work itself is good
+    assert list(host.failed_tasks(repo)) == ["shop#1"]
+    done = host.recheck(repo, "shop#1", task)
+    assert done["action"] == "submitted" and len(done["reviews"]) == 3
+    assert len(calls) == 2, "no model run for the recheck"
+    assert host.load(repo)["shop#1"]["state"] == "submitted"
+
+
+def test_a_persons_retry_on_the_board_lets_the_host_take_a_failed_task_again(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    task = specmap.load(repo)["shop#1"]
+    host.execute(repo, task, "green-witch", Runner({"green-witch": lambda cwd, p: ("nothing", None)}))
+    assert host.load(repo)["shop#1"]["state"] == "failed"
+    h = host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"])
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "queued"}]}]
+    assert h._requeued(board.read(repo)) == ["shop#1"] and "shop#1" not in host.load(repo)
+    h.run(once=True)
+    assert host.load(repo)["shop#1"]["state"] == "submitted", "taken again and built"

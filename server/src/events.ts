@@ -88,7 +88,8 @@ export const DISPATCH_VIA = new Set(["kiro-web"]);
 export const DISPATCH_STATES = new Set(["requested", "cancelled"]);
 const NOTE_KINDS = new Set(["idea", "question", "answer", "review", "note", "review-wanted"]);
 /** Where a task stands as its doer reports it. `done` is not here: only the spec's tick (a merge) makes a task done. */
-export const TASK_STATES = new Set(["working", "submitted", "answered", "failed"]);
+// `queued`: a person (or their host) asked for a failed task to be taken again; any host that runs its witch may.
+export const TASK_STATES = new Set(["working", "submitted", "answered", "failed", "queued"]);
 /** `done` is people's word (POST /v1/board/done), never a doer's. */
 export const PEOPLE_STATES = new Set([...TASK_STATES, "done"]);
 

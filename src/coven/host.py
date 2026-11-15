@@ -300,11 +300,65 @@ def worktree_dir(root: Path, name: str) -> Path:
     return config.coven_dir(root) / "worktrees" / name
 
 
+# Installed dependencies are not in git, so a fresh worktree lacks them and the project's tests cannot run there.
+# The host links them from the main checkout (never copies) and tells git to ignore the links: they are the host's,
+# not the task's change, and never count against `_Paths:_`.
+DEPENDENCY_DIRS = ("server/node_modules", "server/worker/node_modules")
+
+
+def link_dependencies(root: Path, path: Path) -> list[str]:
+    """Link the main checkout's installed dependencies into a worktree. Returns the links made or kept."""
+    common = Path(work._git(root, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False) or root / ".git")
+    exclude = common / "info" / "exclude"
+    try:
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        known = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        if "\nnode_modules\n" not in f"\n{known}":
+            exclude.write_text(known + ("" if known.endswith("\n") or not known else "\n")
+                               + "# coven: dependency links in host worktrees (a symlink is not matched by `node_modules/`)\nnode_modules\n", encoding="utf-8")
+    except OSError:
+        pass
+    linked = []
+    for rel in DEPENDENCY_DIRS:
+        source, target = root / rel, path / rel
+        if not source.is_dir() or not target.parent.is_dir():
+            continue
+        if not target.exists() and not target.is_symlink():
+            try:
+                target.symlink_to(source, target_is_directory=True)
+            except OSError:
+                continue
+        linked.append(rel)
+    return linked
+
+
+def task_changes(root: Path, path: Path, task: dict) -> list[str]:
+    """The task's change in its worktree: what git sees, without the host's dependency links, and with what Kiro
+    rewrites by itself put back (it upgrades `.kiro/agents/*.json` when it runs; that is not the task's work)."""
+    files = sorted(work.dirty(path))
+    out = []
+    for f in files:
+        if f in DEPENDENCY_DIRS or any(f.startswith(d + "/") for d in DEPENDENCY_DIRS):
+            continue
+        if f.startswith(".kiro/agents/") and not specmap.covers(task, f):
+            if work._git(path, "ls-files", "--", f, check=False):
+                work._git(path, "checkout", "--", f, check=False)
+            else:
+                try:
+                    (path / f).unlink()
+                except OSError:
+                    pass
+            continue
+        out.append(f)
+    return out
+
+
 def prepare_worktree(root: Path, task: dict, base: str, detached: bool = False, suffix: str = "") -> tuple[Path, str | None]:
-    """A checkout of `base` for one agent: on the task's branch (build) or detached (inspect)."""
+    """A checkout of `base` for one agent: on the task's branch (build) or detached (inspect), with dependencies linked."""
     path = worktree_dir(root, _slug(task) + suffix)
     branch = None if detached else work.branch_for(task)
     if path.exists():
+        link_dependencies(root, path)
         return path, branch
     path.parent.mkdir(parents=True, exist_ok=True)
     if detached:
@@ -313,6 +367,7 @@ def prepare_worktree(root: Path, task: dict, base: str, detached: bool = False, 
         work._git(root, "worktree", "add", str(path), branch)  # a rework or a retry: the branch already holds earlier commits
     else:
         work._git(root, "worktree", "add", "-b", branch, str(path), base)
+    link_dependencies(root, path)
     return path, branch
 
 
@@ -462,40 +517,47 @@ def _build(root: Path, task: dict, agent: str, host: str, base: str, runner: Run
         text, error = runner(path, agent, prompt_for(task, agent, host, notes, feedback, problem), _env(root, host, agent, ref), RUN_TIMEOUT)
         if error and not text:
             return _fail(root, ref, agent, error)
-        files = sorted(work.dirty(path))
-        if not files:
-            problem = "nothing changed in the checkout"
-            continue
-        outside = [p for p in files if not specmap.covers(task, p)]
-        if outside:
-            problem = (f"files outside the task's paths ({', '.join(task.get('paths') or []) or 'none declared'}): {', '.join(outside[:8])}. "
-                       "Undo those changes")
-            continue
-        log = config.coven_dir(root) / "data" / f"verify-{task['spec']}-{task['task_id']}.log"
-        result = verify.run(path, task, log, timeout=600)
-        if result["status"] != "pass":
-            problem = f"the task's verify command did not pass ({result['status']}: {result.get('reason') or 'exit ' + str(result['exit_code'])}); see {log.name}"
-            continue
-        lost = _lease_lost(root, ref)
-        if lost:
-            return lost
-        record = load(root).get(ref) or {}
-        rounds = len(record.get("commits") or []) + 1
-        title = f"coven: {ref} {task.get('title') or ''}".strip() + ("" if rounds == 1 else f" (rework {rounds - 1})")
-        # The doer says the task is finished: tick it in the spec, on the task's branch. Merging the branch is what makes it done.
-        spec_file = path / ".kiro" / "specs" / str(task["spec"]) / "tasks.md"
-        if specmap.tick(spec_file, task):
-            files = sorted({*files, spec_file.relative_to(path).as_posix()})
-        work._git(path, "add", "--", *files)
-        work._git(path, "-c", "user.name=coven", "-c", "user.email=coven@localhost", "commit", "-m", title, "-m",
-                  f"Coven task {ref}, verify passed: {task.get('verify')}\nAgent: {agents.label(agent)}\nHost: {host}")
-        sha = work._git(path, "rev-parse", "--short", "HEAD")
-        _update(root, ref, state="submitted", submitted_at=events.now_iso(), commits=[*(record.get("commits") or []), sha], error=None)
-        _status(root, ref, "submitted", agent, f"{branch} at {sha}, {len(files)} file(s), verify passed", branch=branch)
-        _note(root, f"Ready for review: {ref} {task.get('title') or ''}. {agents.label(agent)} on {host}: branch {branch} at {sha} "
-                    f"(local, not pushed). Verify passed. Files: {', '.join(files[:8])}."[:400], agent, ref, kind="review-wanted")
-        return {"action": "submitted", "task": ref, "agent": agent, "branch": branch, "commit": sha, "files": files, "rework": not first}
+        done, problem = submit_checked(root, task, agent, host, path, branch, first)
+        if done:
+            return done
     return _fail(root, ref, agent, problem or "no change")
+
+
+def submit_checked(root: Path, task: dict, agent: str, host: str, path: Path, branch: str, first: bool) -> tuple[dict | None, str | None]:
+    """The host's checks on a build's worktree (paths, verify, lease), then the tick and the commit.
+
+    Returns (the submitted or failed result, None) or (None, the problem to give the Dev for another try)."""
+    ref = f"{task['spec']}#{task['task_id']}"
+    files = task_changes(root, path, task)
+    if not files:
+        return None, "nothing changed in the checkout"
+    outside = [p for p in files if not specmap.covers(task, p)]
+    if outside:
+        return None, (f"files outside the task's paths ({', '.join(task.get('paths') or []) or 'none declared'}): {', '.join(outside[:8])}. "
+                      "Undo those changes")
+    log = config.coven_dir(root) / "data" / f"verify-{task['spec']}-{task['task_id']}.log"
+    result = verify.run(path, task, log, timeout=600)
+    if result["status"] != "pass":
+        return None, f"the task's verify command did not pass ({result['status']}: {result.get('reason') or 'exit ' + str(result['exit_code'])}); see {log.name}"
+    lost = _lease_lost(root, ref)
+    if lost:
+        return lost, None
+    record = load(root).get(ref) or {}
+    rounds = len(record.get("commits") or []) + 1
+    title = f"coven: {ref} {task.get('title') or ''}".strip() + ("" if rounds == 1 else f" (rework {rounds - 1})")
+    # The doer says the task is finished: tick it in the spec, on the task's branch. Merging the branch is what makes it done.
+    spec_file = path / ".kiro" / "specs" / str(task["spec"]) / "tasks.md"
+    if specmap.tick(spec_file, task):
+        files = sorted({*files, spec_file.relative_to(path).as_posix()})
+    work._git(path, "add", "--", *files)
+    work._git(path, "-c", "user.name=coven", "-c", "user.email=coven@localhost", "commit", "-m", title, "-m",
+              f"Coven task {ref}, verify passed: {task.get('verify')}\nAgent: {agents.label(agent)}\nHost: {host}")
+    sha = work._git(path, "rev-parse", "--short", "HEAD")
+    _update(root, ref, state="submitted", submitted_at=events.now_iso(), commits=[*(record.get("commits") or []), sha], error=None)
+    _status(root, ref, "submitted", agent, f"{branch} at {sha}, {len(files)} file(s), verify passed", branch=branch)
+    _note(root, f"Ready for review: {ref} {task.get('title') or ''}. {agents.label(agent)} on {host}: branch {branch} at {sha} "
+                f"(local, not pushed). Verify passed. Files: {', '.join(files[:8])}."[:400], agent, ref, kind="review-wanted")
+    return {"action": "submitted", "task": ref, "agent": agent, "branch": branch, "commit": sha, "files": files, "rework": not first}, None
 
 
 def _origin_tip(root: Path, branch: str) -> str | None:
@@ -1234,6 +1296,22 @@ def verdict_of(text: str | None) -> tuple[str | None, str]:
 # project check passes on the merged tree) and only then pushes the base branch. Any doubt holds it for a person.
 
 
+def plan_waits_for(view: dict, ref: str) -> str | None:
+    """An approved plan's tasks run in order: the first earlier task of the same plan not yet done, or None.
+
+    The Elder Witch writes them as steps (the second builds on the first), so the next one is built only from a
+    base that already holds the earlier ones, and none is merged before the ones it builds on."""
+    spec, _, task_id = ref.partition("#")
+    tasks = next((s.get("tasks") or [] for s in view.get("specs") or [] if s.get("spec") == spec), [])
+    me = next((t for t in tasks if str(t.get("task_id")) == task_id), None)
+    if not me or not me.get("from_plan"):
+        return None
+    for t in tasks[: tasks.index(me)]:
+        if t.get("from_plan") == me["from_plan"] and t.get("status") != "completed" and t.get("doer_state") != "done":
+            return f"{spec}#{t.get('task_id')}"
+    return None
+
+
 def merge_check() -> str:
     return os.environ.get("COVEN_MERGE_CHECK") or MERGE_CHECK
 
@@ -1278,6 +1356,8 @@ def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, n
     """One look at a submitted build's reviews. Returns what was done, or None while the reviewers still work."""
     if record.get("review_hold"):
         return None
+    if plan_waits_for(view, ref):
+        return None  # an earlier step of its plan is not merged yet: this one waits, reviewed or not
     jobs = record.get("review_jobs") or []
     if not jobs:
         return None
@@ -1637,6 +1717,8 @@ class Host:
                 if (task.get("doer_state") in ("answered", "failed", "done", "submitted", "working") or task.get("claimed_by")
                         or task.get("status") == "completed" or ref in self.running or not agent or agent not in self.can_run):
                     continue
+                if task.get("from_plan") and plan_waits_for(view, ref):
+                    continue  # its plan's earlier step is not done yet: it is built on top of that, not beside it
                 if agents.kind(agent) == "build" and task.get("expects") == "answer" and not task.get("from_plan"):
                     pass  # a question for the Dev about the code: answered read-only like any job (below)
                 elif agents.kind(agent) == "build":
@@ -1719,6 +1801,17 @@ class Host:
                 done.append(result)
         return done
 
+    def _requeued(self, view: dict) -> list[str]:
+        """A person pressed Retry on a failed task: forget this host's failed run so the task can be taken again."""
+        queued = {f"{s.get('spec')}#{t.get('task_id')}" for s in view.get("specs") or [] for t in s.get("tasks") or [] if t.get("doer_state") == "queued"}
+        let_go = []
+        for ref, record in load(self.root).items():
+            if ref in queued and record.get("state") == "failed" and ref not in self.running:
+                remove_worktree(self.root, record.get("worktree"))
+                _forget(self.root, ref)
+                let_go.append(ref)
+        return let_go
+
     def _pushes(self, view: dict) -> list[str]:
         """Push a branch only because a person asked this host to (spec multi-host, R2.3). Once per request; never anything else."""
         done = []
@@ -1768,6 +1861,7 @@ class Host:
         tasks = specmap.load(self.root)
         # Plan tasks a person approved live on the board, not in tasks.md: settle and rework them the same way.
         tasks.update({ref: record["plan_task"] for ref, record in load(self.root).items() if record.get("plan_task")})
+        self._requeued(view)
         pushed = self._pushes(view)
         settled = self._settle(view, chat, notes) if self.auto_merge else []
         finished = self._release_finished(tasks, view)
@@ -1839,6 +1933,42 @@ def host_status(root: Path, can_run: list[str] | None = None, slots: int | None 
             "tasks": [{k: v for k, v in r.items() if k != "worktree"} for r in data.values()]}
 
 
+def recheck(root: Path, ref: str, task: dict) -> dict:
+    """A failed build whose worktree still holds the Dev's work: run the host's checks again, with no model run.
+
+    For a failure the host caused (a missing dependency in the worktree, a file Kiro rewrote by itself), this
+    submits the work that was already there. If the checks still fail, the task stays failed with the new reason."""
+    record = load(root).get(ref) or {}
+    path = Path(record.get("worktree") or worktree_dir(root, _slug(task)))
+    if record.get("state") != "failed" or not path.exists() or record.get("kind") != "build":
+        raise HostError(f"{ref} is not a failed build with its worktree on this host")
+    link_dependencies(root, path)
+    host = board.member(root)
+    agent = record.get("agent") or agents.DEFAULT
+    board.claim(root, task, agent=agent)  # take it back first: a 409 means another host has it now
+    _update(root, ref, state="running", error=None)
+    done, problem = submit_checked(root, task, agent, host, path, record.get("branch") or work.branch_for(task), not record.get("commits"))
+    if done and done.get("action") == "submitted":
+        done["reviews"] = ask_reviews(root, task, done["branch"], 1)
+        return done
+    if done:
+        return done
+    _update(root, ref, state="failed", error=(problem or "no change")[:300], finished_at=events.now_iso())
+    _status(root, ref, "failed", agent, problem)
+    return {"action": "failed", "task": ref, "agent": agent, "error": problem}
+
+
+def failed_tasks(root: Path) -> dict[str, dict]:
+    """ref -> task, for the failed builds this host still holds a worktree for."""
+    tasks = specmap.load(root)
+    out = {}
+    for ref, record in load(root).items():
+        task = record.get("plan_task") or tasks.get(ref)
+        if record.get("state") == "failed" and record.get("kind") == "build" and task and record.get("worktree") and Path(record["worktree"]).exists():
+            out[ref] = task
+    return out
+
+
 def retry(root: Path, ref: str) -> dict:
     """Let the host take a failed task again."""
     record = load(root).get(ref)
@@ -1846,4 +1976,8 @@ def retry(root: Path, ref: str) -> dict:
         raise HostError(f"{ref} is not a failed task of this host")
     remove_worktree(root, record.get("worktree"))
     _forget(root, ref)
+    try:
+        board.task_status(root, ref, "queued", agent=record.get("agent"), detail="queued again on its host")
+    except Exception:  # noqa: BLE001 - the board catches up when the task runs
+        pass
     return {"action": "retry", "task": ref}

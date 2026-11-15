@@ -292,6 +292,19 @@ def cmd_host(args: argparse.Namespace) -> int:
         print(json.dumps(host.host_status(root), indent=2))
         return 0
     if command == "retry":
+        if args.recheck:
+            # No model run: the host's checks again on the work already in the worktree (paths, verify), then submit.
+            todo = host.failed_tasks(root)
+            refs = list(todo) if args.task == "all" else [args.task]
+            results, code = [], 0
+            for ref in refs:
+                try:
+                    results.append(host.recheck(root, ref, todo.get(ref) or {}))
+                except (host.HostError, board.BoardError) as exc:
+                    results.append({"action": "refused", "task": ref, "error": str(exc)})
+                    code = 1
+            print(json.dumps(results, indent=2))
+            return code
         try:
             print(json.dumps(host.retry(root, args.task), indent=2))
         except host.HostError as exc:
@@ -680,6 +693,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_agents.add_argument("--check", action="store_true", help="fail when an agent prompt's role block is out of date (the harness runs this)")
     host_retry = host_sub.add_parser("retry", help="let this host take a failed task again")
     host_retry.add_argument("task", help="<spec>#<task>")
+    host_retry.add_argument("--recheck", action="store_true", help="no model run: check the failed build's worktree again (paths, verify) and submit it if it passes; `all` for every failed build here")
     host_parser.set_defaults(func=cmd_host)
 
     member_parser = sub.add_parser("member", help="old name of `host`: this working copy's name on the coven board")

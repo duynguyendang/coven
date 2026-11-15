@@ -107,6 +107,8 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H13 | A submitted branch stays with the host that made it (`branch_host`): another host does not take it, and the board says when that host is offline. | Must | Built |
 | FR-H14 | Nothing pushes unless a person asks: **Ask host to push** (`POST /v1/board/push`) makes the host that holds the branch push that one `coven/` branch once and report `push_done`; or a person started the host with `--auto-merge` (FR-AM4). | Must | Built |
 | FR-H15 | Before it commits or submits, a host asks the cloud whether it still holds its claim; a lapsed lease ends the run without a commit. | Must | Built |
+| FR-H17 | A build worktree has the main checkout's installed dependencies linked (not copied, ignored by git), so the project's tests run there; the links and the files Kiro rewrites by itself never count against `_Paths:_`. | Must | Built |
+| FR-H18 | A failed build can be checked again without a model run (`coven host retry <task> --recheck`, or `all`); a person can send any failed task back to the queue from the board (**Retry**, `task_status queued`). | Must | Built |
 | FR-H16 | Hosts announce free slots; the Chair sees who has room, and which ready build tasks share no path (a person may send them to Kiro Web; the Chair never does). | Should | Built |
 
 ### 4.6 Task status
@@ -130,7 +132,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-CH6 | Messages to one witch (not Do it), or everything when no host runs the Chair, are answered by the listener (`coven council listen`) in that witch's voice. | Should | Built |
 | FR-CH7 | A Reject is binding: it fails the task's review and sends submitted work back. | Must | Built |
 | FR-CH8 | A request for a change becomes a planning job for the Elder Witch: she proposes at most five build tasks, each with narrow paths and one verify command, which the host checks and puts on the board as a plan. | Should | Built (not yet run with a real model) |
-| FR-CH9 | Only a person's approval of a plan (dashboard, `POST /v1/board/plan`) makes build tasks; the Dev builds each on its own branch and the host checks and commits it as for a spec task. | Must | Built |
+| FR-CH9 | Only a person's approval of a plan (dashboard, `POST /v1/board/plan`) makes build tasks; the Dev builds each on its own branch and the host checks and commits it as for a spec task. The plan's tasks run in order: each waits until the earlier ones are done. | Must | Built |
 | FR-CH10 | A plan task's submitted branch gets review jobs (now for every build: FR-AM1) for White Hat and Black Hat, run in a checkout of that branch; people read them and merge or reject. Reviews of "what I have" see the working copy's uncommitted changes. | Should | Built |
 | FR-CH11 | One voice per message: the listener claims the message (`chat#<id>`) before it answers, as a host's Chair does, so only one answers. | Should | Built |
 

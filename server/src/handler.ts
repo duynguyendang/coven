@@ -399,6 +399,19 @@ export function createHandler(options: HandlerOptions): Handler {
       return json(201, { event_id: event.event_id });
     }
 
+    if (method === "POST" && path === "/v1/board/retry") {
+      // A person sends a failed task back to the queue: the next host that runs its witch takes it again (FR-H9).
+      need(request, url, "read");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = idField(body, "project_id");
+      const payload = { task: optionalString(body, "task") ?? "", state: "queued", detail: `queued again by ${(optionalString(body, "author") ?? "someone").slice(0, 40)}` };
+      const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_status", ts: now(), payload });
+      if (problems.length) throw validation("task", problems.join("; "));
+      const event = await store.postWebStatus(projectId, redactEvent({ payload }).payload);
+      return json(201, { event_id: event.event_id });
+    }
+
     if (method === "POST" && path === "/v1/board/dispatch") {
       // A person decides that a task runs in Kiro Web, or takes that back. A read token may, like Mark done.
       // The body names the task only: the repository belongs to the host that runs it, never to the browser.

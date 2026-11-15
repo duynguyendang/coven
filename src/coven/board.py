@@ -300,7 +300,7 @@ def answer(root: Path, reply_to: str, message: str, role: str = "chair", kind: s
                                                 "reply_to": reply_to, "persona": role})
 
 
-TASK_STATES = ("working", "submitted", "answered", "failed")
+TASK_STATES = ("working", "submitted", "answered", "failed", "queued")
 
 
 def task_status(root: Path, ref: str, state: str, agent: str | None = None, detail: str | None = None,

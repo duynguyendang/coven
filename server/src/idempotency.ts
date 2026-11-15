@@ -12,7 +12,7 @@ export const DEFAULT_TTL_SECONDS = 24 * 3600;
 export const KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 /** The write endpoints that honour the header. */
-export const IDEMPOTENT_PATHS = new Set(["/v1/claims", "/v1/board/notes", "/v1/board/done", "/v1/board/plan", "/v1/board/dispatch", "/v1/board/push", "/v1/chat"]);
+export const IDEMPOTENT_PATHS = new Set(["/v1/claims", "/v1/board/notes", "/v1/board/done", "/v1/board/plan", "/v1/board/dispatch", "/v1/board/push", "/v1/board/retry", "/v1/chat"]);
 
 export interface IdemEntry {
   body_hash: string;

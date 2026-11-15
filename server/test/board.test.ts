@@ -543,3 +543,18 @@ describe("review verdicts and auto-merge (FR-AM2, FR-AM5)", () => {
     } finally { await s.close(); }
   });
 });
+
+describe("retry (FR-H9)", () => {
+  test("a person sends a failed task back to the queue from the web", async () => {
+    const s = await startServer();
+    try {
+      await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "member_wsl-1", events: [
+        { event_id: "evt_rt1", project_id: "shop", run_id: "member_wsl-1", type: "spec_artifact_updated", ts: new Date(Date.now() - 2000).toISOString(), source: "coven-cli", member: "wsl-1", payload: { spec: "s", tasks: [{ task_id: "1", title: "x" }] } },
+        { event_id: "evt_rt2", project_id: "shop", run_id: "member_wsl-1", type: "task_status", ts: new Date(Date.now() - 1000).toISOString(), source: "coven-cli", member: "wsl-1", payload: { task: "s#1", state: "failed", agent: "green-witch" } }] }, auth());
+      const r = await postJson(s.base, "/v1/board/retry", { project_id: "shop", task: "s#1", author: "duy" }, auth());
+      assert.equal(r.status, 201);
+      const t = (await getJson(s.base, "/v1/board?project_id=shop")).body.specs.find((x: Json) => x.spec === "s").tasks[0];
+      assert.deepEqual([t.doer_state, t.doer_detail], ["queued", "queued again by duy"]);
+    } finally { await s.close(); }
+  });
+});
