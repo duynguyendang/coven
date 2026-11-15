@@ -295,6 +295,16 @@
   .plan-body { padding: 8px 12px 10px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--radius-element) var(--radius-element); background: var(--panel); font-size: 0.8125rem; }
   .plan-body p { margin: 0 0 6px; } .plan-body ol { margin: 0; padding-left: 1.2rem; }
   @media (max-width: 640px) { .plan-row > summary { grid-template-columns: auto minmax(0, 1fr); } .plan-row .sum { grid-column: 1 / -1; white-space: normal; } }
+  .stage-box { margin: 0 0 14px; }
+  .stage-box > summary { cursor: pointer; padding: 8px 12px; min-block-size: var(--target-size); color: var(--muted); font-size: 0.8125rem; border: 1px dashed var(--line-strong); border-radius: var(--radius-element); }
+  .stage { perspective: 700px; padding: 8px 0 0; overflow: hidden; }
+  .stage .floor { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 12px; transform: rotateX(45deg); transform-origin: 50% 100%;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-element); min-block-size: 150px; }
+  .stage .station { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-element); }
+  .stage .pad { font-size: 0.75rem; color: var(--muted); }
+  .stage .sprites { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; transform: rotateX(-45deg); transform-origin: 50% 100%; }
+  .stage .sprite .av { width: 32px; height: 36px; }
+  @media (max-width: 640px) { .stage .floor { gap: 4px; padding: 6px; } .stage .sprite .av { width: 22px; height: 26px; } }
   .more-witches { margin: 0 0 14px; }
   .more-witches > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; padding: 8px 12px; min-block-size: var(--target-size);
     border: 1px dashed var(--line-strong); border-radius: var(--radius-element); color: var(--muted); font-size: 0.8125rem; }
@@ -1525,7 +1535,20 @@
     const folded = idle.length ? `<details class="more-witches" data-key="more-witches"${state.ui.allWitches ? " open" : ""}><summary><span class="faces" aria-hidden="true">${idle.map((w) => avatar(w.slug)).join("")}</span>
       <span>${idle.length} ${idle.length === 1 ? "witch is" : "witches are"} not on any host</span></summary><div class="witches">${idle.map(card).join("")}</div></details>` : "";
     const html = `${active.length ? `<div class="witches">${active.map(card).join("")}</div>` : ""}${folded}`;
-    return { html, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
+    return { html, roster, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
+  }
+  /* The Stage: a tilted floor with five stations; every witch stands at the one her work belongs to (rest when idle). */
+  const STAGE_STATIONS = [["board", "Board"], ["chat", "Chat"], ["review", "Review"], ["build", "Build"], ["rest", "Rest"]];
+  const STAGE_WORK = { "green-witch": "build", "white-hat": "review", "black-hat": "review", "elder-witch": "review", "imp": "review" };
+  function stageHtml(roster) {
+    const stateOf = Object.fromEntries((roster || []).map((w) => [w.slug, w.state]));
+    const at = (slug) => stateOf[slug] === "working" ? (STAGE_WORK[slug] || (slug === "grey-witch" ? "chat" : "board")) : "rest";
+    const stations = STAGE_STATIONS.map(([id, label]) => {
+      const here = Object.keys(AGENT_NAME).filter((slug) => at(slug) === id);
+      return `<div class="station" data-station="${id}"><div class="pad">${label}</div><div class="sprites">${here.map((slug) =>
+        `<span class="sprite" data-witch="${slug}" title="${esc(agentName(slug))}">${avatar(slug)}<span class="sr">${esc(agentName(slug))}</span></span>`).join("")}</div></div>`;
+    }).join("");
+    return `<details class="stage-box" data-key="stage"${state.ui.stage === false ? "" : " open"}><summary>Stage</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div></details>`;
   }
   /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
   function roleCard(slug) {
@@ -1575,6 +1598,7 @@
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
       ${decidedList(decidedPlans, b)}
+      ${stageHtml(members.roster)}
       <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? members.html : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
       <h2>Whiteboard</h2>${compose}
       <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">Nothing on the board yet. Post the first note.</p>'}</div>`;
@@ -2158,6 +2182,7 @@
     root.querySelectorAll("[data-edit-name]").forEach((el) => el.addEventListener("click", () => { if (narrow() && !$("app").classList.contains("nav-open")) toggleNav(); $("me").focus(); }));
     root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { if (state.boardOpen !== el.dataset.col) state.colFilter = ""; state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
     root.querySelectorAll("details.decided-plans").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.decidedPlans)) { state.ui.decidedPlans = el.open; saveUi(); } }));
+    root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage !== false)) { state.ui.stage = el.open; saveUi(); } }));
     root.querySelectorAll("details.more-witches").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.allWitches)) { state.ui.allWitches = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
