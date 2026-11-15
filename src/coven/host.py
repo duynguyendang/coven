@@ -1808,6 +1808,7 @@ class Host:
         for ref, record in load(self.root).items():
             if ref in queued and record.get("state") == "failed" and ref not in self.running:
                 remove_worktree(self.root, record.get("worktree"))
+                _drop_unused_branch(self.root, record)
                 _forget(self.root, ref)
                 let_go.append(ref)
         return let_go
@@ -1958,6 +1959,14 @@ def recheck(root: Path, ref: str, task: dict) -> dict:
     return {"action": "failed", "task": ref, "agent": agent, "error": problem}
 
 
+def _drop_unused_branch(root: Path, record: dict) -> None:
+    """A failed build that never committed: drop its branch too, so the next try starts from today's base
+    (with the plan steps merged since), not from the base of the failed run."""
+    branch = record.get("branch")
+    if branch and branch.startswith("coven/") and not record.get("commits"):
+        work._git(root, "branch", "-D", branch, check=False)
+
+
 def failed_tasks(root: Path) -> dict[str, dict]:
     """ref -> task, for the failed builds this host still holds a worktree for."""
     tasks = specmap.load(root)
@@ -1975,6 +1984,7 @@ def retry(root: Path, ref: str) -> dict:
     if not record or record.get("state") != "failed":
         raise HostError(f"{ref} is not a failed task of this host")
     remove_worktree(root, record.get("worktree"))
+    _drop_unused_branch(root, record)
     _forget(root, ref)
     try:
         board.task_status(root, ref, "queued", agent=record.get("agent"), detail="queued again on its host")

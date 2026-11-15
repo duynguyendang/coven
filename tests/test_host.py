@@ -1167,5 +1167,6 @@ def test_a_persons_retry_on_the_board_lets_the_host_take_a_failed_task_again(rep
     h = host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"])
     cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "queued"}]}]
     assert h._requeued(board.read(repo)) == ["shop#1"] and "shop#1" not in host.load(repo)
+    assert not git(repo, "branch", "--list", "coven/shop-1"), "a branch with no commit of the task is dropped: the next try starts from today's base"
     h.run(once=True)
     assert host.load(repo)["shop#1"]["state"] == "submitted", "taken again and built"
