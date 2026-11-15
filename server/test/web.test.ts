@@ -763,7 +763,13 @@ describe("session screen", () => {
     (doc().querySelector('[data-key="why-council#rp1-1"]') as HTMLInputElement).value = "small and testable";
     (doc().querySelector('[data-key="approve-council#rp1-1"]') as HTMLButtonElement).click();
     await wait(900);
-    assert.match(card().textContent!.replace(/\s+/g, " "), /Approved by .*: small and testable/);
+    assert.equal(doc().querySelector('[data-key="plan-council#rp1-1"]'), null, "a decided plan is no longer a card");
+    assert.doesNotMatch(doc().querySelector("#main")!.textContent!, /waits for you/);
+    const decided = doc().querySelector('[data-key="decided-council#rp1-1"]') as HTMLDetailsElement;
+    assert.ok(decided && !decided.open && !(doc().querySelector("details.decided-plans") as HTMLDetailsElement).open, "it folds into the decided plans");
+    assert.match(decided.querySelector("summary")!.textContent!.replace(/\s+/g, " "), /Approved council#rp1-1 Two small steps\. 0\/2 done/);
+    assert.match(decided.textContent!, /Why: small and testable/);
+    assert.match(doc().querySelector("details.decided-plans > summary")!.textContent!.replace(/\s+/g, " "), /1 decided plan · 1 approved, 0 rejected/);
     assert.equal(doc().querySelector('[data-key="approve-council#rp1-1"]'), null, "decided once");
     openColumn("ready");
     const build = openTask("council#rp1-1b1").textContent!.replace(/\s+/g, " ");

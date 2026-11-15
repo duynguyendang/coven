@@ -276,6 +276,25 @@
   .witch .rl { font-size: 0.75rem; color: var(--muted); }
   .witch .st { font-size: 0.7812rem; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
   .witch.working { border-color: var(--blue); background: var(--selected); }
+  .decided-plans { margin: 0 0 14px; }
+  .decided-plans > summary { cursor: pointer; font-size: 0.8125rem; color: var(--muted); padding: 6px 8px; min-block-size: var(--target-size); display: flex; align-items: center; gap: 6px; border-radius: 6px; }
+  .decided-plans > summary:hover { background: var(--hover); color: var(--text); }
+  .plan-rows { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+  .plan-row > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center;
+    padding: 7px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); font-size: 0.8125rem; }
+  .plan-row > summary::-webkit-details-marker { display: none; }
+  .plan-row > summary:hover { border-color: var(--line-strong); }
+  .plan-row .pid { font-size: 0.75rem; color: var(--muted); }
+  .plan-row .sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plan-row .prog { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
+  .plan-row .prog.all { color: var(--ok-ink); }
+  .plan-row .when { font-size: 0.75rem; white-space: nowrap; }
+  .plan-row[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .plan-row[open] .sum { white-space: normal; overflow: visible; }
+  @media (max-width: 640px) { .plan-row:not([open]) .sum { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; } }
+  .plan-body { padding: 8px 12px 10px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--radius-element) var(--radius-element); background: var(--panel); font-size: 0.8125rem; }
+  .plan-body p { margin: 0 0 6px; } .plan-body ol { margin: 0; padding-left: 1.2rem; }
+  @media (max-width: 640px) { .plan-row > summary { grid-template-columns: auto minmax(0, 1fr); } .plan-row .sum { grid-column: 1 / -1; white-space: normal; } }
   .more-witches { margin: 0 0 14px; }
   .more-witches > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; padding: 8px 12px; min-block-size: var(--target-size);
     border: 1px dashed var(--line-strong); border-radius: var(--radius-element); color: var(--muted); font-size: 0.8125rem; }
@@ -1318,6 +1337,26 @@
     return out;
   }
   /** A plan the Elder Witch proposed: every task with its paths and verify command, so a person sees what would run before approving. */
+  /** Decided plans, folded: one line each (its decision, its summary, how far its tasks got); open one to read it. */
+  function decidedList(plans, b) {
+    if (!plans.length) return "";
+    const tasks = (b.specs || []).flatMap((s) => s.tasks.map((t) => ({ ...t, spec: s.spec })));
+    const row = (p) => {
+      const mine = tasks.filter((t) => t.from_plan === p.plan);
+      const done = mine.filter((t) => t.status === "completed" || t.doer_state === "done").length;
+      const progress = p.state === "approved" && mine.length ? `<span class="prog${done === mine.length ? " all" : ""}">${done}/${mine.length} done</span>` : "";
+      return `<li><details class="plan-row" data-key="decided-${esc(p.plan)}"><summary>
+          <span class="badge ${p.state === "approved" ? "accept" : "reject"}">${p.state === "approved" ? "Approved" : "Rejected"}</span>
+          <span class="mono pid">${esc(p.plan)}</span> <span class="sum">${esc(p.summary || "")}</span> ${progress}
+          <span class="hint when">${esc(p.decided_by || "someone")} · ${agoTag(p.decided_at)}</span></summary>
+        <div class="plan-body">${p.reasons ? `<p class="hint">Why: ${esc(p.reasons)}</p>` : ""}
+          <ol>${(p.tasks || []).map((t) => `<li>${esc(t.title)} <span class="hint mono">${esc(t.task_id)}</span></li>`).join("")}</ol></div></details></li>`;
+    };
+    const shown = plans.slice(0, 20);
+    return `<details class="decided-plans" data-key="decided-plans"${state.ui.decidedPlans ? " open" : ""}><summary>${plural(plans.length, "decided plan")}
+        <span class="hint">· ${plans.filter((p) => p.state === "approved").length} approved, ${plans.filter((p) => p.state === "rejected").length} rejected</span></summary>
+      <ul class="plan-rows">${shown.map(row).join("")}</ul>${plans.length > shown.length ? `<p class="hint">${plans.length - shown.length} older plans not shown.</p>` : ""}</details>`;
+  }
   function planCard(p) {
     const items = (p.tasks || []).map((t) => `<li><b>${esc(t.title)}</b>${t.detail ? ` <span class="hint">${esc(short(t.detail, 200))}</span>` : ""}
       <div class="hint">paths ${(t.paths || []).map((x) => `<code>${esc(x)}</code>`).join(" ")} · verify <code>${esc(t.verify)}</code></div></li>`).join("");
@@ -1507,8 +1546,10 @@
     state.cloudReady = cloudHostOnline(b);
     const stuckCount = cols.ready.filter((t) => isStuck(t, state.runnable)).length;
     // Plans that wait for a person first, then the three latest decided ones.
-    const plans = [...(b.plans || []).filter((p) => p.state === "proposed"), ...(b.plans || []).filter((p) => p.state !== "proposed").slice(0, 3)];
-    const waitingPlans = plans.filter((p) => p.state === "proposed").length;
+    // Only plans that wait for a person are cards; decided plans fold into one line each, newest first.
+    const waiting = (b.plans || []).filter((p) => p.state === "proposed");
+    const decidedPlans = (b.plans || []).filter((p) => p.state !== "proposed");
+    const waitingPlans = waiting.length;
     // The board shows numbers only; a click on a number opens that column's tasks below.
     // A column is always open: the person's choice, else the most urgent one with tasks (review, then blocked, then ready).
     const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => (cols[k] || []).length) || "ready";
@@ -1526,9 +1567,10 @@
     return `${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Coven board · ${project}`,
         lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
       ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
-      ${plans.length ? `<h2>Plans${waitingPlans ? ` <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span>` : ""}</h2>${plans.map(planCard).join("")}` : ""}
+      ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
+      ${decidedList(decidedPlans, b)}
       <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? members.html : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
       <h2>Whiteboard</h2>${compose}
       <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">Nothing on the board yet. Post the first note.</p>'}</div>`;
@@ -2111,6 +2153,7 @@
     root.querySelectorAll("[data-task-open]").forEach((el) => el.addEventListener("click", () => openTask(el.dataset.taskOpen)));
     root.querySelectorAll("[data-edit-name]").forEach((el) => el.addEventListener("click", () => { if (narrow() && !$("app").classList.contains("nav-open")) toggleNav(); $("me").focus(); }));
     root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { if (state.boardOpen !== el.dataset.col) state.colFilter = ""; state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
+    root.querySelectorAll("details.decided-plans").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.decidedPlans)) { state.ui.decidedPlans = el.open; saveUi(); } }));
     root.querySelectorAll("details.more-witches").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.allWitches)) { state.ui.allWitches = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
