@@ -16,6 +16,17 @@ EXTERNAL_URL = os.environ.get("COVEN_TEST_CLOUD_URL")
 EXTERNAL_TOKEN = os.environ.get("COVEN_TEST_CLOUD_TOKEN", "dev")
 
 
+# What a host exports to the witch it runs (and so to a `make verify` that witch starts). The tests
+# must not see this machine's member, task or run: they set their own when they need one.
+HOST_RUN_ENV = ("COVEN_MEMBER", "COVEN_HOST", "COVEN_TASK", "COVEN_AGENT", "COVEN_RUN_ID", "COVEN_CONSULT_DEPTH", "COVEN_READ_ONLY")
+
+
+@pytest.fixture(autouse=True)
+def _no_host_run_env(monkeypatch):
+    for name in HOST_RUN_ENV:
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture(scope="module")
 def cloud():
     """A real Coven Cloud: the Node server on a free port, in-memory store, dev token."""

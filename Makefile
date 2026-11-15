@@ -4,25 +4,25 @@ PY ?= python3
 
 # Relay + CLI run on the developer machine (Python). Coven Cloud is Node.js (server/).
 install:
-	pip install -e ".[dev]"
+	$(PY) -m pip install -e ".[dev]"
 	cd server && npm ci
 
 # All tests: Python (relay, CLI, host, harness, live suites) and Node (cloud, dashboard in jsdom).
 test: test-relay test-cloud
 
 test-relay:
-	PYTHONPATH=src python3 -m pytest
+	PYTHONPATH=src $(PY) -m pytest
 
 test-cloud:
 	cd server && npm test
 
 # The cross-file rules: witches equal in Python, cloud, web and .kiro/agents; agent safety; docs list the code.
 harness:
-	PYTHONPATH=src python3 -m pytest tests/test_harness.py
+	PYTHONPATH=src $(PY) -m pytest tests/test_harness.py
 
 # A real cloud and a real host, with a fake kiro-cli that records how it was called (no credits).
 test-e2e:
-	PYTHONPATH=src python3 -m pytest tests/test_host_live.py tests/test_board_live.py
+	PYTHONPATH=src $(PY) -m pytest tests/test_host_live.py tests/test_board_live.py
 
 # Everything a change must pass before it is committed: types, the harness, then all tests.
 verify: check harness test
@@ -31,7 +31,7 @@ check:
 	cd server && npm run check
 
 relay:
-	PYTHONPATH=src python3 -m coven.cli relay up --foreground
+	PYTHONPATH=src $(PY) -m coven.cli relay up --foreground
 
 # Run this machine as a host (witches take chat requests, council jobs and ready tasks).
 host:
@@ -51,7 +51,7 @@ deploy:
 	cd server/worker && npx wrangler deploy
 
 doctor:
-	PYTHONPATH=src python3 -m coven.cli doctor
+	PYTHONPATH=src $(PY) -m coven.cli doctor
 
 # Write hook commands that work without `coven` on PATH (absolute python3 + PYTHONPATH).
 hooks:
