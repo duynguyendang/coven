@@ -7,16 +7,18 @@
 #   ./run-host.sh --agents elf,raven      only these witches
 #   ./run-host.sh --slots 3 --once        any other `coven host run` option goes through
 #
-# Environment: COVEN_HOST_NAME (default: this machine's name), COVEN_SLOTS (default 2).
+# Environment: COVEN_HOST_NAME (default: this machine's name), COVEN_SLOTS (default 2),
+# COVEN_PY (the interpreter, default python3; extra words are passed as its first arguments).
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export COVEN_ROOT="${COVEN_ROOT:-$here}"
 export PYTHONPATH="$here/src${PYTHONPATH:+:$PYTHONPATH}"
-coven() { python3 -m coven.cli "$@"; }
+py=(${COVEN_PY:-python3})
+coven() { "${py[@]}" -m coven.cli "$@"; }
 
 command -v kiro-cli >/dev/null || { echo "run-host: kiro-cli is not on PATH" >&2; exit 1; }
-command -v python3 >/dev/null || { echo "run-host: python3 is not on PATH" >&2; exit 1; }
+command -v "${py[0]}" >/dev/null || { echo "run-host: ${py[0]} is not on PATH" >&2; exit 1; }
 
 agents=""; all=0; extra=()
 while [ $# -gt 0 ]; do
@@ -44,7 +46,7 @@ case "$current" in *@*:*|"") coven host join "$name" >/dev/null && echo "host: n
 if ! coven doctor 2>&1 | grep -q "^relay: running"; then
   echo "host: starting the machine relay in the background (log: .coven/relay.log)"
   mkdir -p "$COVEN_ROOT/.coven"
-  nohup python3 -m coven.cli relay up --foreground --machine >"$COVEN_ROOT/.coven/relay.log" 2>&1 &
+  nohup "${py[@]}" -m coven.cli relay up --foreground --machine >"$COVEN_ROOT/.coven/relay.log" 2>&1 &
   sleep 2
 fi
 
@@ -54,4 +56,4 @@ if [ -z "$agents" ] && [ "$all" = 0 ]; then
 fi
 [ -n "$agents" ] && extra+=(--agents "$agents")
 
-exec python3 -m coven.cli host run --slots "${COVEN_SLOTS:-2}" "${extra[@]}"
+exec "${py[@]}" -m coven.cli host run --slots "${COVEN_SLOTS:-2}" "${extra[@]}"
