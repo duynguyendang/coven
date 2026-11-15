@@ -159,7 +159,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-AM3 | Auto-merge is opt-in per host (`coven host run --auto-merge` or `COVEN_AUTO_MERGE=1`); without it people decide on the verdicts. | Must | Built |
 | FR-AM4 | On an auto-merge host: changes go back to the Dev with the reasons, at most two reworks; three passes go to the Chair (Senior Kiro), who decides `merge` or `hold`; on `merge` the host merges only if no person rejected or suggested a change, the branch merges cleanly, and `make verify` (`COVEN_MERGE_CHECK`) passes on the merged tree; then it pushes the base (never forced) and deletes the branch here and on origin. | Must | Built (tested with a fake runner and a local origin) |
 | FR-AM5 | The host records the merge (`task_merged`: commit, base, reviewers, the Chair) and the board shows the task done with it. | Must | Built |
-| FR-AM6 | Anything in doubt holds the task for a person, said once in a note: a failed review, no Chair on the host, a hold decision, a conflict, a failed check, a refused push. | Must | Built |
+| FR-AM6 | Anything in doubt holds the task for a person, said once in a note: a failed review, a review with no verdict, no Chair on the host, a hold decision, a conflict, a failed check, a refused push. | Must | Built |
 
 ### 4.10 Witches working together
 

@@ -148,3 +148,15 @@ def test_a_host_without_auto_merge_only_asks_for_reviews(repo, monkeypatch):
     h.auto_merge = True
     monkeypatch.setenv("COVEN_MERGE_CHECK", "true")
     assert h.tick()["settled"][0]["action"] == "merged"
+
+
+def test_no_verdict_is_a_hold_and_the_status_line_is_read_when_the_field_is_missing(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    record = submitted(repo, cloud)
+    view = board_with(record, ["pass", "pass", None])
+    result, reworked = settle(repo, record, view, Runner())
+    assert result["action"] == "held" and "no verdict" in result["why"] and not reworked
+    view = board_with(record, ["pass", "pass", "pass"])
+    for t in view["specs"][0]["tasks"]:
+        t["doer_verdict"] = None  # an older cloud: only the status line carries it
+    assert host.review_state(view, record["review_jobs"])[record["review_jobs"][0]]["verdict"] == "pass"

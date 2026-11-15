@@ -1241,7 +1241,13 @@ def merge_check() -> str:
 def review_state(view: dict, jobs: list[str]) -> dict[str, dict]:
     """job ref -> {state, verdict, agent, detail} as the board knows them now."""
     tasks = {f"{s.get('spec')}#{t.get('task_id')}": t for s in view.get("specs") or [] for t in s.get("tasks") or []}
-    return {j: {"state": (tasks.get(j) or {}).get("doer_state"), "verdict": (tasks.get(j) or {}).get("doer_verdict"),
+    def verdict(t: dict) -> str | None:
+        # The board's field, else the status line the host wrote ("verdict: pass — …"), which an older cloud keeps too.
+        if t.get("doer_verdict") in ("pass", "changes"):
+            return t["doer_verdict"]
+        found = re.match(r"verdict:\s*(pass|changes)\b", str(t.get("doer_detail") or ""), re.I)
+        return found.group(1).lower() if found else None
+    return {j: {"state": (tasks.get(j) or {}).get("doer_state"), "verdict": verdict(tasks.get(j) or {}),
                 "agent": (tasks.get(j) or {}).get("agent"), "detail": (tasks.get(j) or {}).get("doer_detail")} for j in jobs}
 
 
@@ -1284,7 +1290,10 @@ def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, n
     failed = [j for j, r in reviews.items() if r["state"] == "failed"]
     if failed:
         return _hold(root, ref, record, f"a review could not finish ({', '.join(failed)})")
-    changes = [r for r in reviews.values() if r["verdict"] != "pass"]
+    silent = [j for j, r in reviews.items() if r["verdict"] is None]
+    if silent:
+        return _hold(root, ref, record, f"a reviewer gave no verdict ({', '.join(silent)})")  # never guess one
+    changes = [r for r in reviews.values() if r["verdict"] == "changes"]
     if changes:
         if (record.get("review_round") or 1) >= MAX_REVIEW_ROUNDS:
             return _hold(root, ref, record, f"still not passed after {MAX_REVIEW_ROUNDS - 1} reworks")
