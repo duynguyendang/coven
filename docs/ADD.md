@@ -409,6 +409,12 @@ claim under any name.
 The cloud is a single instance by design (claims and SSE live in one process / one Durable
 Object). Scale-out would need a shared bus and is not claimed.
 
+**New code reaches the one instance.** An instance with open live streams kept running the old code after
+a deploy (seen several times). Now the Worker sends its version (`CF_VERSION_METADATA`) with every request;
+an instance of an older version resets itself (`ctx.abort`) and the Worker retries the request once on a
+fresh instance. Live streams also end after 10 minutes, and the browser reconnects by itself. After a
+deploy, `/healthz`'s `started_at` shows when the instance last started.
+
 ## 9. Decisions
 
 | Decision | Chosen | Rejected, and why |

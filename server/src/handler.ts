@@ -28,6 +28,9 @@ export const MAX_BATCH_BYTES = 256 * 1024;
 const MAX_BODY_BYTES = 1024 * 1024; // hard cap on what we will read at all
 const MAX_STREAM_BACKLOG = 512 * 1024; // a slower browser than this is dropped, not waited for
 const KEEPALIVE_MS = 15_000;
+// A live stream ends after this long and the browser reconnects (EventSource does it by itself). No connection
+// holds the cloud's single instance forever, so a newly deployed version takes over within minutes.
+const STREAM_LIFETIME_MS = 10 * 60_000;
 
 const utf8 = new TextEncoder();
 const byteLength = (text: string): number => utf8.encode(text).byteLength;
@@ -180,7 +183,8 @@ function eventStream(store: MemoryStore): Response {
         return true;
       });
       const keepalive = setInterval(() => (behind() ? stop() : write(": keepalive\n\n")), KEEPALIVE_MS);
-      cleanup = () => { clearInterval(keepalive); unsubscribe(); };
+      const lifetime = setTimeout(() => { write("retry: 1000\n\n"); stop(); }, STREAM_LIFETIME_MS);
+      cleanup = () => { clearInterval(keepalive); clearTimeout(lifetime); unsubscribe(); };
     },
     cancel() { cleanup(); },
   }, { highWaterMark: MAX_STREAM_BACKLOG, size: (chunk) => chunk.byteLength });

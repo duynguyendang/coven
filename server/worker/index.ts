@@ -22,6 +22,7 @@ import { SqlStore } from "../src/sqlstore.ts";
 
 interface Env {
   COVEN: DurableObjectNamespace<CovenCloud>;
+  CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
   ASSETS: Fetcher;
   COVEN_TOKENS?: string;
   COVEN_INGEST_TOKEN?: string;
@@ -32,11 +33,15 @@ const tokenEnv = (env: Env): TokenEnv => ({
   COVEN_TOKENS: env.COVEN_TOKENS, COVEN_INGEST_TOKEN: env.COVEN_INGEST_TOKEN, COVEN_READ_TOKEN: env.COVEN_READ_TOKEN,
 });
 
+const VERSION_HEADER = "x-coven-version";
+
 export class CovenCloud extends DurableObject<Env> {
   private handle: Handler | null = null;
+  private readonly version: string | null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.version = env.CF_VERSION_METADATA?.id ?? null;
     // No request is served until the read model is rebuilt from storage.
     ctx.blockConcurrencyWhile(async () => {
       const store = new SqlStore(ctx.storage.sql as any);
@@ -47,6 +52,12 @@ export class CovenCloud extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
+    // A Worker of a newer deployment sent this: this instance runs old code (open streams kept it alive).
+    // Reset it; the Worker retries and the request reaches a fresh instance with the new code.
+    const wanted = request.headers.get(VERSION_HEADER);
+    if (wanted && this.version && wanted !== this.version) {
+      this.ctx.abort(`a newer version is deployed (${wanted})`);
+    }
     return (await this.handle!(request)) ?? json(404, { detail: "Not Found" });
   }
 }
@@ -58,7 +69,17 @@ export default {
       if (usingDevToken(tokenEnv(env)) && url.pathname !== "/healthz") {
         return json(503, { detail: "no password configured: set one with `wrangler secret put COVEN_TOKENS`" });
       }
-      return env.COVEN.get(env.COVEN.idFromName("fleet")).fetch(request);
+      const forward = (original: Request): Promise<Response> => {
+        const headers = new Headers(original.headers);
+        if (env.CF_VERSION_METADATA?.id) headers.set(VERSION_HEADER, env.CF_VERSION_METADATA.id);
+        return env.COVEN.get(env.COVEN.idFromName("fleet")).fetch(new Request(original, { headers }));
+      };
+      const spare = request.clone() as unknown as Request; // a body can be read once: keep a copy for the second try
+      try {
+        return await forward(request);
+      } catch {
+        return await forward(spare); // the object reset itself for new code (or was evicted): once more, on a fresh instance
+      }
     }
     // The dashboard: same headers as the Node server gives it.
     const asset = await env.ASSETS.fetch(request);
