@@ -304,7 +304,7 @@ TASK_STATES = ("working", "submitted", "answered", "failed")
 
 
 def task_status(root: Path, ref: str, state: str, agent: str | None = None, detail: str | None = None,
-                key: str | None = None, attempt: int | None = None, branch: str | None = None) -> dict:
+                key: str | None = None, attempt: int | None = None, branch: str | None = None, verdict: str | None = None) -> dict:
     """Say where a task stands, as its doer: working, submitted (for review), answered, or failed. Done is the spec's tick."""
     if state not in TASK_STATES:
         raise ValueError(f"state must be one of {', '.join(TASK_STATES)}")
@@ -313,6 +313,8 @@ def task_status(root: Path, ref: str, state: str, agent: str | None = None, deta
         payload["agent"] = agent
     if detail:
         payload["detail"] = " ".join(str(detail).split())[:200]
+    if verdict in ("pass", "changes"):
+        payload["verdict"] = verdict  # a reviewer's: the host may merge on it (auto-merge)
     _stamp(payload, key, attempt)
     payload["host_id"] = config.host_id(root)
     if state == "submitted":
@@ -389,6 +391,13 @@ def push_done(root: Path, ref: str, branch: str, ok: bool, detail: str | None = 
     if detail:
         payload["detail"] = " ".join(str(detail).split())[:200]
     return _member_event(root, "push_done", payload)
+
+
+def task_merged(root: Path, ref: str, branch: str, commit: str, base: str, reviewers: list[str], decided_by: str) -> dict:
+    """The host merged a reviewed branch into the base and pushed it (auto-merge): the board shows the task done."""
+    payload = {"task": ref, "branch": branch, "commit": commit[:40], "base": base[:100], "reviewers": list(reviewers)[:6],
+               "decided_by": decided_by, "host_id": config.host_id(root)}
+    return _member_event(root, "task_merged", payload)
 
 
 def listening(root: Path, roles: tuple[str, ...] = CHAT_ROLES) -> dict:

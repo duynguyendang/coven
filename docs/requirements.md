@@ -105,7 +105,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H11 | A host can hand a task to Kiro Web (a cloud session on a GitHub repository) and check the resulting branch like a local one. | Could | Usable: a person dispatches a ready task ("Run in Kiro Web"); a host with `--kiro-web` runs a `kiro-cli chat --cloud` session without `--agent` (the cloud resolves it before cloning, so a repository agent is never found: spike 2026-11-14), with the witch's role in the prompt, and judges it by `git ls-remote` on the task branch up to `COVEN_CLOUD_WAIT`, not by the exit code (a session pushed its branch and still exited 4); a missing source provider fails at once with the fix. A rework session reuses the task branch `coven/<spec>-<task>`, and the host accepts it only when origin has a new commit on that branch since the last submission, so an old branch is never mistaken for new work. Needs a Kiro cloud account with the source provider connected. Tested with a fake session; one real build delivered its branch and PR in about a minute |
 | FR-H12 | Several hosts stay apart: each has a `host_id` (`.coven/host.json`) beside its name; claims, renewals and releases carry it, so two hosts with one name are two claimants. | Should | Built |
 | FR-H13 | A submitted branch stays with the host that made it (`branch_host`): another host does not take it, and the board says when that host is offline. | Must | Built |
-| FR-H14 | Nothing pushes unless a person asks: **Ask host to push** (`POST /v1/board/push`) makes the host that holds the branch push that one `coven/` branch once and report `push_done`. | Must | Built |
+| FR-H14 | Nothing pushes unless a person asks: **Ask host to push** (`POST /v1/board/push`) makes the host that holds the branch push that one `coven/` branch once and report `push_done`; or a person started the host with `--auto-merge` (FR-AM4). | Must | Built |
 | FR-H15 | Before it commits or submits, a host asks the cloud whether it still holds its claim; a lapsed lease ends the run without a commit. | Must | Built |
 | FR-H16 | Hosts announce free slots; the Chair sees who has room, and which ready build tasks share no path (a person may send them to Kiro Web; the Chair never does). | Should | Built |
 
@@ -114,7 +114,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | Id | Requirement | Pri | Status |
 | :--- | :--- | :--- | :--- |
 | FR-ST1 | The doer reports `working`, `submitted` (with branch and commit), `answered` or `failed` (with the reason); the board follows the latest. | Must | Built |
-| FR-ST2 | Only people say `done`: *Mark done*, or the task's tick reaching the base branch. The cloud refuses `done` from any doer. | Must | Built |
+| FR-ST2 | Only people say `done`: *Mark done*, or the task's tick reaching the base branch. The cloud refuses `done` from any doer; a `task_merged` from an auto-merge host (FR-AM5) also counts. | Must | Built |
 | FR-ST3 | A task marked done is released by its host and skipped by readiness. | Must | Built |
 | FR-ST4 | Every task has a derived `task_key` and every run an `attempt_id`; claims, statuses, notes and jobs carry them, the same in Python and Node; a job is created once per key. | Must | Built |
 
@@ -131,7 +131,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-CH7 | A Reject is binding: it fails the task's review and sends submitted work back. | Must | Built |
 | FR-CH8 | A request for a change becomes a planning job for the Elder Witch: she proposes at most five build tasks, each with narrow paths and one verify command, which the host checks and puts on the board as a plan. | Should | Built (not yet run with a real model) |
 | FR-CH9 | Only a person's approval of a plan (dashboard, `POST /v1/board/plan`) makes build tasks; the Dev builds each on its own branch and the host checks and commits it as for a spec task. | Must | Built |
-| FR-CH10 | A plan task's submitted branch gets review jobs for White Hat and Black Hat, run in a checkout of that branch; people read them and merge or reject. Reviews of "what I have" see the working copy's uncommitted changes. | Should | Built |
+| FR-CH10 | A plan task's submitted branch gets review jobs (now for every build: FR-AM1) for White Hat and Black Hat, run in a checkout of that branch; people read them and merge or reject. Reviews of "what I have" see the working copy's uncommitted changes. | Should | Built |
 | FR-CH11 | One voice per message: the listener claims the message (`chat#<id>`) before it answers, as a host's Chair does, so only one answers. | Should | Built |
 
 ### 4.8 Preparing tasks
@@ -149,6 +149,17 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-F2 | Review claims carry evidence; a challenge without a reproducing test is shown as not counted. | Must | Built |
 | FR-F3 | The guard decides from what it measured itself (verify, scope, the reproducing tests, a person's reject), never from an agent's words; disagreement with the Chair is shown. | Must | Built |
 | FR-F4 | Nothing in a flow merges; the hand-off is text for a person. | Must | Built |
+
+### 4.9.1 Review and auto-merge
+
+| Id | Requirement | Pri | Status |
+| :--- | :--- | :--- | :--- |
+| FR-AM1 | Every submitted build (spec task or approved plan task) gets review jobs for White Hat (tests), Black Hat (attack) and the Elder Witch (design), on its branch; a rework starts the next round. | Must | Built |
+| FR-AM2 | Each reviewer ends with `VERDICT: pass` or `VERDICT: changes — <what>`; the verdict is on the job's status and the reasons on the task. | Must | Built |
+| FR-AM3 | Auto-merge is opt-in per host (`coven host run --auto-merge` or `COVEN_AUTO_MERGE=1`); without it people decide on the verdicts. | Must | Built |
+| FR-AM4 | On an auto-merge host: changes go back to the Dev with the reasons, at most two reworks; three passes go to the Chair (Senior Kiro), who decides `merge` or `hold`; on `merge` the host merges only if no person rejected or suggested a change, the branch merges cleanly, and `make verify` (`COVEN_MERGE_CHECK`) passes on the merged tree; then it pushes the base (never forced) and deletes the branch here and on origin. | Must | Built (tested with a fake runner and a local origin) |
+| FR-AM5 | The host records the merge (`task_merged`: commit, base, reviewers, the Chair) and the board shows the task done with it. | Must | Built |
+| FR-AM6 | Anything in doubt holds the task for a person, said once in a note: a failed review, no Chair on the host, a hold decision, a conflict, a failed check, a refused push. | Must | Built |
 
 ### 4.10 Witches working together
 

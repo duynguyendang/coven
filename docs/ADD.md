@@ -118,8 +118,9 @@ Trust per kind can be overridden with `COVEN_TRUST_BUILD|INSPECT|THINK`.
 
 **Several hosts on one project.** Each host has a `host_id`. A submitted branch stays on the host that
 made it (`branch_host`): another host does not take its rework, and the dashboard says when that host
-is offline. Nothing pushes, except when a person presses **Ask host to push**: the addressed host pushes
-that one `coven/` branch once and reports `push_done`. Before it commits or submits, a host asks the
+is offline. Nothing pushes, except when a person presses **Ask host to push** (the addressed host pushes
+that one `coven/` branch once and reports `push_done`), or on a host a person started with `--auto-merge`
+(below). Before it commits or submits, a host asks the
 cloud whether it still holds its claim; a lapsed lease ends the run as `failed: lease lost`, without a
 commit. Hosts announce `free_slots`; the Chair sees who has room, and the host lists ready build tasks
 whose paths do not overlap (they can run at once, and a person may send them to Kiro Web).
@@ -133,6 +134,34 @@ local build. A missing source provider ends the run at once with the fix.
 A rework reuses the same branch name. The host remembers the branch head from the last submission and
 counts the run as delivered only when origin shows a new commit beyond it; an unchanged branch fails
 the run instead of being submitted again. The path, verify and tick checks are the local ones.
+
+### 4.2.1 Review and auto-merge (FR-AM1–AM6)
+
+Every submitted build gets three review jobs on its branch: White Hat tests it, Black Hat attacks it, the
+Elder Witch checks its design. Each review runs in a checkout of the branch and ends with
+`VERDICT: pass` or `VERDICT: changes — <what>`; the host puts the verdict on the job's `task_status`
+(`verdict`) and the reasons in a note on the task under review. On a host started with `--auto-merge`
+(or `COVEN_AUTO_MERGE=1`), the host that holds the branch acts on them:
+
+```mermaid
+flowchart TD
+    S["Dev submits\ncoven/spec-task"] --> R["three review jobs\n(round n)"]
+    R --> V{"verdicts"}
+    V -->|any changes| RW{"round < 3?"}
+    RW -->|yes| D["rework by the Dev\nwith the reasons"] --> S
+    RW -->|no| H["hold for a person"]
+    V -->|a person rejected,\na review failed| H
+    V -->|three passes| C{"Chair (Senior Kiro)\nDECISION: merge | hold"}
+    C -->|hold| H
+    C -->|merge| Q{"qualified?\nmerges cleanly ·\nmake verify on the merged tree"}
+    Q -->|no| H
+    Q -->|yes| P["push the base (no force),\ndelete the branch,\ntask_merged"]
+```
+
+A hold is said once (a question note) and then left to a person: they can still merge, *Mark done*, or
+reject (which sends it back to the Dev). The merge happens in a throw-away checkout of the base as on
+origin; the working copy follows only when it is on the base and clean. Without `--auto-merge` the
+reviews are made and people decide, as before.
 
 ### 4.3 Council chat: people talk, the Chair dispatches (FR-CH1–CH7)
 
@@ -226,8 +255,8 @@ outside a witch's `produces` is a `warning`, never a refusal.
 
 | Work | Responsible | Consulted | Approves | Informed |
 | :--- | :--- | :--- | :--- | :--- |
-| Build a task | Green Witch | Elder Witch, White Hat (by consultation) | a person (merge) | the board |
-| Test and attack a branch | White Hat, Black Hat | Green Witch | a person | the Chair, the board |
+| Build a task | Green Witch | Elder Witch, White Hat (by consultation) | a person (merge); on an auto-merge host, the three reviewers' passes and the Chair's decision | the board |
+| Review a branch (verdicts) | White Hat (tests), Black Hat (attacks), Elder Witch (design) | Green Witch | a person, or the Chair on an auto-merge host | the board |
 | Plan a change | Elder Witch | Elf, Black Hat | a person (the plan) | the chat |
 | Triage what people say | Grey Witch (Chair) | Elder Witch (design) | a person decides | the chat |
 | Prepare tasks | Scribe | Green Witch | a person (merge) | the board |
@@ -295,7 +324,7 @@ claimants.
 | Deviation and relay health | `spec_deviation`, `policy_block`, `warning`, `daemon_connected`, `daemon_disconnected` |
 | Council review | `council_opened`, `claim_proposed`, `claim_challenged`, `test_result`, `verify_result`, `chair_summary`, `chair_proposal`, `guard_verdict`, `council_closed` |
 | Flows | `flow_started`, `flow_step_started`, `flow_step_finished`, `flow_finished` |
-| Board | `task_claimed` (`{claim_id, spec, task_id, member, agent, kind, paths, lease_until, task_key?, attempt_id?, host_id?}`), `task_released`, `board_note` (`{note, kind, task?, reply_to?, agent?, role?, task_key?, attempt_id?}`), `task_status` (`{task, state, agent?, detail?, task_key?, attempt_id?, host_id?, branch_host?, branch?}`; `done` refused from `/v1/events`; a `submitted` status names `branch_host`, the host that holds the commits), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?, task_key?, from?, expects?, reply_to?, depth?}`; `expects` is `answer`, `plan`, `review` or `test_result`, `depth` 0–2; for the Dev only with `expects: answer`, a read-only question about the code; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author, reasons?}`; the reasons are read by the next planning round; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`), `push_request` (`{task, branch, host_id, author}`; a person asks the host that holds a submitted branch to push it; refused from `/v1/events`; the only way anything pushes), `push_done` (`{task, branch, host_id, ok, detail?}`; that host's report) |
+| Board | `task_claimed` (`{claim_id, spec, task_id, member, agent, kind, paths, lease_until, task_key?, attempt_id?, host_id?}`), `task_released`, `board_note` (`{note, kind, task?, reply_to?, agent?, role?, task_key?, attempt_id?}`), `task_status` (`{task, state, agent?, detail?, task_key?, attempt_id?, host_id?, branch_host?, branch?, verdict?}`; `verdict` is a reviewer's `pass` or `changes`; `done` refused from `/v1/events`; a `submitted` status names `branch_host`, the host that holds the commits), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?, task_key?, from?, expects?, reply_to?, depth?}`; `expects` is `answer`, `plan`, `review` or `test_result`, `depth` 0–2; for the Dev only with `expects: answer`, a read-only question about the code; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author, reasons?}`; the reasons are read by the next planning round; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`), `push_request` (`{task, branch, host_id, author}`; a person asks the host that holds a submitted branch to push it; refused from `/v1/events`; the only way anything pushes), `push_done` (`{task, branch, host_id, ok, detail?}`; that host's report), `task_merged` (`{task, branch, commit, base, reviewers, decided_by: grey-witch, host_id}`; an auto-merge host merged a reviewed branch and pushed the base; the board shows the task done) |
 | Chat | `chat_message` (kinds ask, idea, suggestion, do, reject, answer, working, error), `council_listening` |
 | Hosts | `host_online` (`{agents, slots, running, cloud?, host_id?, free_slots?}`; `cloud` names the repositories this host may run Kiro Web sessions on; `free_slots` is what the Chair routes by) |
 

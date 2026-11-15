@@ -136,7 +136,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
 | `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too) |
-| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
+| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--auto-merge] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
 | `coven host prepare [--only <spec>] [--note …]` | The Scribe proposes the witch, paths and verify for tasks that lack them; the host writes them on branch `coven/prepare-all` for you to merge |
 | `coven host status \| agents \| retry <task>` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again |
 | `coven host agents [--roles] [--sync] [--check]` | The eleven witches; `--roles` prints what each owns, produces, hands off and never does; `--sync` writes that role table into each agent prompt and the dashboard; `--check` fails when they are out of date (the harness runs it) |
@@ -253,6 +253,13 @@ Hat about tests, Black Hat about what breaks. Each answering run is read-only, a
 and the answer land on the task's *Conversation*. A change request becomes a planning session: the
 Elf offers an alternative, the Elder Witch plans, the Black Hat challenges it (up to three rounds),
 and you approve or reject, with a reason the next plan reads.
+
+**Review and auto-merge.** Every build the Dev submits is reviewed on its branch by White Hat (tests),
+Black Hat (attacks) and the Elder Witch (design), each ending with a pass or changes verdict. Start a host
+with `--auto-merge` (or `COVEN_AUTO_MERGE=1`) to let it act on them: changes go back to the Dev (twice at
+most), three passes go to the Chair, and on her decision the host merges into the base and pushes it, but
+only if no person rejected it, it merges cleanly and `make verify` passes on the merged tree
+(`COVEN_MERGE_CHECK`). Anything in doubt waits for you, with a note saying why.
 
 **Several hosts, one project.** Each host has an id (`.coven/host.json`). A submitted branch stays
 on the host that built it; its rework goes back there. Nothing is pushed unless you press **Ask

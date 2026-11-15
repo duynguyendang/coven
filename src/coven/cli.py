@@ -340,7 +340,8 @@ def cmd_host(args: argparse.Namespace) -> int:
         return 2
     try:
         runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=lambda line: print(line, flush=True),
-                           kiro_web=args.kiro_web or os.environ.get("COVEN_KIRO_WEB_REPO"))
+                           kiro_web=args.kiro_web or os.environ.get("COVEN_KIRO_WEB_REPO"),
+                           auto_merge=args.auto_merge or os.environ.get("COVEN_AUTO_MERGE") == "1")
     except host.HostError as exc:
         print(f"coven host run: {exc}", file=sys.stderr)
         return 2
@@ -666,6 +667,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_run.add_argument("--review-limit", type=int, default=3, help="submitted tasks that may wait for review before this host takes no more (default 3)")
     host_run.add_argument("--agents", help="comma-separated agents this host may run (default: every installed agent)")
     host_run.add_argument("--kiro-web", metavar="OWNER/NAME", help="run the build tasks a person dispatched to Kiro Web (cloud sessions on this GitHub repository) (or set COVEN_KIRO_WEB_REPO)")
+    host_run.add_argument("--auto-merge", action="store_true", help="act on reviewers' verdicts: rework, or merge and push the base branch when White Hat, Black Hat and the Elder Witch pass and the Chair decides (or set COVEN_AUTO_MERGE=1)")
     host_run.add_argument("--interval", type=float, default=15.0)
     host_run.add_argument("--once", action="store_true", help="one pass, wait for the agents it started, then exit")
     host_sub.add_parser("status", help="this host's agents and the tasks it runs")

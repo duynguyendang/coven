@@ -14,7 +14,7 @@ Several machines work one project at once, and a build task may run in Kiro Web.
 - R2.1 `task_status submitted` records `branch_host` (the `host_id` that holds the commits). Commits are local; Coven never pushes.
 - R2.2 A rework goes back to `branch_host`. Another host leaves it alone, and the dashboard says the host is offline when it is.
 - R2.3 When `branch_host` is offline, a person can press **Ask host to push**. That is the only way a branch is pushed; the host then pushes `coven/*` once, and another host may continue from it.
-- R2.4 Without that request nothing is pushed. A host that sees a push request not addressed to it ignores it.
+- R2.4 Without that request nothing is pushed, except by a host a person started with `--auto-merge`, under the rules of FR-AM4 (docs/requirements.md). A host that sees a push request not addressed to it ignores it.
 
 ## R3. Leases stay safe
 

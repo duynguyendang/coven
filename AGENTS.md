@@ -57,7 +57,11 @@ make deploy      # Cloudflare (only when asked)
    `server/test/web.test.ts` to pass and follows `docs/DESIGN.md` (the visual system); for a
    visual change, also look at the page in a real browser (both colour schemes and a phone width).
 2. **Never push, merge, deploy or delete branches unless the person asked.** The host commits
-   locally on `coven/<spec>-<task>` branches; people merge.
+   locally on `coven/<spec>-<task>` branches; people merge. One exception, chosen per host by a person:
+   a host started with `--auto-merge` merges and pushes the base branch itself, but only a branch White
+   Hat, Black Hat and the Elder Witch all passed, that the Chair decided to merge, that no person
+   rejected, that merges cleanly, and whose merged tree passes `make verify` (`COVEN_MERGE_CHECK`).
+   It never force-pushes. An agent working on this repo outside a host still follows the rule.
 3. **Events are a contract.** A new event type, field or endpoint goes into
    `docs/ADD.md` §6 in the same change; the harness fails otherwise.
    Validate in `server/src/events.ts`; the cloud accepts nothing it cannot validate.

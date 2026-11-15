@@ -65,14 +65,14 @@ class FakeCloud:
             tasks = specmap.load(root)
             return [t for r, t in tasks.items() if r not in held and not t["done"]]
 
-        c.answers, c.statuses, c.created, c.stamps, c.branches = [], [], [], [], []
+        c.answers, c.statuses, c.created, c.stamps, c.branches, c.verdicts = [], [], [], [], [], []
         c.lease_ok = True
         monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None, sender=None, expects=None, reply_to=None, depth=None: c.created.append(
             {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key, "from": sender, "expects": expects, "reply_to": reply_to}) or {})
         c.plans = []
         monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
             {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
-        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None: (c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch))) and {})
+        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None, verdict=None: (c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch)), c.verdicts.append((ref, verdict))) and {})
         monkeypatch.setattr(board, "answer", lambda root, reply_to, message, role="chair", kind="answer": c.answers.append((reply_to, role, kind, message)) or {})
         for attr, fn in {
             "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root: [],
@@ -940,7 +940,9 @@ def test_an_approved_plan_task_is_built_then_reviewed_on_its_branch(repo, monkey
     assert record["state"] == "submitted" and record["branch"] == "coven/council-r1-1b1"
     assert git(repo, "log", "-1", "--format=%s", "coven/council-r1-1b1").startswith("coven: council#r1-1b1")
     reviews = [(c["agent"], c["task_id"], c["branch"], c["review_of"]) for c in cloud.created]
-    assert reviews == [("white-hat", "r1-1b1-t", "coven/council-r1-1b1", "council#r1-1b1"), ("black-hat", "r1-1b1-x", "coven/council-r1-1b1", "council#r1-1b1")]
+    assert [r for r in reviews if r[3] == "council#r1-1b1"] == [("white-hat", "r1-1b1-t", "coven/council-r1-1b1", "council#r1-1b1"),
+                                                             ("black-hat", "r1-1b1-x", "coven/council-r1-1b1", "council#r1-1b1"),
+                                                             ("elder-witch", "r1-1b1-d", "coven/council-r1-1b1", "council#r1-1b1")]
     assert "council#r1-1b2" not in host.load(repo), "a task nobody approved is never built"
 
 
@@ -1011,7 +1013,7 @@ def test_a_note_outside_a_witchs_role_is_a_warning_and_the_run_still_settles(rep
 
 def test_the_chair_is_told_what_each_witch_owns(repo):
     prompt = host.triage_prompt({"message_id": "m1", "message": "is the design right?", "kind": "ask", "author": "duy"}, "wsl-1", repo)
-    assert "owns: design and architecture; the plan of a change." in prompt
+    assert "owns: design and architecture; the plan of a change; the design review of a branch." in prompt
     assert "Give each job to the witch who owns that kind of work" in prompt
 
 
@@ -1078,9 +1080,14 @@ def test_push_branch_refuses_anything_but_the_tasks_own_branch(repo):
 
 
 def test_no_code_path_pushes_except_a_persons_request():
+    # Two places push: a person's push request (push_branch), and a qualified auto-merge (merge_qualified, opt-in per host).
+    import inspect
+
     src = Path(host.__file__).parent
     calls = [(f.name, line.strip()) for f in sorted(src.glob("*.py")) for line in f.read_text().splitlines() if '"push"' in line and "git" in line]
-    assert len(calls) == 1 and calls[0][0] == "host.py" and "refs/heads/{branch}" in calls[0][1], calls
+    assert all(name == "host.py" for name, _ in calls) and len(calls) == 3, calls
+    allowed = inspect.getsource(host.push_branch) + inspect.getsource(host.merge_qualified)
+    assert all(line in allowed for _, line in calls), "a push outside push_branch and merge_qualified"
 
 
 def test_the_chair_sees_free_slots_and_tasks_that_can_run_at_once(repo):

@@ -140,8 +140,10 @@ def test_a_host_takes_requests_and_tasks_runs_each_witch_and_the_cloud_sees_it_a
     tasks = {f"{s['spec']}#{t['task_id']}": t for s in view["specs"] for t in s["tasks"]}
     assert (tasks["shop#1"]["doer_state"], tasks["shop#1"]["claimed_agent"]) == ("submitted", "green-witch")
     assert (tasks["shop#2"]["doer_state"], tasks["shop#2"]["claimed_agent"]) == ("answered", "elf")
-    jobs = [r for r in tasks if r.startswith("council#")]
+    jobs = [r for r in tasks if r.startswith("council#") and not tasks[r].get("review_of")]
     assert len(jobs) == 1 and tasks[jobs[0]]["agent"] == "raven", "one job, for the Raven; the Dev's is dropped"
+    reviews = sorted(tasks[r]["agent"] for r in tasks if tasks[r].get("review_of") == "shop#1")
+    assert reviews == ["black-hat", "elder-witch", "white-hat"], "the submitted build gets its three reviewers"
     (wsl,) = [h for h in view["hosts"] if h["host"] == "wsl-e2e"]
     assert wsl["slots"] == 3 and "raven" in wsl["agents"] and "council-chat" not in wsl["agents"]
     assert any(n.get("agent") == "elf" and n["task"] == "shop#2" for n in view["notes"])
@@ -149,8 +151,8 @@ def test_a_host_takes_requests_and_tasks_runs_each_witch_and_the_cloud_sees_it_a
     # Tick 2: the Raven takes the Chair's job; her answer lands in the chat under the person's request.
     second = host.Host(root, slots=3, out=lambda line: None).run(once=True)
     push()
-    assert second["requests"] == jobs
-    assert world["calls"]()[-1]["agent"] == "raven"
+    assert jobs[0] in second["requests"], "the Raven takes the Chair's job (the reviewers may take theirs in the same tick)"
+    assert "raven" in [c["agent"] for c in world["calls"]()]
     chat = api(cloud, f"/v1/chat?project_id={project}")
     replies = [(m["persona"], m["kind"], m["message"]) for m in chat["messages"] if m.get("reply_to") == asked]
     assert ("grey-witch", "answer", "The Raven will check the build.") in replies

@@ -511,3 +511,35 @@ describe("witches working together (spec witch-collaboration)", () => {
     } finally { await s.close(); }
   });
 });
+
+describe("review verdicts and auto-merge (FR-AM2, FR-AM5)", () => {
+  const ev = (type: string, payload: Json, id = Math.random().toString(16).slice(2, 12)): Json => ({
+    event_id: `evt_am_${id}`, project_id: "shop", run_id: "member_wsl-1", type, ts: new Date().toISOString(), source: "coven-cli", member: "wsl-1", payload,
+  });
+  const send = (base: string, events: Json[]) => postJson(base, "/v1/events", { project_id: "shop", run_id: "member_wsl-1", events }, auth());
+  const tasks = async (base: string) => Object.fromEntries((await getJson(base, "/v1/board?project_id=shop")).body.specs.flatMap((s: Json) => s.tasks.map((t: Json) => [`${s.spec}#${t.task_id}`, t])));
+
+  test("a reviewer's verdict is on her job; only pass or changes", async () => {
+    const s = await startServer();
+    try {
+      await send(s.base, [ev("task_created", { task: "council#vabc-t1", title: "Test shop#1", agent: "white-hat", review_of: "shop#1", branch: "coven/shop-1", expects: "review" })]);
+      const bad = await send(s.base, [ev("task_status", { task: "council#vabc-t1", state: "answered", agent: "white-hat", verdict: "lgtm" })]);
+      assert.equal(bad.body.accepted, 0);
+      await send(s.base, [ev("task_status", { task: "council#vabc-t1", state: "answered", agent: "white-hat", verdict: "pass", detail: "verdict: pass" })]);
+      assert.equal((await tasks(s.base))["council#vabc-t1"].doer_verdict, "pass");
+    } finally { await s.close(); }
+  });
+
+  test("a merge by the Chair's decision marks the task done, with who passed it", async () => {
+    const s = await startServer();
+    try {
+      await send(s.base, [ev("spec_artifact_updated", { spec: "shop", tasks: [{ task_id: "1", title: "Cart" }] })]);
+      const wrong = await send(s.base, [ev("task_merged", { task: "shop#1", branch: "coven/shop-1", commit: "abc1234", base: "main", reviewers: ["white-hat"], decided_by: "green-witch" })]);
+      assert.equal(wrong.body.accepted, 0, "only the Chair decides a merge");
+      await send(s.base, [ev("task_merged", { task: "shop#1", branch: "coven/shop-1", commit: "abc1234def", base: "main", reviewers: ["white-hat", "black-hat", "elder-witch"], decided_by: "grey-witch" })]);
+      const t = (await tasks(s.base))["shop#1"];
+      assert.equal(t.doer_state, "done");
+      assert.deepEqual(t.merged, { commit: "abc1234def", base: "main", reviewers: ["white-hat", "black-hat", "elder-witch"] });
+    } finally { await s.close(); }
+  });
+});

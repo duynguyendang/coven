@@ -918,6 +918,23 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: a merged task says by whom; a review row shows its verdict", async () => {
+    await send("am", "member_am", [
+      { ...ev("member_am", "am", "spec_artifact_updated", { artifact: "tasks", spec: "s", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [{ task_id: "1", title: "Cart", status: "not_started", paths: ["x/"] }] }, 4), member: "am" },
+      { ...ev("member_am", "am", "task_created", { task: "council#vk-t1", title: "Test s#1", agent: "white-hat", review_of: "s#1", branch: "coven/s-1", expects: "review" }, 3), member: "am" },
+      { ...ev("member_am", "am", "task_status", { task: "council#vk-t1", state: "answered", agent: "white-hat", verdict: "pass", detail: "verdict: pass" }, 2), member: "am" },
+      { ...ev("member_am", "am", "task_merged", { task: "s#1", branch: "coven/s-1", commit: "abc1234def", base: "main", reviewers: ["white-hat", "black-hat", "elder-witch"], decided_by: "grey-witch" }, 1), member: "am" }]);
+    await go("#/board/am", 600);
+    openColumn("done");
+    assert.match(doc().querySelector('[data-key="row-s#1"]')!.textContent!, /Merged/);
+    const merged = openTask("s#1").textContent!.replace(/\s+/g, " ");
+    assert.match(merged, /Merged into main at abc1234 · passed by White Hat Witch, Black Hat Witch, Elder Witch · decided by Grey Witch/);
+    closeTask();
+    openColumn("review");
+    assert.match(doc().querySelector('[data-key="row-council#vk-t1"]')!.textContent!, /Pass/);
+    await go("#/");
+  });
+
   test("your name is set once, in the sidebar, and signs the composers", async () => {
     await go("#/board/shop", 400);
     assert.equal(doc().getElementById("note-author"), null, "no second name field on the board");

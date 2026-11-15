@@ -186,6 +186,7 @@ export class Board {
           branch_host: p.state === "submitted" && typeof p.branch_host === "string" && HOST_ID.test(p.branch_host) ? p.branch_host
             : (known?.branch_host ?? null),
           branch: typeof p.branch === "string" ? p.branch.slice(0, 110) : (known?.branch ?? null),
+          verdict: p.verdict === "pass" || p.verdict === "changes" ? p.verdict : null,
         });
       }
       this.statuses.set(project, all);
@@ -226,6 +227,13 @@ export class Board {
           this.tasks.set(project, specs);
         }
       }
+    } else if (event.type === "task_merged" && typeof p.task === "string") {
+      // The host merged a reviewed branch on the Chair's decision (auto-merge): the task is done, and says by whom.
+      const all = this.statuses.get(project) ?? new Map<string, Json>();
+      all.set(p.task, { ...(all.get(p.task) ?? {}), state: "done", ts: event.ts, host: event.member ?? null, agent: "grey-witch",
+        detail: `merged into ${String(p.base).slice(0, 60)} at ${String(p.commit).slice(0, 7)}, passed by ${(p.reviewers || []).join(", ")}`.slice(0, 200),
+        merged: { commit: String(p.commit).slice(0, 40), base: String(p.base).slice(0, 100), reviewers: (p.reviewers || []).slice(0, 6) } });
+      this.statuses.set(project, all);
     } else if ((event.type === "push_request" || event.type === "push_done") && typeof p.task === "string") {
       const all = this.pushes.get(project) ?? new Map<string, Json>();
       const known = all.get(p.task);
@@ -344,7 +352,7 @@ export class Board {
         const doing = this.statuses.get(projectId)?.get(`${spec}#${t.task_id}`);
         const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
-        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0,
+        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null, merged: doing?.merged ?? null,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           delivery: spec === "council" ? delivery(t, doing, owner, this.runsAgent(projectId, t.agent, at), at) : null,
           branch_host: doing?.branch_host ?? null, branch_host_online: doing?.branch_host ? this.hostOnline(projectId, doing.branch_host, at) : null, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,

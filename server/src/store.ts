@@ -194,7 +194,7 @@ export class MemoryStore {
       this.publish({ kind: "event", event: this.view(event), run: { ...run } });
       // An answer or a note arrives from a relay as an ordinary event: tell the chat and board pages too.
       if (event.type === "chat_message") this.publish({ kind: "chat", project_id: event.project_id });
-      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch", "plan_proposed", "plan_decision", "push_request", "push_done"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
+      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch", "plan_proposed", "plan_decision", "push_request", "push_done", "task_merged"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
     }
     return true;
   }

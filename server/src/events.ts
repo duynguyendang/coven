@@ -53,6 +53,7 @@ export const EVENT_TYPES = new Set([
   // a person decides a task runs in Kiro Web (or takes that back) — contract §5.6, web only
   "task_dispatch",
   "push_request",
+  "task_merged",
   "push_done",
   // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
   "plan_proposed",
@@ -206,6 +207,19 @@ export function validateEvent(event: Json): string[] {
     if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push(`${event.type} branch must be coven/<name>`);
     if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push(`${event.type} needs the host_id that holds the branch`);
     if (event.type === "push_done" && typeof p.ok !== "boolean") errors.push("push_done needs ok: true or false");
+  }
+  // A reviewer's verdict on a build (auto-merge acts on it); and the host's record that it merged a reviewed branch.
+  if (event.type === "task_status" && isObject(payload) && payload.verdict !== undefined && !["pass", "changes"].includes(payload.verdict)) {
+    errors.push("task_status verdict must be pass or changes");
+  }
+  if (event.type === "task_merged") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_merged needs task as <spec>#<task>");
+    if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("task_merged branch must be coven/<name>");
+    if (typeof p.commit !== "string" || !/^[0-9a-f]{7,40}$/.test(p.commit)) errors.push("task_merged needs the merge commit");
+    if (typeof p.base !== "string" || !p.base || p.base.length > 100) errors.push("task_merged needs the base branch");
+    if (!Array.isArray(p.reviewers) || !p.reviewers.length || !p.reviewers.every((r: unknown) => typeof r === "string" && AGENT_SLUGS.has(r))) errors.push("task_merged names the witches who passed it");
+    if (p.decided_by !== "grey-witch") errors.push("task_merged is decided by the Chair (grey-witch)");
   }
   if (event.type === "plan_proposed") {
     const p = isObject(payload) ? payload : {};
