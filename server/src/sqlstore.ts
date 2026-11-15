@@ -11,7 +11,10 @@
  * `exec` throws on failure, the API answers 5xx and the relay retries.
  *
  * Not stored: heartbeats (one per run every 5 s would spend the free plan's daily row writes).
- * After a restart a run reads DISCONNECTED until its next heartbeat. No expiry yet.
+ * After a restart a run reads DISCONNECTED until its next heartbeat.
+ *
+ * Expiry (as DynamoStore's `COVEN_TTL_DAYS`): hydrate deletes events whose own `ts` is older
+ * than `ttlDays` and does not replay them. `ttlDays` of 0 or less keeps events forever.
  */
 
 import type { Json } from "./events.ts";
@@ -34,10 +37,12 @@ const SCHEMA = [
 
 export class SqlStore extends MemoryStore {
   private sql: Sql;
+  private ttlDays: number;
 
-  constructor(sql: Sql) {
+  constructor(sql: Sql, ttlDays = 30) {
     super();
     this.sql = sql;
+    this.ttlDays = Number.isFinite(ttlDays) ? ttlDays : 30;
     for (const statement of SCHEMA) this.sql.exec(statement);
     // Replayed responses survive an eviction of the object: they are kept in `state`, beside dismissals.
     this.idem.onPut = (id: string, entry: IdemEntry) => this.putState(`idem:${id}`, JSON.stringify(entry));
@@ -97,6 +102,10 @@ export class SqlStore extends MemoryStore {
 
   /** Rebuild the read model from storage. Returns the number of events replayed. */
   async hydrate(): Promise<number> {
+    if (this.ttlDays > 0) {
+      const cutoff = new Date(Date.now() - this.ttlDays * 86400_000).toISOString();
+      this.sql.exec("DELETE FROM events WHERE ts < ?", cutoff);
+    }
     const events: Json[] = [];
     for (const row of this.sql.exec("SELECT body FROM events").toArray()) {
       try { events.push(JSON.parse(String(row.body))); } catch { /* skip an unreadable row */ }

@@ -33,11 +33,28 @@ function sqlite(db = new DatabaseSync(":memory:"), failWrites = { on: false }): 
 
 const ev = (id: string, type: string, extra: Json = {}): Json => ({
   event_id: id, project_id: "shop", run_id: "sess_a", seq: Number(id.replace(/\D/g, "")) || 0, type,
-  ts: new Date(Date.UTC(2026, 10, 12, 10, 0, Number(id.replace(/\D/g, "")) || 0)).toISOString(),
+  ts: new Date(Date.now() - 3600_000 + (Number(id.replace(/\D/g, "")) || 0) * 1000).toISOString(),
   source: "relay", payload: {}, ...extra,
 });
 
 describe("SqlStore", () => {
+  test("events older than ttlDays are deleted and not replayed; 0 keeps everything", async () => {
+    const sql = sqlite();
+    const day = 86400_000;
+    const at = (ms: number) => new Date(Date.now() - ms).toISOString();
+    const first = new SqlStore(sql, 0);
+    await first.ingest("shop", "sess_a", [
+      ev("e1", "run_started", { ts: at(31 * day) }),
+      ev("e2", "tool_call", { ts: at(30 * day - 60_000) }),
+      ev("e3", "tool_call", { ts: at(60_000) }),
+    ]);
+    assert.equal(await new SqlStore(sql, 0).hydrate(), 3, "ttlDays 0 keeps forever");
+    assert.equal(await new SqlStore(sql, 30).hydrate(), 2, "the 31-day-old event is not replayed");
+    assert.equal(Number(sql.db.prepare("SELECT count(*) AS n FROM events").get()!.n), 2, "and it is deleted");
+    assert.equal(await new SqlStore(sql).hydrate(), 2, "the default is 30 days");
+    assert.equal(await new SqlStore(sql, 1).hydrate(), 1, "a one-day rule drops the 29-day-old event");
+  });
+
   test("events survive a restart, and a replay after it is a duplicate", async () => {
     const sql = sqlite();
     const first = new SqlStore(sql);
