@@ -1,4 +1,6 @@
-.PHONY: install test test-relay test-cloud test-e2e harness verify check relay cloud seed seed-watch doctor host deploy
+.PHONY: install test test-relay test-cloud test-e2e harness verify check relay cloud seed seed-watch doctor host deploy hooks
+
+PY ?= python3
 
 # Relay + CLI run on the developer machine (Python). Coven Cloud is Node.js (server/).
 install:
@@ -50,3 +52,7 @@ deploy:
 
 doctor:
 	PYTHONPATH=src python3 -m coven.cli doctor
+
+# Write hook commands that work without `coven` on PATH (absolute python3 + PYTHONPATH).
+hooks:
+	PYTHONPATH=src $(PY) -m coven.cli hooks install

@@ -51,7 +51,7 @@ Things that will bite:
 - **No logs when Kiro runs? Run `coven hooks check`.** Kiro runs each hook with `/bin/sh -c` in its
   own environment and ignores a failing hook silently. If `coven` is not on that PATH the hook
   exits 127 and nothing is ever logged. `coven hooks check` runs your hooks the same way and says
-  which fail and why; `coven hooks install` rewrites them to an absolute command
+  which fail and why; `coven hooks install` (or `make hooks` from a clone, which needs no `coven` on PATH) rewrites them to an absolute command
   (`PYTHONPATH=… /usr/bin/python3 -m coven.cli emit`) that needs neither PATH nor an activated venv.
   That command contains paths from your machine, so don't commit it; `coven hooks install
   --portable` puts the plain `coven emit` back. `coven doctor` also shows `last hook received`.

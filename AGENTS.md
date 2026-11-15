@@ -47,6 +47,7 @@ make test        # Python and Node suites
 make check       # tsc --noEmit
 make cloud       # a local cloud on :8787 (dev token `dev`), then `make seed`
 make host        # run this machine as a host (./run-host.sh)
+make hooks       # write hook commands that need no `coven` on PATH
 make deploy      # Cloudflare (only when asked)
 ```
 
@@ -103,6 +104,7 @@ only when the person asks.
 
 - `.kiro/hooks/telemetry.json` and the recipe hold machine-specific absolute commands written by
   `coven hooks install`; on another machine run it again (or `--portable` with `coven` on PATH).
+  If a session start prints `coven: not found`, run `make hooks` (absolute python3, no PATH needed).
 - The shell trust names: Kiro CLI 3.2's v3 engine asks for `run_command`, the v2 engine for `execute_bash`;
   `agents.TRUST` lists both. Override with `COVEN_TRUST_*`.
 - The cloud assumes one instance (claims, SSE). The Durable Object gives that on Cloudflare.
