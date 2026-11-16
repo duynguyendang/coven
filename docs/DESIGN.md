@@ -116,8 +116,8 @@ components:
     textColor: "{colors.text-muted}"
     width: "{spacing.sidebar}"
   nav-item-active:
-    backgroundColor: "{colors.info-tint}"
-    textColor: "{colors.on-info-tint}"
+    backgroundColor: "{colors.surface-muted}"
+    textColor: "{colors.text}"
     rounded: "{rounded.sm}"
   card:
     backgroundColor: "{colors.surface}"
@@ -295,8 +295,8 @@ A **Linear-style app shell**: a 248 px sidebar (projects, specs, pages, counts) 
 sticky top bar. Content is centred, max 1180 px, padding 18–24 px (14 px on phones).
 
 - **Spacing:** 4 px steps (4 · 8 · 12 · 18 · 24); dense, but every group has air around it.
-- **Grids:** tiles in 5 columns (2 below 760 px); board columns 3 → 2 (980 px) → 1 (560 px); the
-  witch roster an auto-fill grid of cards.
+- **Grids:** stat tiles in 5 columns (2 below 760 px); the board's task tiles in an auto-fill row
+  with the open column's list below (one row per task); the witch roster an auto-fill grid of cards.
 - **Phone (≤ 640 px) and tablet (≤ 900 px):** the sidebar becomes a drawer; multi-column rows
   collapse; no horizontal scroll, ever.
 - **The chat page** fills the window (`body.chat-mode`): one scroll pane (the thread), pinned to the
@@ -314,21 +314,27 @@ and a coloured border, not by lifting it.
 ## Shapes
 
 Soft, small radii, from Astryx: 4 px for badges and chips, 6 px for buttons, inputs and nav items,
-10 px (`--radius-element`) for cards, tiles and witch cards, 12 px for the composer, 14 px for chat
-bubbles, full for pills. The ghost icons are the only organic shapes.
+8 px for icon buttons (menu), 10 px (`--radius-element`) for cards, tiles, rows, dialogs and witch
+cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost icons are the only organic shapes.
 
 ## Components
 
 - **Connection pill:** top bar, mono caps: *CONNECTED* (success), *RECONNECTING* or *OFFLINE* (error). It names the live stream, never a count of live sessions.
 - **Demo bar:** one slim warning line, *DEMO DATA* in mono caps and one sentence; on every screen with seeded data, never dismissable.
-- **Selection:** a selected tile or nav item is shown by an info border (and a 2 px underline on tiles), never by a tint, so tints keep meaning state.
-- **Health pill:** mono 11 px, full radius, tinted by state (LIVE / STALE / DISCONNECTED). Always
-  visible for a run; age since the last heartbeat beside it.
+- **Selection:** a selected tile is shown by an info border and a 2 px underline; the current nav item by a neutral (hover-grade) background and a 2 px info left rule; neither is tinted, so tints keep meaning state. Segmented filters (*All · Live · Needs attention · Finished*) are the one exception: the pressed one has a light info tint, because it is a control's state, not a thing's.
+- **Health pill:** mono 11 px, full radius, tinted by state: LIVE, STALE, DISCONNECTED for a running
+  session; FINISHED or FAILED once it ended. Always visible for a run; age since the last heartbeat beside it.
 - **Number tile:** the label in caps, the number in 22 px mono, one line of context (*2 need a
   host*). The whole tile is a button with an accessible name that includes the number.
-- **Task card:** mono id, title, the witch (icon + name), a state badge (working, submitted,
-  answered, failed) and the detail line; *Mark done* only on cards in review. Yellow tint and a
-  how-to line when no online host runs its witch.
+- **Task row:** in a column, one line per task: mono id, title, the witch (icon + name) and one
+  badge (its state, *Needs a host*, *Pass* / *Changes* for a review job, *Merged*). Selecting it opens
+  the **task dialog**.
+- **Task dialog:** a native modal `<dialog>` (Esc, a click outside or *Close*); the title names the
+  task. It shows the witch, the merged line (*Merged into main at abc1234 · passed by … · decided by
+  Grey Witch*) or the verdict, the plan it came from, the state and detail, *Kiro Web*, and the actions
+  that apply: *Run in Kiro Web*, *Ask host to push*, *Mark done* (in review), *Retry* (blocked), and the
+  task's **Conversation**, open by default. Yellow tint and a how-to line when no online host runs its
+  witch. It follows live updates without closing.
 - **Board order:** plans that wait for you, then Tasks (a column is always open: the person's choice, else the most urgent with tasks), then Witches (cards only for those working, available or waiting for a slot; the rest fold behind one row of their ghosts), then the Whiteboard.
 - **Plans:** only plans that wait for a person are cards (above Tasks). Decided plans fold below the task list into one line each: the decision, the plan, its summary, how many of its tasks are done, who and when; opening one shows the reasons and its tasks.
 - **Long columns:** more than 8 tasks are grouped by spec (newest first), each group a fold with its count; Done folds by default, other columns stay open; a filter above the list finds a task by id, title or witch and opens its group.
@@ -353,7 +359,8 @@ bubbles, full for pills. The ghost icons are the only organic shapes.
   size, 1 px bordered or ink-filled, with an `aria-label`. Visible focus on all.
 - **Icons:** one stroke set (24 px grid, 1.8 stroke, round caps), as `<symbol>`s at the top of
   `<body>` drawn in `currentColor`, so they follow the text and both schemes; always decorative
-  (`aria-hidden`), the label names the button. No text glyphs (☰ ✕ ☾) as icons.
+  (`aria-hidden`), the label names the button. No text glyphs (☰ ✕ ☾) as button icons; inline marks
+  in timelines and crumbs (✓ ✗ ✎ !, ▸ ▾ carets, ›, ▶ ⏸ in the flow stepper) are text and stay.
 - **Sign-in:** a native modal `<dialog>` with the ghost, *COVEN* and *Sign in*; signed out, the
   app chrome is not drawn behind it, and Esc does not dismiss it.
 - **Focus:** a 2 px info outline on every control (`:focus-visible`); `<main>` is a focus target
@@ -366,14 +373,15 @@ bubbles, full for pills. The ghost icons are the only organic shapes.
 - ✓ Use Astryx tokens through the Coven aliases; the harness fails on a hex or `rgb()` in the
   stylesheet (icon colours live in the script's SVG).
 - ✓ Let colour mean state, and the same state the same colour on every screen.
-- ✓ Show connection and freshness: health pills, last-event age, a reconnecting banner.
+- ✓ Show connection and freshness: the connection pill, health pills, last-event age.
 - ✓ Check every visual change in light, dark and at phone width, by keyboard, with
   `prefers-reduced-motion` honoured; keep text at WCAG AA.
 - ✓ Put ids, numbers, paths and times in mono.
 - ✓ Label what is seeded, estimated or not yet proven.
 - ✗ Don't add gradients, glows, glassmorphism, or a brand accent colour.
-- ✗ Don't animate data for effect (no hover scale, no springs, no pulsing badges); motion only for
-  a live *working* indicator, ≤ 300 ms transitions.
+- ✗ Don't animate data for effect (no hover scale, no springs, no pulsing badges). Motion is
+  functional only: colour fades of 120–150 ms on controls, a 0.97 press on buttons, a one-time 1.6 s
+  highlight of a newly arrived event row, the *working…* dots; all off under `prefers-reduced-motion`.
 - ✗ Don't use emoji as UI; use the ghost icons and text.
 - ✗ Don't show file contents, diffs, prompts or model output: only paths and counts (NFR-SEC1).
 - ✗ Don't add a framework, a web font download or a build step: one HTML file (NFR-MNT3).

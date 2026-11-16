@@ -44,11 +44,11 @@ specs, `stream-json`, agent files, workflows) — NFR-MNT6.
 | :--- | :--- | :--- | :--- |
 | **CLI and relay** | `src/coven/` (`cli.py`, `emit.py`, `relay.py`, `events.py`, `redact.py`, `eventlog.py`, `runner.py`) | each machine | receive hook payloads and transcripts, normalise, redact, buffer (JSONL), push, heartbeat |
 | **Spec map** | `src/coven/specmap.py` | each machine | parse `tasks.md` (`_Paths:_`, `_Verify:_`, `_Agent:_`), readiness, path coverage, the tick |
-| **Host** | `src/coven/host.py`, `agents.py`, `board.py` | a machine lent to the team | the dispatcher: slots, claims, worktrees, witch runs, verify, path check, tick, commit, status, chat requests, the Chair's triage, council jobs, the Scribe's preparation |
+| **Host** | `src/coven/host.py`, `agents.py`, `board.py`, `consult.py`, `brief.py`, `taskkey.py` | a machine lent to the team | the dispatcher: slots, claims (task keys, host id), worktrees with dependencies linked, witch runs, consultations, verify, path check, tick, commit, status, reviews and verdicts, auto-merge (opt-in), chat requests, the Chair's triage, council jobs, planning sessions, the Scribe's preparation |
 | **Council listener** | `src/coven/council.py` | optional, any machine | answers chat messages in a witch's voice when no host takes them |
 | **Flow steps** | `src/coven/flow.py`, `flowsteps.py`, `verify.py` | inside a Kiro workflow | the deterministic steps of a flow: verify, guard, close |
-| **Cloud** | `server/src/` (`handler.ts`, `store.ts`, `board.ts`, `events.ts`, `redact.ts`, `auth.ts`) | Node 22 (`main.ts`) or Cloudflare (`server/worker/`) | validate and store events, read models (runs, councils, flows, board, chat), claims, SSE |
-| **Dashboard** | `web/index.html` | browser | fleet, runs, deviations, councils, flows, board, witches, council chat |
+| **Cloud** | `server/src/` (`handler.ts`, `store.ts`, `board.ts`, `events.ts`, `redact.ts`, `auth.ts`, `idempotency.ts`, `taskkey.ts`) | Node 22 (`main.ts`) or Cloudflare (`server/worker/`) | validate and store events, read models (runs, councils, flows, board, chat, threads), claims, idempotent writes, SSE |
+| **Dashboard** | `web/index.html` | browser | fleet, runs, deviations, councils, flows, board (plans, tasks and the task dialog, witches, whiteboard), council chat; the screens are described in `docs/DESIGN.md` |
 | **Kiro assets** | `.kiro/agents/`, `.kiro/hooks/`, `.kiro/workflows/`, `.kiro/specs/`, `.kiro/skills/` | in the repo | the eleven witches, the telemetry hooks, the flow recipe, this repo's spec, the board skill |
 
 ## 4. Key scenarios
@@ -296,31 +296,42 @@ reject.
 Project ─┬─ Run ── Event (append-only; ts, seq)
          ├─ Council (claims, chair proposal, guard verdict)
          ├─ Flow (steps, rounds, outcome)
-         ├─ Board (claims with leases; notes; task status; council jobs; hosts' presence)
+         ├─ Board ─┬─ Task (spec task, council job or approved plan task; task_key)
+         │         │    ├─ Status (working · submitted · answered · failed · queued · done; verdict; branch_host)
+         │         │    ├─ Claims (host + witch, host_id, attempt_id, lease)
+         │         │    ├─ Notes, consultations, reviews (the task's thread)
+         │         │    └─ Push request · task_merged
+         │         ├─ Plan (proposed → approved | rejected, reasons; its tasks in order)
+         │         └─ Hosts (witches, slots, free slots, cloud repositories)
          └─ Chat (messages, answers, listeners)
 ```
 
-The cloud stores **events**; every view (runs, councils, flows, board, chat) is a projection of
-them, rebuilt at start-up. Claims are the only coordination state the cloud holds, and they are
-leased. `tasks.md` stays in git: the cloud never edits it.
+The cloud stores **events**; every view (runs, councils, flows, board, chat, a task's thread) is a
+projection of them, rebuilt at start-up. Two kinds of state are not events and are kept beside them:
+claim lease renewals, and the replay table of idempotent writes (24 h). Claims are the only
+coordination state the cloud holds, and they are leased. `tasks.md` stays in git: the cloud never
+edits it. The host keeps its own state in `.coven/` (`state/host.json`: its runs and their review
+rounds; `host.json`: its id; `worktrees/`), never in the cloud.
 
 ## 6. Contract (normative)
 
 ### 6.1 Envelope
 
-`event_id` (unique, idempotency key), `project_id`, `run_id`, `seq`, `type`, `ts` (ISO 8601),
-`source` (`kiro-hook`, `stream-json`, `coven`, …), optional `stage`, `task_id`, `role`,
-`council_id`, `payload` (allow-listed per type), `usage` (`credits` or `tokens_*`, with
+`event_id` (unique, idempotency key), `project_id`, `run_id`, `seq` (ordering within a run; not
+validated), `type`, `ts` (ISO 8601), `source` (`kiro-hook`, `stream-json`, `coven`, …), optional
+`stage`, `task_id`, `role`, `council_id`, `flow_id` (flow events), `member` (the host or member that
+sent it), `runtime`, `payload` (allow-listed per type), `usage` (`credits` or `tokens_*`, with
 `usage_source`). Strings ≤ 400 characters; payload ≤ 8 KB; the field `text` is dropped (use
-`note`, `message`).
+`note`, `message`). A batch holds at most 500 events and 256 KiB; a request body at most 1 MiB.
 
 **Task keys.** Every task has a derived `task_key` (16 hex characters of SHA-256 over
 `project|kind|parts`: `spec` with spec and task id, `job` with the source message id and job index,
 `plan` with the plan and task id; `src/coven/taskkey.py`, `server/src/taskkey.ts`, one parity
 fixture). A run of it has an `attempt_id`, `<task_key>.<n>`, where `n` counts the task's `working`
-statuses. `task_claimed`, `task_status`, `board_note` and `task_created` carry them; the cloud
-accepts only their shape and derives the key for older events. `task_created` is insert-if-absent
-on its key.
+statuses. `task_claimed`, `task_status`, `board_note` and `task_created` carry them. On events the
+cloud accepts only their shape (a malformed one rejects the event); on `POST /v1/claims` a malformed
+one is dropped and the claim is taken without it. Older events get the key derived on read. A
+`task_created` that carries a `task_key` is insert-if-absent on it.
 
 **Hosts.** A host has a `host_id` (`h_` + 8 hex, kept in `.coven/host.json`) beside its name. Claims,
 renewals, releases, `host_online` and `task_status` carry it, so two hosts with one name are two
@@ -334,11 +345,11 @@ claimants.
 | Deviation and relay health | `spec_deviation`, `policy_block`, `warning`, `daemon_connected`, `daemon_disconnected` |
 | Council review | `council_opened`, `claim_proposed`, `claim_challenged`, `test_result`, `verify_result`, `chair_summary`, `chair_proposal`, `guard_verdict`, `council_closed` |
 | Flows | `flow_started`, `flow_step_started`, `flow_step_finished`, `flow_finished` |
-| Board | `task_claimed` (`{claim_id, spec, task_id, member, agent, kind, paths, lease_until, task_key?, attempt_id?, host_id?}`), `task_released`, `board_note` (`{note, kind, task?, reply_to?, agent?, role?, task_key?, attempt_id?}`), `task_status` (`{task, state: working|submitted|answered|failed|queued|done, agent?, detail?, task_key?, attempt_id?, host_id?, branch_host?, branch?, verdict?}`; `verdict` is a reviewer's `pass` or `changes`; `done` refused from `/v1/events`; a `submitted` status names `branch_host`, the host that holds the commits), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?, task_key?, from?, expects?, reply_to?, depth?}`; `expects` is `answer`, `plan`, `review` or `test_result`, `depth` 0–2; for the Dev only with `expects: answer`, a read-only question about the code; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author, reasons?}`; the reasons are read by the next planning round; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`), `push_request` (`{task, branch, host_id, author}`; a person asks the host that holds a submitted branch to push it; refused from `/v1/events`; the only way anything pushes), `push_done` (`{task, branch, host_id, ok, detail?}`; that host's report), `task_merged` (`{task, branch, commit, base, reviewers, decided_by: grey-witch, host_id}`; an auto-merge host merged a reviewed branch and pushed the base; the board shows the task done) |
+| Board | `task_claimed` (`{claim_id, spec, task_id, member, agent, kind, paths, lease_until, task_key?, attempt_id?, host_id?}`), `task_released`, `board_note` (`{note, kind, task?, reply_to?, agent?, role?, task_key?, attempt_id?}`), `task_status` (`{task, state: working|submitted|answered|failed|queued|done, agent?, detail?, task_key?, attempt_id?, host_id?, branch_host?, branch?, verdict?}`; `verdict` is a reviewer's `pass` or `changes`; `done` refused from `/v1/events`; a `submitted` status names `branch_host`, the host that holds the commits), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?, task_key?, from?, expects?, reply_to?, depth?}`; `expects` is `answer`, `plan`, `review` or `test_result`, `depth` 0–2; for the Dev only with `expects: answer`, a read-only question about the code; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author, reasons?}`; the reasons are read by the next planning round; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`), `push_request` (`{task, branch, host_id, author}`; a person asks the host that holds a submitted branch to push it; refused from `/v1/events`; the only way anything pushes), `push_done` (`{task, branch, host_id, ok, detail?}`; that host's report), `task_merged` (`{task, branch, commit, base, reviewers, decided_by: grey-witch, host_id?}`; `host_id` is carried, not validated; an auto-merge host merged a reviewed branch and pushed the base; the board shows the task done) |
 | Chat | `chat_message` (kinds ask, idea, suggestion, do, reject, answer, working, error), `council_listening` |
 | Hosts | `host_online` (`{agents, slots, running, cloud?, host_id?, free_slots?}`; `cloud` names the repositories this host may run Kiro Web sessions on; `free_slots` is what the Chair routes by) |
 
-A `warning` with `raw_type: role_mismatch` (`{agent, task, produced, task_key?}`) says a witch delivered
+A `warning` with `raw_type: role_mismatch` (`{agent, task, produced, message, task_key?}`) says a witch delivered
 something outside her role's `produces`; it is a report and never blocks a run.
 
 An unrecognised input type becomes `warning` with the raw type. The field-level validation is
@@ -358,7 +369,7 @@ Bearer token (`Authorization: Bearer …`, constant-time compare); `?token=` onl
 | `GET /v1/flows`, `GET /v1/flows/{id}` | read | flows |
 | `GET /v1/deviations` | read | open `spec_deviation` events |
 | `POST /v1/events/{id}/dismiss` | any token (admin planned) | dismiss a deviation |
-| `POST /v1/claims`, `POST /v1/claims/{id}/renew`, `POST /v1/claims/{id}/release` | ingest | claims with `agent`, `task_key`, `attempt_id`, `host_id`; 409 held or paths overlap; 403 for another host's claim |
+| `POST /v1/claims`, `POST /v1/claims/{id}/renew`, `POST /v1/claims/{id}/release` | ingest | claims with `agent`, `task_key`, `attempt_id`, `host_id`; 409 held or paths overlap; 403 another host's claim; 404 unknown claim; 410 released, or the lease expired |
 | `GET /v1/board` | read | board view: tasks, claims, notes, status, hosts |
 | `POST /v1/board/notes` | read | a person's note (untrusted, redacted) |
 | `POST /v1/board/done` | read | a person accepts a task (`task_status done`) |
@@ -372,7 +383,7 @@ Bearer token (`Authorization: Bearer …`, constant-time compare); `?token=` onl
 | `POST /v1/seed/purge` | ingest | remove demo data |
 
 **Idempotency-Key.** `POST /v1/claims`, `/v1/board/notes`, `/v1/board/done`, `/v1/board/plan`,
-`/v1/board/dispatch`, `/v1/board/push` and `/v1/chat` accept an `Idempotency-Key` header (1–128 of
+`/v1/board/dispatch`, `/v1/board/push`, `/v1/board/retry` and `/v1/chat` accept an `Idempotency-Key` header (1–128 of
 `A-Z a-z 0-9 . _ : -`). The first 2xx answer for a key is kept for `COVEN_IDEMPOTENCY_TTL` seconds
 (default 86400), scoped to the caller's token, and replayed for the same key and body
 (`idempotent-replayed: true`); the same key with another body is 422; a refusal or an error is not
@@ -427,6 +438,12 @@ deploy, `/healthz`'s `started_at` shows when the instance last started.
 | Cloud runtime | Cloudflare Worker + Durable Object, same handler as Node | AWS App Runner as the only target: cost and set-up for a demo |
 | Local storage | JSONL log plus a cursor | a local database: more to install, nothing gained |
 | Dashboard | one HTML file, no framework | a SPA build: a build step for a single page |
+| Who merges | people; or, per host and only if a person starts it with `--auto-merge`, the host on three reviewers' passes and the Chair's decision, after its own checks | always people: every finished task waited for a person; any witch merging alone: a model would approve its own work |
+| Retries | idempotency keys on every board write, replayed for 24 h | at-least-once writes: a timeout duplicated notes and claims |
+| Several hosts | a `host_id` per host; a branch stays with its host; nothing pushes unless asked or auto-merge | one name per machine: two copies with one name shared claims |
+| Witches working together | consultation through the host, depth 2, three per task, owners only | witches calling each other: loops, cost, and no record |
+| A plan's tasks | steps in order: each waits until the earlier ones are merged | side by side from the base: a later step lacked the earlier one |
+| New code on the cloud | the Worker sends its version; an older Durable Object resets itself; streams end after 10 min | waiting for eviction: open dashboards kept old code running for hours |
 
 ## 10. Risks and known limits
 
@@ -441,7 +458,12 @@ deploy, `/healthz`'s `started_at` shows when the instance last started.
   cloud; a full real model run through every path, and a real flow with both gates, are not yet
   recorded.
 - **Not built:** the pre-write gate and the control feed (FR-S3–S4), relay split and quarantine
-  (FR-T7), a unique host id (FR-H12). Kiro Web dispatch (FR-H11) is usable.
+  (FR-T7). Kiro Web dispatch (FR-H11) is usable.
+- **Auto-merge trusts models' verdicts.** Three reviewers and the Chair are models; the host's own
+  checks (no person's reject, a clean merge, `make verify` on the merged tree) are the floor. It is
+  opt-in per host and has run only against a fake runner and a local origin.
+- **A held or failed task needs a person.** Holds are said once in a note; *Retry*, *Mark done* or a
+  reject moves it. Nothing retries forever.
 - **Kiro cloud dependency.** Kiro Web runs on Kiro's cloud: it needs an account with the GitHub source
   provider connected, a repository the session can push to, and the service being up. Without them the
   run fails with the fix, and local hosts keep working. Sessions ignore `--agent`, so the witch is a
@@ -451,5 +473,7 @@ deploy, `/healthz`'s `started_at` shows when the instance last started.
 
 `README.md` (set-up and every `coven` command), `DESIGN.md` (the dashboard's visual system), `AGENTS.md` (rules for changing this repo),
 `.kiro/specs/coven-relay/` (this repo's own spec and tasks). Detailed, versioned working designs
-live in `docs/internal/`, which is git-ignored and may be absent from a clone; this document and
-`requirements.md` are the published design of record.
+live in `docs/internal/`, which is git-ignored and may be absent from a clone: the current ones are
+`coven-data-contract-v2.md` (every event, field, endpoint and read model, with lifecycles) and
+`coven-ux-design-v4.md` (every screen, dialog and live behaviour). This document and `requirements.md`
+are the published design of record.
