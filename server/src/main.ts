@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { createApp } from "./app.ts";
 import { usingDevToken } from "./auth.ts";
+import { SqlStore } from "./sqlstore.ts";
 import { DynamoStore, MemoryStore } from "./store.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,8 +36,18 @@ async function main(): Promise<void> {
       console.error(`coven cloud: hydrate failed: ${(error as Error).message}`); // keep ingesting
     }
     store = dynamo;
-  } else {
+  } else if (storeName === "sqlite") {
+    // One SQLite file on a persistent disk (a VM): the Durable Object's SqlStore over node:sqlite.
+    const file = process.env.COVEN_DB ?? "/data/coven.db";
+    const { openSqlite } = await import("./sqlite.ts");
+    const sqlStore = new SqlStore(openSqlite(file));
+    console.log(`coven cloud: rehydrated ${await sqlStore.hydrate()} events from ${file}`);
+    store = sqlStore;
+  } else if (storeName === "memory") {
     store = new MemoryStore();
+  } else {
+    console.error(`coven cloud: unknown COVEN_STORE '${storeName}' (memory, sqlite or dynamo)`);
+    process.exit(2);
   }
 
   const server = createApp({ store, webDir, storeName });

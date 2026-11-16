@@ -1,4 +1,32 @@
-# Deploying Coven Cloud on AWS
+# Deploying Coven Cloud on one VM (AWS Lightsail, SQLite file)
+
+The cheapest durable shape: one small VM runs `infra/lightsail/docker-compose.yml`, the Node server
+with `COVEN_STORE=sqlite` (the Durable Object's `SqlStore` over `node:sqlite`, one file on a Docker
+volume) and Caddy in front for HTTPS. Restarts read the file locally, so there is no per-read bill
+or quota. One instance, as the API assumes.
+
+```text
+relay / host / browser --HTTPS--> Caddy :443 --> coven :8080 --> /data/coven.db (volume coven-data)
+```
+
+1. Create a Lightsail Linux instance (Ubuntu 24.04, the plan with a public IPv4 and at least 512 MB),
+   attach a static IP, open ports 22, 80 and 443 only, and turn on automatic daily snapshots.
+2. On the VM: install Docker (`curl -fsSL https://get.docker.com | sh`), add 1 GB of swap on a
+   512 MB plan, and copy the repository to `/opt/coven`.
+3. Create `/opt/coven/infra/lightsail/.env` (mode 600, never committed):
+   `COVEN_TOKENS=<a long random password>` and `COVEN_DOMAIN=<your name>` (without a domain,
+   `<static-ip-with-dashes>.sslip.io` resolves to the VM and gets a certificate).
+4. `cd /opt/coven/infra/lightsail && sudo docker compose up -d --build`.
+5. Check `https://$COVEN_DOMAIN/healthz`, then point relays at it with `coven project link
+   --cloud-url https://$COVEN_DOMAIN`. To update: copy the new tree and run step 4 again; the
+   database stays on the `coven-data` volume.
+
+Backups are the daily instance snapshots (up to a day of history at risk if the disk is lost).
+For a copy on demand: `sudo docker compose exec coven node -e "new (require('node:sqlite').DatabaseSync)('/data/coven.db').exec(\"VACUUM INTO '/data/backup.db'\")"`.
+
+---
+
+# Deploying Coven Cloud on AWS (App Runner and DynamoDB)
 
 Target shape:
 

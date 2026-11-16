@@ -12,6 +12,7 @@
   try { const t = localStorage.getItem("coven_theme"); document.querySelector('meta[name="color-scheme"]').content = t === "light" || t === "dark" ? t : "light dark"; } catch { /* storage off */ }
 </script>
 <link rel="stylesheet" href="vendor/astryx/theme-neutral.css" />
+<link rel="stylesheet" href="theme-specter.css" />
 <style>
   /* UX design v2. Colour means state only: green ok, yellow attention/stale, red failure, grey unknown.
      Every colour, the type families, radii and shadows come from the Astryx neutral theme
@@ -605,6 +606,146 @@
     background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
   .toast button:hover { border-color: var(--bad-line); }
   .toast button .ico { inline-size: 14px; block-size: 14px; }
+  /* ===== Halloween edition layout (.uiux/*_halloween_edition, hallow_coven/DESIGN.md) =====
+     Late in the sheet on purpose: it restyles the shell, cards, buttons and chips above without changing markup or hooks. */
+  :root {
+    --hex-glow: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    --violet-line: color-mix(in srgb, var(--color-border-purple) 38%, transparent);
+    --flame: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 70%, var(--color-warning)));
+    --canvas-glow: radial-gradient(60rem 28rem at 70% -8%, color-mix(in srgb, var(--color-border-purple) 12%, transparent), transparent 70%);
+    --blue: var(--color-text-accent);
+    --selected: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+  body { background: var(--bg) var(--canvas-glow) no-repeat; background-attachment: fixed; }
+  ::selection { background: color-mix(in srgb, var(--color-accent) 35%, transparent); }
+  :focus-visible { outline-color: var(--color-accent); }
+  h1, h2, h3, .brand b, .nav-h, .stat .k, .tile .l, th { font-family: var(--font-family-heading); }
+
+  /* sidebar: deep plum, flame brand, gradient active pill */
+  .sidebar { background: var(--chrome); border-right-color: var(--violet-line); padding: 12px 10px; box-shadow: 8px 0 32px -16px color-mix(in srgb, var(--color-border-purple) 30%, transparent); }
+  .brand { padding: 4px 8px 14px; }
+  .brand b { color: var(--color-text-accent); font-size: 1.125rem; letter-spacing: 0.08em; font-weight: 700; }
+  .nav-h { color: var(--muted); letter-spacing: 0.14em; font-size: 0.625rem; }
+  .nav-item { gap: 10px; padding: 8px 10px; border-radius: var(--radius-element); border: 1px solid transparent; font-weight: 500; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }
+  .nav-item:hover { background: var(--panel); color: var(--text); }
+  .nav-item[aria-current="page"] { color: var(--text); font-weight: 600; border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+    background: linear-gradient(90deg, var(--panel), color-mix(in srgb, var(--color-border-purple) 22%, var(--panel)) 60%, var(--panel)); box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+  .nav-item[aria-current="page"] .label { color: var(--color-text-accent); }
+  .nav-item .count { border: 1px solid var(--violet-line); border-radius: var(--radius-inner); padding: 0 6px; background: var(--panel); }
+  .nav-item[aria-current="page"] .count { color: var(--color-text-accent); border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); background: var(--color-accent-muted); }
+  .count.warn { color: var(--color-text-warning); border-color: var(--warn-line); background: var(--warn-bg); }
+  .nav-sub { border-left-color: var(--violet-line); }
+  .me { border-top-color: var(--violet-line); }
+  .me input, .toolbar input[type="search"], .toolbar select, .compose textarea, .compose select, .compose input, .column-detail .col-filter, .plan .decide .why { background: var(--well); border: 1.5px solid var(--violet-line); border-radius: var(--radius-element); }
+  .me input:focus, .toolbar input:focus, .toolbar select:focus, .compose textarea:focus, .compose input:focus, .compose select:focus, .login input:focus { border-color: var(--color-accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent); }
+  .side-foot { padding-top: 10px; border-top: 1px solid var(--violet-line); margin-top: 8px; }
+
+  /* top bar: slim, translucent, with the connection pill on the right */
+  .topbar { padding: 6px 24px; min-block-size: 44px; background: color-mix(in srgb, var(--chrome) 92%, transparent); backdrop-filter: blur(10px); border-bottom-color: var(--violet-line); }
+  .icon { border-radius: var(--radius-element); border-color: var(--violet-line); background: var(--well); }
+  .pill { text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; padding: 4px 12px; background: var(--well); border-color: var(--violet-line); }
+  .pill.ok { box-shadow: 0 0 12px color-mix(in srgb, var(--color-success) 25%, transparent); }
+  .pill.ok::before { content: ""; display: inline-block; inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--color-success); margin-right: 8px; vertical-align: 1px; }
+  .pill.bad::before { content: ""; display: inline-block; inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--color-error); margin-right: 8px; vertical-align: 1px; }
+
+  /* workspace: wider canvas, big poster-style headings */
+  main { max-width: 1440px; padding: 22px 32px 28px; }
+  footer { max-width: 1440px; padding: 0 32px 28px; border-top: 1px solid var(--violet-line); padding-top: 14px; }
+  @media (max-width: 640px) { main { padding: 14px 14px 20px; } footer { padding: 14px 14px 28px; } }
+  .crumbs { font-family: var(--mono); font-size: 0.75rem; }
+  .crumbs a { color: var(--muted); } .crumbs a:hover { color: var(--color-text-accent); }
+  .page-h { margin-bottom: 18px; }
+  .page-h h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+  @media (max-width: 640px) { .page-h h1 { font-size: 1.5rem; } }
+  .page-h .lede { font-size: 0.9375rem; margin-top: 6px; }
+  h2 { color: var(--color-text-accent); letter-spacing: 0.12em; }
+
+  /* panels: plum cards, 16px radius, violet hairline, flame border on hover */
+  .card, .stat, .scard, .tile, .witch, .column, .column-detail, .turn, .sticky, .tcard, .trow, .plan-row > summary, .plan-body, .thread, .chat-compose, .gate, .proj, .msg, .more-witches > summary { border-color: var(--violet-line); }
+  .card, .proj, .turn, .scard, .gate, .column-detail, .column, .thread { border-radius: var(--radius-container); }
+  .card, .scard, .turn, .proj { background: linear-gradient(180deg, color-mix(in srgb, var(--color-border-purple) 7%, var(--panel)), var(--panel) 38%); box-shadow: 0 8px 28px -14px color-mix(in srgb, black 80%, transparent); }
+  .scard, .tile, .witch, .trow, .sticky { transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background-color 140ms ease-out; }
+  .scard:hover, .tile:hover, .trow:hover, .witch:hover, .sticky:hover { border-color: var(--color-accent); box-shadow: 0 0 20px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+  .card > .head { background: color-mix(in srgb, var(--color-border-purple) 9%, transparent); border-bottom-color: var(--violet-line); border-radius: var(--radius-container) var(--radius-container) 0 0; padding: 13px 18px; }
+  .card > .body { padding: 16px 18px; }
+  .scard { padding: 14px 18px; }
+  .scard .l2 { font-size: 0.9688rem; font-weight: 500; }
+  .scard.attn { border-left-width: 4px; }
+  .stats, .tiles { gap: 14px; }
+  .stat .v, .tile .n { font-weight: 600; letter-spacing: -0.01em; }
+  .stat { border-radius: var(--radius-container); }
+  .stat:has(.v.warn) { border-color: var(--warn-line); } .stat:has(.v.bad) { border-color: var(--bad-line); }
+  .witch.working { border-color: var(--color-accent); background: var(--selected); box-shadow: 0 0 18px color-mix(in srgb, var(--color-accent) 18%, transparent); }
+  .tile[aria-expanded="true"] { border-color: var(--color-accent); box-shadow: inset 0 -2px 0 var(--color-accent), 0 0 18px color-mix(in srgb, var(--color-accent) 18%, transparent); }
+  .tcard.mine { border-color: var(--color-accent); }
+  .council-card { border-left-color: var(--color-border-purple); }
+  .dev-card { border-left-color: var(--color-error); }
+  .deviation { border-radius: var(--radius-container); background: var(--warn-soft); box-shadow: 0 0 22px color-mix(in srgb, var(--color-warning) 12%, transparent); }
+
+  /* chips and badges: pills with a state tint */
+  .badge, .chip { border-radius: var(--radius-full); padding: 2px 10px; font-weight: 600; }
+  .badge.live::before, .badge.pass::before, .badge.accept::before { content: ""; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
+  .badge.live::before { animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .badge.live::before { animation: none; } }
+  .filter { border-radius: var(--radius-full); border-color: var(--violet-line); padding: 4px 14px; }
+  .filter[aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-accent-muted); color: var(--color-text-accent); font-weight: 600; }
+  .seg { border-radius: var(--radius-full); border-color: var(--violet-line); }
+  .dot.live { box-shadow: 0 0 8px var(--color-success); }
+
+  /* buttons: flame pill for the main action, ghost for the rest */
+  .act { border-radius: var(--radius-full); border-color: var(--violet-line); background: var(--well); padding: 6px 14px; font-weight: 600; }
+  .act:hover:not(:disabled) { background: color-mix(in srgb, var(--color-border-purple) 16%, var(--well)); border-color: var(--color-border-purple); }
+  .act.primary { background: var(--flame); border-color: transparent; box-shadow: 0 0 16px var(--hex-glow); }
+  .act.primary:hover:not(:disabled) { background: var(--flame); filter: brightness(1.1); box-shadow: 0 0 24px var(--hex-glow); scale: 1.03; }
+  .act.good { border-color: var(--ok-line); } .act.bad { border-color: var(--bad-line); }
+  .act.quiet { background: transparent; border-color: transparent; }
+  .act.sm { padding: 3px 11px; }
+  button.link { color: var(--color-text-accent); }
+  a { color: var(--color-text-accent); }
+
+  /* tabs: flame underline */
+  .tabs { border-bottom-color: var(--violet-line); gap: 8px; }
+  .tab { padding: 10px 16px; font-weight: 600; font-family: var(--font-family-heading); }
+  .tab[aria-selected="true"] { color: var(--color-text-accent); border-bottom-color: var(--color-accent); box-shadow: 0 6px 12px -8px var(--hex-glow); }
+
+  /* session turns and rows */
+  .turn-head { padding: 13px 18px; }
+  .turn-head:hover, .row:hover { background: color-mix(in srgb, var(--color-border-purple) 10%, var(--panel)); }
+  .rows { border-top-color: var(--violet-line); }
+  .row { border-bottom-color: var(--violet-line); padding: 9px 18px; }
+  .row.dev { box-shadow: inset 3px 0 0 var(--color-warning); }
+  .row.fail { box-shadow: inset 3px 0 0 var(--color-error); }
+  .turn.failed { border-left-width: 4px; }
+  th { color: var(--color-text-accent); } td, th { border-bottom-color: var(--violet-line); }
+  .facts { padding: 10px 14px; background: var(--well); border: 1px solid var(--violet-line); border-radius: var(--radius-container); }
+  .persona, .ev-link { border-radius: var(--radius-full); }
+  .empty { text-align: center; padding: 40px 16px; }
+  .empty code, .note code, code { border-color: var(--violet-line); background: var(--well); color: var(--color-text-accent); }
+
+  /* chat: plum bubbles, flame send button */
+  .thread { background: var(--well); }
+  .msg { border-radius: 18px; background: var(--panel); }
+  .msg.human { background: color-mix(in srgb, var(--color-accent) 12%, var(--panel)); border-color: color-mix(in srgb, var(--color-accent) 40%, transparent); }
+  .msg.council { border-color: var(--violet-line); }
+  .chat-compose { border-radius: var(--radius-container); background: var(--panel); }
+  .chat-compose:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent); }
+  .chat-compose .kinds { background: var(--well); border-radius: var(--radius-full); }
+  .chat-compose .kind { border-radius: var(--radius-full); }
+  .chat-compose .kind:has(input:checked) { color: var(--color-text-accent); }
+  .chat-compose .send { background: var(--flame); box-shadow: 0 0 14px var(--hex-glow); }
+  .chat-compose .send:hover:not(:disabled) { background: var(--flame); filter: brightness(1.1); }
+
+  /* dialogs and toasts */
+  .login, .task-dialog, .drawer { border-color: var(--violet-line); }
+  .login { border-radius: var(--radius-container); background: linear-gradient(180deg, color-mix(in srgb, var(--color-border-purple) 12%, var(--panel)), var(--panel)); box-shadow: var(--shadow-high), 0 0 40px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  .login h2 b { color: var(--color-text-accent); letter-spacing: 0.12em; }
+  .login input { background: var(--well); border: 1.5px solid var(--violet-line); border-radius: var(--radius-element); }
+  .login button { background: var(--flame); border-radius: var(--radius-full); box-shadow: 0 0 16px var(--hex-glow); }
+  .task-dialog { border-radius: var(--radius-container); }
+  .task-dialog .td-head, .drawer .dh, .drawer .dn { border-bottom-color: var(--violet-line); }
+  .drawer { border-left-color: var(--violet-line); }
+  .toast { border-radius: var(--radius-container); box-shadow: var(--shadow-high); }
 </style>
 </head>
 <body>

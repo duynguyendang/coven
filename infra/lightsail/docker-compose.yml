@@ -1,0 +1,27 @@
+# Coven Cloud on one VM: the Node server with its SQLite file on a named volume, and Caddy in front
+# for HTTPS (a Let's Encrypt certificate for COVEN_DOMAIN). Secrets come from .env next to this file
+# (COVEN_TOKENS=..., COVEN_DOMAIN=...); .env is created on the VM only, never committed.
+services:
+  coven:
+    build: { context: ../.., dockerfile: Dockerfile }
+    restart: unless-stopped
+    environment:
+      COVEN_STORE: sqlite
+      COVEN_DB: /data/coven.db
+      COVEN_TOKENS: ${COVEN_TOKENS:?set COVEN_TOKENS in .env}
+    volumes: [coven-data:/data]
+    expose: ["8080"]
+    mem_limit: 320m
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      COVEN_DOMAIN: ${COVEN_DOMAIN:?set COVEN_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [coven]
+volumes:
+  coven-data:
+  caddy-data:

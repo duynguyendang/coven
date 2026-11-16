@@ -17,3 +17,4 @@ worker-configuration.d.ts
 docs/internal/
 # editor and tool backups (Kiro writes <agent>.json.bak when it upgrades an agent)
 *.bak
+.uiux

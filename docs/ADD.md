@@ -413,6 +413,7 @@ claim under any name.
 | :--- | :--- | :--- | :--- |
 | **Cloudflare** (hosted) | `make deploy` (`server/worker/`) | one SQLite-backed Durable Object | the dashboard served as assets through the Worker; free plan |
 | **Node, local** | `make cloud` (dev token `dev`) | memory | development and tests |
+| **Node, VM** (AWS Lightsail) | `infra/lightsail/` (Docker Compose, Caddy for HTTPS), `infra/README.md` | one SQLite file (`COVEN_STORE=sqlite`, `COVEN_DB`) on the VM disk | SqlStore over `node:sqlite`; reads are local and free |
 | **Node, AWS** | `Dockerfile`, `infra/README.md` | DynamoDB | adapter not exercised against real AWS |
 | **Machine** | `coven login`, `coven project link`, `coven hooks install`, `coven relay up` | `.coven/` (JSONL log, state) | per working copy |
 | **Host** | `./run-host.sh` (`coven host run`) | `.coven/state/host.json`, `.coven/worktrees/` | one working copy and one `COVEN_HOST_NAME` per host |

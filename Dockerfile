@@ -15,6 +15,10 @@ RUN cd server && npm ci --omit=dev --no-audit --no-fund
 COPY server/src ./server/src
 COPY web ./web
 
+# COVEN_STORE=sqlite keeps its database here; mount a volume on it (infra/lightsail/docker-compose.yml).
+RUN mkdir -p /data && chown node:node /data
+VOLUME /data
+
 USER node
 EXPOSE 8080
 
@@ -22,4 +26,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 WORKDIR /app/server
-CMD ["node", "src/main.ts"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "src/main.ts"]

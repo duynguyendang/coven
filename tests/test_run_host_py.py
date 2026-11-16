@@ -52,3 +52,20 @@ def test_missing_interpreter_is_reported(tmp_path):
     r, _ = _run(tmp_path, "no-such-python-xyz")
     assert r.returncode == 1
     assert "no-such-python-xyz" in r.stderr
+
+
+def test_logs_in_to_the_default_cloud_when_the_saved_login_points_elsewhere(tmp_path):
+    r, lines = _run(tmp_path, "{fake}")
+    assert r.returncode == 0, r.stderr
+    logins = [ln for ln in lines if " login " in f" {ln} "]
+    assert logins == ["-m coven.cli login --cloud-url https://52-220-6-189.sslip.io --token dev"]
+    assert any(ln.endswith("relay down") for ln in lines), "the relay restarts on the new cloud"
+    assert lines.index(logins[0]) < next(i for i, ln in enumerate(lines) if "host run" in ln)
+
+
+def test_cloud_url_and_token_come_from_the_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("COVEN_CLOUD_URL", "https://cloud.example")
+    monkeypatch.setenv("COVEN_TOKEN", "t0k")
+    r, lines = _run(tmp_path, "{fake}")
+    assert r.returncode == 0, r.stderr
+    assert "-m coven.cli login --cloud-url https://cloud.example --token t0k" in lines

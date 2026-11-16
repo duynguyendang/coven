@@ -8,7 +8,9 @@
 #   ./run-host.sh --slots 3 --once        any other `coven host run` option goes through
 #
 # Environment: COVEN_HOST_NAME (default: this machine's name), COVEN_SLOTS (default 2),
-# COVEN_PY (the interpreter, default python3; extra words are passed as its first arguments).
+# COVEN_PY (the interpreter, default python3; extra words are passed as its first arguments),
+# COVEN_CLOUD_URL (default: the test cloud on AWS Lightsail) and COVEN_TOKEN (default: dev).
+# When the saved login points at another cloud, the host logs in to COVEN_CLOUD_URL and restarts the relay.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +40,14 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# 1. cloud login + project: set up once with `coven login` and `coven project link`.
+# 1. cloud login + project: the login follows COVEN_CLOUD_URL; the project is set once with `coven project link`.
+cloud_url="${COVEN_CLOUD_URL:-https://52-220-6-189.sslip.io}"
+saved_url="$(coven doctor 2>&1 | sed -n 's/^cloud: //p' | head -n 1)"
+if [ "${saved_url%/}" != "${cloud_url%/}" ]; then
+  echo "host: logging in to $cloud_url (was: ${saved_url:-none})"
+  coven login --cloud-url "$cloud_url" --token "${COVEN_TOKEN:-dev}" >/dev/null
+  coven relay down >/dev/null 2>&1 || true # a running relay still sends to the old cloud
+fi
 coven doctor 2>&1 | grep -E "^(project|cloud|token|health):" || true
 if ! coven doctor 2>&1 | grep -q "^health: 200"; then
   echo "run-host: the cloud is not reachable or not configured: run 'coven login --cloud-url <url> --token <token>' and 'coven project link <name>'" >&2

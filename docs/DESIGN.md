@@ -236,6 +236,12 @@ uses the **Astryx neutral** theme (`web/vendor/astryx/`), and the harness forbid
 not Astryx tokens; Linear's structure and the monitoring rules sit on those tokens without adding a
 palette. The Kiroween character comes from the witches' ghost icons, not from the chrome.
 
+**Specter Core skin.** `web/theme-specter.css` (loaded after the neutral theme) re-points the Astryx
+tokens at the Specter Core palette from the design export: violet-tinted dark surfaces, electric purple
+accent, pumpkin for attention, green ok, crimson failure, 8px element radius, Space Grotesk and JetBrains
+Mono when installed (the CSP allows no remote fonts). Hex values live only in that file; the page still
+uses tokens only.
+
 ## Overview
 
 **Calm night console, alive where it matters.** Neutral greys carry everything; colour appears only

@@ -157,3 +157,26 @@ describe("purging seeded demo data from a real project", () => {
     });
   }
 });
+
+describe("COVEN_STORE=sqlite: SqlStore on a database file", () => {
+  test("events and dismissals survive closing and reopening the file", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { openSqlite } = await import("../src/sqlite.ts");
+    const dir = mkdtempSync(join(tmpdir(), "coven-sqlite-"));
+    const file = join(dir, "nested", "coven.db");
+    try {
+      const first = openSqlite(file);
+      const store = new SqlStore(first);
+      assert.deepEqual(await store.ingest("shop", "sess_a", [ev("e1", "run_started"), ev("e2", "tool_call")]), [2, 0]);
+      first.close();
+
+      const second = openSqlite(file);
+      const reopened = new SqlStore(second);
+      assert.equal(await reopened.hydrate(), 2);
+      assert.deepEqual(await reopened.ingest("shop", "sess_a", [ev("e2", "tool_call")]), [0, 1]);
+      second.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

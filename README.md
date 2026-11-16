@@ -135,7 +135,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
-| `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too) |
+| `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too). Logs in to `COVEN_CLOUD_URL` (default: the AWS test cloud, token `COVEN_TOKEN`, default `dev`) when the saved login points elsewhere |
 | `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--auto-merge] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
 | `coven host prepare [--only <spec>] [--note …]` | The Scribe proposes the witch, paths and verify for tasks that lack them; the host writes them on branch `coven/prepare-all` for you to merge |
 | `coven host status \| agents \| retry <task> [--recheck]` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again (`--recheck`, or `retry all --recheck`: check the work already in its worktree again, no model run); on the board, **Retry** does the same for any host |
@@ -423,7 +423,7 @@ tokenizer name). The dashboard never converts credits into tokens behind your ba
 `COVEN_TOKENS` accepts a comma-separated list. For separate scopes set
 `COVEN_INGEST_TOKEN` (relay only) and `COVEN_READ_TOKEN` (dashboard only). With
 neither set the app uses `dev` and prints a warning at start-up; a persistent
-store (`COVEN_STORE=dynamo`) refuses to start with the development token. Tokens
+store (`COVEN_STORE=sqlite` or `dynamo`) refuses to start with the development token. Tokens
 are compared in constant time. The bearer header is accepted everywhere; the
 `?token=` query parameter is accepted only on `/v1/stream`, because a browser
 cannot set headers on an event stream. There is no user model and no per-project
@@ -443,7 +443,7 @@ same service, so the hosted URL needs no separate static site.
 src/coven/                   relay + CLI (Python): config, events, redaction, event log, socket, runner,
                              board, host (the dispatcher), agents (the witches), council (the listener)
 server/                      Coven Cloud (Node.js, TypeScript run natively): ingest, SSE, stores, seed
-server/src/                  app (HTTP), store (memory / DynamoDB), redact, events, auth, seed
+server/src/                  app (HTTP), store (memory / SQLite file / DynamoDB), redact, events, auth, seed
 server/test/                 node:test suites, including the jsdom dashboard test
 web/                         single-file dashboard (fleet, run room, council replay, board, council chat)
 run-host.sh                  run this machine as a host (witches take tasks and chat requests)
