@@ -61,7 +61,9 @@ make deploy      # Cloudflare (only when asked)
    a host started with `--auto-merge` merges and pushes the base branch itself, but only a branch White
    Hat, Black Hat and the Elder Witch all passed, that the Chair decided to merge, that no person
    rejected, that merges cleanly, and whose merged tree passes `make verify` (`COVEN_MERGE_CHECK`).
-   It never force-pushes. An agent working on this repo outside a host still follows the rule.
+   It never force-pushes. A person's **Accept and merge** on the board (`POST /v1/board/accept`) is the other
+   way: the host that holds the branch merges it under the same checks and pushes the base. An agent working
+   on this repo outside a host still follows the rule.
 3. **Events are a contract.** A new event type, field or endpoint goes into
    `docs/ADD.md` §6 in the same change; the harness fails otherwise.
    Validate in `server/src/events.ts`; the cloud accepts nothing it cannot validate.

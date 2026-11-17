@@ -9,7 +9,7 @@ import threading
 
 import pytest
 
-from coven import agents, board, host, specmap
+from coven import agents, board, council, host, specmap
 
 TASKS = """# Implementation Plan
 
@@ -320,6 +320,70 @@ def test_the_dev_is_not_dispatched_free_text_and_a_failed_run_closes_with_an_err
     host.Host(repo, slots=1, runner=lambda *a: (None, "no answer within 5 s")).run(once=True)
     last = cloud.answers[-1]
     assert last[:3] == ("evt_wh", "white-hat", "error") and "could not do it: no answer within 5 s" in last[3]
+
+
+DOWN = "the run failed at prompt: Kiro could not load the available models. Please try again. (code -32000): {\"errorType\":\"ModelRegistryUnavailableError\"}"
+
+
+def test_a_failed_chair_answers_once_in_plain_words_while_its_reply_is_still_on_the_way(repo, monkeypatch):
+    """The error reply travels through the relay: the cloud may still list the message as open on the next tick."""
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do("chair"))
+    runner = Runner({"grey-witch": lambda cwd, prompt: (None, "the run failed: boom (code -32000): {\"x\": 1}")})
+    for _ in range(3):  # the fake cloud never hears the reply: the message stays open
+        host.Host(repo, slots=1, runner=runner, only=["grey-witch"]).run(once=True)
+    errors = [a for a in cloud.answers if a[2] == "error"]
+    assert len(errors) == 1, "one error per message, not one per tick"
+    assert "boom" in errors[0][3] and "{" not in errors[0][3] and "-32000" not in errors[0][3]
+
+
+def test_kiro_down_pauses_the_host_keeps_the_message_and_answers_when_kiro_is_back(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do(None, message="who will review the code?"))
+    now = [1000.0]
+    up = {"ok": False}
+    answer = "Understood.\n" + json.dumps([{"agent": "white-hat", "title": "Run the tests", "detail": "run them"}])
+    runner = Runner({"grey-witch": lambda cwd, prompt: (answer, None) if up["ok"] else (None, DOWN)})
+    h = host.Host(repo, slots=1, runner=runner, only=["grey-witch"], clock=lambda: now[0], out=lambda *a: None)
+
+    def turn(h):  # one tick, then wait for what it started (the same Host: the pause lives in it)
+        h.tick()
+        for future in list(h.running.values()):
+            future.result()
+        h._reap()
+    turn(h)
+    said = lambda: [a for a in cloud.answers if a[2] == "working" and "paused" in a[3]]
+    assert len(said()) == 1 and "the council is paused and your message is kept" in said()[0][3]
+    assert not [a for a in cloud.answers if a[2] == "error"], "no error while Kiro is down"
+    assert h.paused() == 60, "the host backs off for a minute"
+    calls = len(runner.calls)
+    assert h.tick()["paused"] == 60 and len(runner.calls) == calls, "while paused nothing that needs a model starts"
+    now[0] += 61
+    turn(h)  # still down: the second step is longer, and nothing more is said in the chat
+    assert h.paused() == 120 and len(said()) == 1, "said once, not once per try"
+    assert len([a for a in cloud.answers if a[2] == "working"]) == 2, "and no second 'on it' for the retry"
+    up["ok"] = True
+    now[0] += 121
+    turn(h)
+    assert h.paused() == 0, "a success ends the pause"
+    assert [a for a in cloud.answers if a[2] == "answer"], "the kept message is answered"
+    assert not [a for a in cloud.answers if a[2] == "error"]
+
+
+def test_a_build_that_meets_kiro_down_goes_back_to_the_queue_not_to_failed(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    h = host.Host(repo, slots=1, runner=Runner({"green-witch": lambda cwd, prompt: (None, DOWN)}), only=["green-witch"], out=lambda *a: None)
+    h.run(once=True)
+    states = [s[:2] for s in cloud.statuses if s[0] == "shop#1"]
+    assert states[-1] == ("shop#1", "queued") and ("shop#1", "failed") not in states
+    assert "shop#1" not in host.load(repo), "nothing built: no record kept, it is taken again after the pause"
+    assert not [n for n in cloud.notes if "could not finish" in n["note"]], "no failure note"
+
+
+def test_plain_error_keeps_the_reason_and_drops_protocol_noise():
+    assert council.plain_error("no answer within 5 s") == "no answer within 5 s."
+    assert council.plain_error('the run failed: boom (code -32000): {"x": 1}') == "the run failed: boom."
+    assert council.plain_error(None) == "the run gave no answer."
 
 
 def test_steps_are_cut_to_the_budget(repo):
@@ -1170,3 +1234,54 @@ def test_a_persons_retry_on_the_board_lets_the_host_take_a_failed_task_again(rep
     assert not git(repo, "branch", "--list", "coven/shop-1"), "a branch with no commit of the task is dropped: the next try starts from today's base"
     h.run(once=True)
     assert host.load(repo)["shop#1"]["state"] == "submitted", "taken again and built"
+
+
+def test_self_check_installs_missing_node_modules_once_and_reports_what_it_cannot_fix(tmp_path):
+    root = tmp_path / "repo"
+    (root / "server").mkdir(parents=True)
+    (root / "server" / "package.json").write_text("{}")
+    (root / "server" / "package-lock.json").write_text("{}")
+    (root / "Makefile").write_text("verify:\n")
+    calls = []
+
+    class Done:
+        def __init__(self, code=0, out=""):
+            self.returncode, self.stdout, self.stderr = code, out, ""
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[:2] == ["npm", "ci"]:
+            (root / "server" / "node_modules").mkdir()
+            return Done()
+        return Done(out="22.20.0")
+
+    tools = {"git": "/usr/bin/git", "make": "/usr/bin/make", "node": "/usr/bin/node", "npm": "/usr/bin/npm"}
+    fixed, problems = host.self_check(root, run=run, which=tools.get, dns=lambda: None)
+    assert problems == [] and fixed and "npm ci" in fixed[0]
+    assert ["npm", "ci", "--no-audit", "--no-fund"] in calls
+    calls.clear()
+    assert host.self_check(root, run=run, which=tools.get, dns=lambda: None) == ([], []), "installed: nothing to do the second time"
+    assert not [c for c in calls if c[:2] == ["npm", "ci"]]
+
+    old = lambda cmd, **kw: Done(out="20.11.1")
+    _, problems = host.self_check(root, run=old, which={**tools, "make": None}.get, dns=lambda: 10.0)
+    assert any("IPv6 lookups hang" in p and "dnsTunneling=false" in p for p in problems)
+    assert any("make is not on PATH" in p for p in problems)
+    assert any("node 20.11.1 is too old" in p for p in problems)
+
+
+def test_slow_dns_is_measured_with_a_limit_and_a_fast_lookup_passes():
+    import time as _t
+    assert host.slow_dns(resolve=lambda: None) is None
+    assert host.slow_dns(limit=0.05, resolve=lambda: _t.sleep(0.2)) >= 0.1
+
+
+def test_one_host_per_working_copy(repo):
+    first = host.hold_host_lock(repo)
+    assert first is not None
+    assert host.hold_host_lock(repo) is None, "a second host in the same working copy is refused"
+    assert host.host_lock_pid(repo) == str(__import__("os").getpid())
+    first.close()
+    again = host.hold_host_lock(repo)
+    assert again is not None, "free again once the first host stops"
+    again.close()

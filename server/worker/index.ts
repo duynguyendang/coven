@@ -27,10 +27,13 @@ interface Env {
   COVEN_TOKENS?: string;
   COVEN_INGEST_TOKEN?: string;
   COVEN_READ_TOKEN?: string;
+  /** People's decisions (accept and merge, plan, done, retry, dispatch, push) need this one when it is set. */
+  COVEN_ADMIN_TOKEN?: string;
 }
 
 const tokenEnv = (env: Env): TokenEnv => ({
   COVEN_TOKENS: env.COVEN_TOKENS, COVEN_INGEST_TOKEN: env.COVEN_INGEST_TOKEN, COVEN_READ_TOKEN: env.COVEN_READ_TOKEN,
+  COVEN_ADMIN_TOKEN: env.COVEN_ADMIN_TOKEN,
 });
 
 const VERSION_HEADER = "x-coven-version";

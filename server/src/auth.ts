@@ -3,7 +3,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 export const DEV_TOKEN = "dev";
-export type Scope = "read" | "ingest" | "any";
+export type Scope = "read" | "ingest" | "any" | "decide";
 /** Token configuration: `process.env` in Node, the Worker's bindings and secrets in Cloudflare. */
 export type Env = Record<string, string | undefined>;
 
@@ -13,8 +13,14 @@ const split = (value: string | undefined): string[] =>
   (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 
 export function tokens(scope: Scope, env: Env = processEnv()): Set<string> {
+  // People's decisions (accept and merge, approve a plan, mark done, retry, dispatch, push) need the admin
+  // password when one is configured (NFR-SEC7); without one they take the read scope, as before.
+  const admin = split(env.COVEN_ADMIN_TOKEN);
+  if (scope === "decide" && admin.length) return new Set(admin);
+  if (scope === "decide") scope = "read";
   const shared = split(env.COVEN_TOKENS);
-  const read = new Set([...split(env.COVEN_READ_TOKEN), ...shared]);
+  // The admin password can do what a reader does, so it also signs in to the dashboard.
+  const read = new Set([...split(env.COVEN_READ_TOKEN), ...shared, ...admin]);
   const ingest = new Set([...split(env.COVEN_INGEST_TOKEN), ...shared]);
   const pick = scope === "read" ? read : scope === "ingest" ? ingest : new Set([...read, ...ingest]);
   return pick.size ? pick : new Set([DEV_TOKEN]);

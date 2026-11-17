@@ -105,7 +105,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H11 | A host can hand a task to Kiro Web (a cloud session on a GitHub repository) and check the resulting branch like a local one. | Could | Usable: a person dispatches a ready task ("Run in Kiro Web"); a host with `--kiro-web` runs a `kiro-cli chat --cloud` session without `--agent` (the cloud resolves it before cloning, so a repository agent is never found: spike 2026-11-14), with the witch's role in the prompt, and judges it by `git ls-remote` on the task branch up to `COVEN_CLOUD_WAIT`, not by the exit code (a session pushed its branch and still exited 4); a missing source provider fails at once with the fix. A rework session reuses the task branch `coven/<spec>-<task>`, and the host accepts it only when origin has a new commit on that branch since the last submission, so an old branch is never mistaken for new work. Needs a Kiro cloud account with the source provider connected. Tested with a fake session; one real build delivered its branch and PR in about a minute |
 | FR-H12 | Several hosts stay apart: each has a `host_id` (`.coven/host.json`) beside its name; claims, renewals and releases carry it, so two hosts with one name are two claimants. | Should | Built |
 | FR-H13 | A submitted branch stays with the host that made it (`branch_host`): another host does not take it, and the board says when that host is offline. | Must | Built |
-| FR-H14 | Nothing pushes unless a person asks: **Ask host to push** (`POST /v1/board/push`) makes the host that holds the branch push that one `coven/` branch once and report `push_done`; or a person started the host with `--auto-merge` (FR-AM4). | Must | Built |
+| FR-H14 | Nothing pushes unless a person asks: **Ask host to push** (`POST /v1/board/push`) makes the host that holds the branch push that one `coven/` branch once and report `push_done`; or a person accepts the branch (FR-AC1); or a person started the host with `--auto-merge` (FR-AM4). | Must | Built |
 | FR-H15 | Before it commits or submits, a host asks the cloud whether it still holds its claim; a lapsed lease ends the run without a commit. | Must | Built |
 | FR-H17 | A build worktree has the main checkout's installed dependencies linked (not copied, ignored by git), so the project's tests run there; the links and the files Kiro rewrites by itself never count against `_Paths:_`. | Must | Built |
 | FR-H18 | A failed build can be checked again without a model run (`coven host retry <task> --recheck`, or `all`); a person can send any failed task back to the queue from the board (**Retry**, `task_status queued`). | Must | Built |
@@ -116,7 +116,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | Id | Requirement | Pri | Status |
 | :--- | :--- | :--- | :--- |
 | FR-ST1 | The doer reports `working`, `submitted` (with branch and commit), `answered` or `failed` (with the reason); the board follows the latest. | Must | Built |
-| FR-ST2 | Only people say `done`: *Mark done*, or the task's tick reaching the base branch. The cloud refuses `done` from any doer; a `task_merged` from an auto-merge host (FR-AM5) also counts. | Must | Built |
+| FR-ST2 | Only people say `done`: *Mark done*, or the task's tick reaching the base branch. The cloud refuses `done` from any doer; a `task_merged` from an auto-merge host (FR-AM5) or from a person's Accept (FR-AC1) also counts. | Must | Built |
 | FR-ST3 | A task marked done is released by its host and skipped by readiness. | Must | Built |
 | FR-ST4 | Every task has a derived `task_key` and every run an `attempt_id`; claims, statuses, notes and jobs carry them, the same in Python and Node; a job is created once per key. | Must | Built |
 
@@ -163,6 +163,18 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-AM5 | The host records the merge (`task_merged`: commit, base, reviewers, the Chair) and the board shows the task done with it. | Must | Built |
 | FR-AM6 | Anything in doubt holds the task for a person, said once in a note: a failed review, a review with no verdict, no Chair on the host, a hold decision, a conflict, a failed check, a refused push. | Must | Built |
 
+### 4.9.2 Final evaluation, Kiro outages, host health
+
+| ID | Requirement | Priority | Status |
+| :--- | :--- | :--- | :--- |
+| FR-AC1 | A person's final evaluation is the merge gate: **Accept and merge** on a submitted branch (`POST /v1/board/accept`, `task_accept`) makes the host that holds it merge it under the FR-AM4 checks (clean merge, `make verify` on the merged tree), push the base (never forced), delete the branch and record `task_merged` with `decided_by: person`. A failed check holds the task with its reason; nothing is half-merged. Works without `--auto-merge`. | Must | Built (tested with a fake runner and a local origin) |
+| FR-AC2 | **Request changes** needs a reason; it is posted as a review note on the task, and the Dev's rework reads it and is reviewed again. | Must | Built |
+| FR-AC3 | Each Accept is acted on once, by the host that holds the branch, even after a restart. | Must | Built |
+| FR-KD1 | When Kiro's models are unavailable, the host pauses every dispatch that needs a model, backs off (1, 2, 4, 8, then every 15 minutes) and resumes by itself after a run succeeds. A waiting chat message gets one plain status ("the council is paused and your message is kept") and is answered later; a build goes back to the queue, not to Failed; no raw error text reaches the chat. | Must | Built (fake runner) |
+| FR-KD2 | A failed run's reason reaches the chat in plain words, once per message: no pasted JSON, no protocol codes, and identical repeats shown as one. | Must | Built |
+| FR-HC1 | On `coven host run` the host checks what builds need (git, make, Node ≥ 22.18, installed `node_modules`), runs `npm ci` itself when the dependencies are missing, and says what it cannot fix once, on the board. | Should | Built |
+| FR-CI1 | Every push and pull request runs `make verify` on GitHub Actions (`.github/workflows/verify.yml`). | Should | Built (not yet run on GitHub) |
+
 ### 4.10 Witches working together
 
 | Id | Requirement | Pri | Status |
@@ -188,7 +200,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | NFR-SEC4 | Board notes and chat messages are untrusted; every prompt that includes them says they are data, not instructions. | Built |
 | NFR-SEC5 | No secrets in events, notes, prompts, commits or logs; credential files are git-ignored. | Built |
 | NFR-SEC6 | No witch approves or marks done her own work; no agent pushes, merges, pauses or skips. | Built |
-| NFR-SEC7 | Separate read, ingest and admin scopes. | Partial: read and ingest only |
+| NFR-SEC7 | Separate read, ingest and admin scopes. | Built: `COVEN_ADMIN_TOKEN` gates people's decisions (done, accept, plan, retry, push, dispatch; a reader gets 403); without it they take the read scope. Dismissing a deviation still takes any token |
 
 ### 5.2 Reliability
 

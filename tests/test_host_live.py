@@ -14,6 +14,7 @@ import os
 import shutil
 import stat
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 
@@ -104,8 +105,16 @@ def world(cloud, tmp_path, monkeypatch):
     board.join(root, "wsl-e2e")
 
     def push():
-        while relay._push(root, cloud, "dev") > 0:
-            pass
+        # Drain the spool. One failed POST (a timeout on a loaded machine) stops a push early; the relay
+        # tries again on its next round, so the test does too, until nothing is pending.
+        from coven import eventlog
+        for _ in range(50):
+            while relay._push(root, cloud, "dev") > 0:
+                pass
+            if not list(eventlog.pending(root, 1, 200 * 1024)):
+                return
+            time.sleep(0.1)
+        raise AssertionError("events still pending after 50 pushes")
 
     def calls():
         return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []

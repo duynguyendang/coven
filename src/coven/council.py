@@ -57,6 +57,30 @@ def _remember(root: Path, message_id: str) -> None:
     temporary.replace(path)
 
 
+KIRO_DOWN = "Kiro's models are unavailable right now (an outage on Kiro's side, not in Coven). Send the message again in a few minutes."
+
+
+KIRO_PAUSED = "Kiro models are unavailable right now: the council is paused and your message is kept. It answers by itself when Kiro is back."
+
+
+def kiro_down(reason: str | None) -> bool:
+    """A failure on Kiro's side that a retry later fixes (its model registry is down), not a fault of the task."""
+    low = str(reason or "").lower()
+    return "could not load the available models" in low or "modelregistryunavailable" in low
+
+
+def plain_error(reason: str | None) -> str:
+    """A run's failure as one sentence a person can act on: no raw JSON, no protocol codes."""
+    text = " ".join(str(reason or "").split())
+    low = text.lower()
+    if "could not load the available models" in low or "modelregistryunavailable" in low:
+        return KIRO_DOWN
+    text = re.sub(r"\s*\{.*\}\s*", " ", text)  # a pasted JSON error body
+    text = re.sub(r"\s*\(code -?\d+\)\s*:?", "", text)
+    text = text.strip(" :.")
+    return f"{text}." if text else "the run gave no answer."
+
+
 def _parse_ts(stamp: str | None) -> datetime | None:
     try:
         return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
@@ -219,7 +243,7 @@ def _answer_held(root: Path, message: dict, chat: dict, notes, runner, role: str
     if text:
         event = board.answer(root, message["message_id"], clip(text), role=role)
     else:
-        event = board.answer(root, message["message_id"], f"The council could not answer: {error}.", role=role, kind="error")
+        event = board.answer(root, message["message_id"], f"The council could not answer: {plain_error(error)}", role=role, kind="error")
     _remember(root, message["message_id"])
     return {"message_id": message["message_id"], "role": role, "kind": event["payload"]["kind"], "answer": event["payload"]["message"]}
 

@@ -14,7 +14,7 @@ relay / host / browser --HTTPS--> Caddy :443 --> coven :8080 --> /data/coven.db 
 2. On the VM: install Docker (`curl -fsSL https://get.docker.com | sh`), add 1 GB of swap on a
    512 MB plan, and copy the repository to `/opt/coven`.
 3. Create `/opt/coven/infra/lightsail/.env` (mode 600, never committed):
-   `COVEN_TOKENS=<a long random password>` and `COVEN_DOMAIN=<your name>` (without a domain,
+   `COVEN_TOKENS=<a long random password>`, `COVEN_ADMIN_TOKEN=<another one, for people's decisions>` and `COVEN_DOMAIN=<your name>` (without a domain,
    `<static-ip-with-dashes>.sslip.io` resolves to the VM and gets a certificate).
 4. `cd /opt/coven/infra/lightsail && sudo docker compose up -d --build`.
 5. Check `https://$COVEN_DOMAIN/healthz`, then point relays at it with `coven project link

@@ -306,6 +306,25 @@ export async function seedBoard(base: string, token: string): Promise<void> {
     ev("n4", "seed-cy", "board_note", { note: "read.py:41 trusts the page size from the query string; cap it.", kind: "review", task: "atlas-routing#2.1" }, 360),
   ]);
   await send([ev("n5", "seed-bo", "board_note", { note: "Rate limits per API key, not per IP: the load test (5) will hit one IP.", kind: "note", task: "atlas-routing#3" }, 200)]);
+  // A short council conversation, so a first visit sees the council at work: Black Hat objects, the Chair rules.
+  // People's lines go through POST /v1/chat, as a person's do (the relay may not speak for a human: a reject binds);
+  // the council's answers are seeded events that reply to them. A re-seed asks again only when the chat has none yet.
+  const chat = await (await fetch(`${base}/v1/chat?project_id=${project}`, { headers: { Authorization: `Bearer ${token}` } })).json() as Json;
+  if ((chat.messages || []).some((m: Json) => m.role === "human" && String(m.author || "").startsWith("seed-"))) return;
+  const ask = async (author: string, kind: string, message: string, extra: Json = {}) =>
+    (await post(base, token, "/v1/chat", { project_id: project, author, kind, message, ...extra })).message_id as string;
+  const say = (id: string, persona: string, replyTo: string, message: string): Json =>
+    ({ ...ev(`chat_${id}`, "seed-cy", "chat_message", { role: "council", kind: "answer", persona, reply_to: replyTo, message }, 0), ts: new Date().toISOString() });
+  const idea = await ask("seed-ana", "idea", "Could the council find its own work, instead of waiting for one of us to ask?");
+  await send([
+    say("2", "elf", idea, "Idea: let the council find its own work. A scan of the board for tasks blocked past four hours, and a short note on each."),
+    say("3", "black-hat", idea, "Objection: a council that assigns itself work can assign itself the wrong work. Evidence: atlas-routing#3 was claimed twice last week and neither run checked the other."),
+    say("4", "grey-witch", idea, "Overruled, with a guard. The scan proposes; the Chair and the guard dispose. No build starts without both, and a person still accepts the merge."),
+    say("5", "green-witch", idea, "Then I build the scan, inside its paths. Branch coven/atlas-routing-scout."),
+    say("6", "herald", idea, "Noted. This conversation is seeded demo data; the real council takes over from here."),
+  ]);
+  const poke = await ask("seed-bo", "ask", "Black Hat, are you happy now?", { to: "red-team" });
+  await send([say("8", "black-hat", poke, "Happy is a strong word. Satisfied, once a test shows the guard refusing a build that has no plan.")]);
 }
 
 export async function seed(base: string, token: string, keepAliveSeconds = 0): Promise<{ accepted: number; duplicates: number }> {

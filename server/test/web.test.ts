@@ -237,7 +237,12 @@ describe("sessions screen", () => {
     assert.match(t, /Need attention\s*\d+/);
     assert.match(t, /failed tool calls, last 10 min/);
     assert.match(t, /Open deviations\s*\d+/, "deviations are always shown");
-    assert.match(t, /Credits\s*[\d.]+headless runs/, "credits are added when a headless run reports them");
+    assert.match(t, /Credits\s*[\d.]+\s*\d+ headless runs?, as reported/, "credits say how many headless runs reported them");
+    // every tile is the way into what it counts
+    const tiles = [...doc().querySelectorAll<HTMLAnchorElement>(".stats a.stat")];
+    assert.deepEqual(tiles.map((a) => a.dataset.key), ["stat-live", "stat-attention", "stat-failures", "stat-deviations", "stat-credits"]);
+    assert.equal(tiles[0].getAttribute("href"), "#/?f=live");
+    assert.equal(tiles[3].getAttribute("href"), "#/deviations");
   });
 
   test("filters narrow the list", async () => {
@@ -1080,6 +1085,32 @@ describe("keyboard, safety and states", () => {
     assert.ok(text().includes(hostile), "rendered as text");
   });
 
+  test("board: the final evaluation of a submitted branch: Request changes asks why, Accept asks the host to merge", async () => {
+    await send("shop", "member_ac", [{ ...ev("member_ac", "shop", "spec_artifact_updated", { artifact: "tasks", spec: "evalu", total: 1, done: 0, in_progress: 0,
+      queued: 0, optional: 0, tasks: [{ task_id: "1", title: "Judge me", status: "not_started", paths: ["judge/"] }] }, 1), member: "ac" },
+      { ...ev("member_ac", "shop", "task_status", { task: "evalu#1", state: "submitted", agent: "green-witch",
+      detail: "coven/evalu-1 at abc1234", branch: "coven/evalu-1", branch_host: "h_0000acac", host_id: "h_0000acac" }, 2), member: "ac" }]);
+    await go("#/");
+    await go("#/board/shop", 600);
+    openColumn("review");
+    openTask("evalu#1");
+    const card = () => doc().querySelector('#task-dialog [data-key="task-evalu#1"]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(card(), /Accept and merge/);
+    (doc().querySelector('[data-key="changes-btn-evalu#1"]') as HTMLButtonElement).click();
+    const box = doc().querySelector('[data-key="changes-evalu#1"]') as HTMLInputElement;
+    assert.ok(box, "Request changes asks what should change");
+    box.value = "name the file after the route";
+    box.form!.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
+    await wait(900);
+    assert.match(card(), /changes asked by .*name the file after the route/);
+    (doc().querySelector('[data-key="accept-evalu#1"]') as HTMLButtonElement).click();
+    await wait(900);
+    assert.match(card(), /Accepted by .*merges it once it merges cleanly/);
+    assert.equal(doc().querySelector('[data-key="accept-evalu#1"]'), null, "accepted once");
+    closeTask();
+    await go("#/");
+  });
+
   test("the page raised no errors", () => {
     assert.deepEqual(errors, []);
   });
@@ -1116,7 +1147,9 @@ describe("council chat", () => {
     assert.ok(doc().querySelector('[data-key="nav-chat"]'), "a Council chat place in the sidebar");
     assert.equal(doc().querySelector("#main h1")!.textContent, "Council chat · shop");
     assert.ok(text().includes("No member is listening") && text().includes("coven council listen"));
-    assert.ok(text().includes("No messages yet"));
+    assert.ok(text().includes("The council is gathered and quiet"), "an empty chat has a voice");
+    assert.equal(doc().getElementById("chat-kinds-label")!.textContent, "Send as", "the kind group has a visible label");
+    assert.equal(doc().querySelector("fieldset.kinds")!.getAttribute("aria-labelledby"), "chat-kinds-label");
   });
 
   test("a person asks a role a question; it waits for the council", async () => {
@@ -1128,7 +1161,9 @@ describe("council chat", () => {
     assert.equal((doc().getElementById("chat-text") as HTMLTextAreaElement).value, "", "the box is cleared after sending");
     const [first] = bubbles();
     assert.ok(first.includes("Ask") && first.includes("duy") && first.includes("to Black Hat Witch — Red Team"), first);
-    assert.ok(first.includes("waiting for the council…"));
+    assert.ok(first.includes("waiting for the council: nobody is listening yet"), "no one listens here: the ghost does not pretend to think");
+    assert.equal(doc().querySelector(".status.thinking"), null);
+    assert.equal(doc().querySelector('[data-key="nav-chat"] .count')!.textContent, String(bubbles().length), "the sidebar counts the messages in the chat");
   });
 
   test("a rejection must name its task, and is shown as binding", async () => {
@@ -1158,7 +1193,31 @@ describe("council chat", () => {
     const reply = all.find((b) => b.includes("never invalidated"))!;
     assert.ok(reply.includes("Black Hat Witch — Red Team") && reply.includes("on ana") && reply.includes("↪ duy: “Is the cart total cached?”"), reply);
     assert.ok(!all[0].includes("waiting for the council"), "answered");
+    // a member listens now: a waiting message to a role shows that witch thinking (a real state, not a timer)
+    type("chat-text", "And is the total rounded?");
+    (doc().getElementById("chat-to") as HTMLSelectElement).value = "red-team";
+    await submit();
+    const thinking = doc().querySelector(".status.thinking");
+    assert.ok(thinking && /Black Hat Witch is thinking/.test(thinking.textContent!), thinking?.textContent ?? "no thinking line");
     assert.ok(text().includes("Answering: ana"), "the listener is shown online");
+  });
+
+  test("the same failure for one message is one plain bubble, not a wall of raw errors", async () => {
+    const chat = (await getJson(s.base, "/v1/chat?project_id=shop")).body;
+    const asked = chat.messages[0];
+    const raw = "Grey Witch — Senior Kiro · Chair could not dispatch it: the run failed at prompt: Kiro could not load the available models. Please try again. (code -32000): {\"errorType\":\"ModelRegistryUnavailableError\"}";
+    await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "member_wsl-9", events: [1, 2, 3, 4].map((n) => (
+      { event_id: `evt_err_${n}`, project_id: "shop", run_id: "member_wsl-9", type: "chat_message", ts: new Date(Date.now() + n).toISOString(), member: "wsl-9",
+        payload: { role: "council", kind: "error", message: raw, reply_to: asked.message_id, persona: "grey-witch" } })) });
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    const errors = [...doc().querySelectorAll(".chat .msg.council.error")];
+    assert.equal(errors.length, 1, "four identical failures, one bubble");
+    const t = errors[0].textContent!;
+    assert.match(t, /Kiro's models are unavailable right now/);
+    assert.match(t, /\(4 tries\)/);
+    assert.ok(!t.includes("{") && !t.includes("-32000"), t);
+    assert.ok(errors[0].querySelector(".ghost-mood.shrug"), "the ghost shrugs");
   });
 
   test("Do it sends work to a witch: it says when no host runs her, then who takes it, then the answer in steps", async () => {
@@ -1339,5 +1398,16 @@ describe("signing out", () => {
     assert.equal(doc().querySelectorAll("#login h1").length, 0, "the sign-in adds no second page heading");
     assert.match(doc().getElementById("login-title")!.textContent!, /COVEN.*Sign in/s);
     assert.ok(doc().querySelector("#login-ghost svg.av"), "the ghost, as everywhere else");
+    assert.equal(doc().getElementById("login-hero")!.getAttribute("aria-label"), "Kiro, meet your Coven.", "the typed headline reads whole");
+    assert.ok(doc().getElementById("login-ghost")!.classList.contains("peeking"), "after a sign-out the ghost peeks up again");
+    assert.match(doc().getElementById("install-cmd")!.textContent!, /^coven login --cloud-url http:\/\/127\.0\.0\.1:\d+ --token <password>$/, "the command to connect a machine, for this cloud");
+  });
+
+  test("the sign-in and the footer say what Coven does, including what changes the repo", () => {
+    const says = doc().getElementById("login-tagline")!.textContent! + " " + doc().querySelector("footer")!.textContent!;
+    assert.ok(!/never edits|nothing here edits/i.test(says), "no claim that Coven never touches the repo");
+    assert.match(says, /branch/);
+    assert.match(says, /tasks\.md/);
+    assert.match(says, /merge/);
   });
 });

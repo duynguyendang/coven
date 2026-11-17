@@ -261,6 +261,20 @@ most), three passes go to the Chair, and on her decision the host merges into th
 only if no person rejected it, it merges cleanly and `make verify` passes on the merged tree
 (`COVEN_MERGE_CHECK`). Anything in doubt waits for you, with a note saying why.
 
+**Your final evaluation.** Without `--auto-merge`, you are the merge gate. Open a submitted task on the
+board: **Accept and merge** asks the host that holds the branch to merge it under the same checks (clean
+merge, `make verify` on the merged tree) and push the base; **Request changes** asks what should change and
+sends it to the Dev, whose rework is reviewed again. A failed check holds the task with the reason.
+
+**When Kiro is down.** If Kiro's models are unavailable, the host pauses everything that needs a model
+and backs off (up to 15 minutes between tries). A waiting chat message gets one line saying the council is
+paused and the message is kept, and it is answered when Kiro is back; a build goes back to the queue.
+Nothing else is posted in the meantime.
+
+**Host self-check.** `coven host run` first checks git, make, Node 22.18+ and installed dependencies,
+runs `npm ci` itself when `node_modules` is missing, and says once on the board what it cannot fix.
+CI runs `make verify` on every push and pull request (`.github/workflows/verify.yml`).
+
 **Several hosts, one project.** Each host has an id (`.coven/host.json`). A submitted branch stays
 on the host that built it; its rework goes back there. Nothing is pushed unless you press **Ask
 host to push** on the card. A host that lost its lease does not commit. Every board write carries
@@ -421,7 +435,10 @@ tokenizer name). The dashboard never converts credits into tokens behind your ba
 ## Access tokens
 
 `COVEN_TOKENS` accepts a comma-separated list. For separate scopes set
-`COVEN_INGEST_TOKEN` (relay only) and `COVEN_READ_TOKEN` (dashboard only). With
+`COVEN_INGEST_TOKEN` (relay only) and `COVEN_READ_TOKEN` (dashboard only), and
+`COVEN_ADMIN_TOKEN` for people's decisions (Accept and merge, approve a plan, Mark done, Retry,
+push, Kiro Web dispatch): with it set, a read token gets 403 there and the dashboard asks for the
+admin password once (signing in with the admin password works too). With
 neither set the app uses `dev` and prints a warning at start-up; a persistent
 store (`COVEN_STORE=sqlite` or `dynamo`) refuses to start with the development token. Tokens
 are compared in constant time. The bearer header is accepted everywhere; the

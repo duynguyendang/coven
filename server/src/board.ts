@@ -95,6 +95,7 @@ export class Board {
   plans = new Map<string, Map<string, Json>>(); // project -> plan ref -> the Elder Witch's proposal and people's decision
   dispatches = new Map<string, Map<string, Json>>(); // project -> task -> the latest decision of a person (task_dispatch)
   pushes = new Map<string, Map<string, Json>>(); // project -> task ref -> the latest push request and its outcome
+  accepts = new Map<string, Map<string, Json>>(); // project -> task ref -> a person's latest final evaluation of its branch
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
 
   /** The key an event carries; else the key of the task it names, as the board knows it; else the derived key. */
@@ -230,10 +231,16 @@ export class Board {
     } else if (event.type === "task_merged" && typeof p.task === "string") {
       // The host merged a reviewed branch on the Chair's decision (auto-merge): the task is done, and says by whom.
       const all = this.statuses.get(project) ?? new Map<string, Json>();
+      const who = p.decided_by === "person" ? `accepted by ${String(p.author ?? "someone").slice(0, 40)}` : `passed by ${(p.reviewers || []).join(", ")}`;
       all.set(p.task, { ...(all.get(p.task) ?? {}), state: "done", ts: event.ts, host: event.member ?? null, agent: "grey-witch",
-        detail: `merged into ${String(p.base).slice(0, 60)} at ${String(p.commit).slice(0, 7)}, passed by ${(p.reviewers || []).join(", ")}`.slice(0, 200),
+        detail: `merged into ${String(p.base).slice(0, 60)} at ${String(p.commit).slice(0, 7)}, ${who}`.slice(0, 200),
         merged: { commit: String(p.commit).slice(0, 40), base: String(p.base).slice(0, 100), reviewers: (p.reviewers || []).slice(0, 6) } });
       this.statuses.set(project, all);
+    } else if (event.type === "task_accept" && typeof p.task === "string") {
+      const all = this.accepts.get(project) ?? new Map<string, Json>();
+      all.set(p.task, { decision: p.decision, state: "requested", branch: p.branch, host_id: p.host_id, by: String(p.author ?? "someone").slice(0, 40),
+        reason: typeof p.reason === "string" ? p.reason.slice(0, 300) : null, ts: event.ts, request_id: event.event_id });
+      this.accepts.set(project, all);
     } else if ((event.type === "push_request" || event.type === "push_done") && typeof p.task === "string") {
       const all = this.pushes.get(project) ?? new Map<string, Json>();
       const known = all.get(p.task);
@@ -354,6 +361,7 @@ export class Board {
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
         return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null, merged: doing?.merged ?? null,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
+          accept: this.accepts.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           delivery: spec === "council" ? delivery(t, doing, owner, this.runsAgent(projectId, t.agent, at), at) : null,
           branch_host: doing?.branch_host ?? null, branch_host_online: doing?.branch_host ? this.hostOnline(projectId, doing.branch_host, at) : null, claimed_by: owner?.member ?? null, claimed_agent: owner?.agent ?? null,
           reviewers: held.filter((c) => c.kind === "review").map((c) => c.member) };
@@ -368,6 +376,12 @@ export class Board {
   }
 
   /** The branch and host of a submitted task, for a push request; null when none is waiting on a host. */
+  /** A branch that waits for a person's evaluation: submitted for review, on a known host. */
+  acceptableBranch(projectId: string, ref: string): { branch: string; host_id: string } | null {
+    const doing = this.statuses.get(projectId)?.get(ref);
+    return doing?.state === "submitted" ? this.submittedBranch(projectId, ref) : null;
+  }
+
   submittedBranch(projectId: string, ref: string): { branch: string; host_id: string } | null {
     const doing = this.statuses.get(projectId)?.get(ref);
     return doing?.branch_host && doing?.branch ? { branch: doing.branch, host_id: doing.branch_host } : null;

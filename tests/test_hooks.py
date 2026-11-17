@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +14,10 @@ BARE_ENV = {"PATH": "/usr/bin:/bin"}  # what a hook may get: no venv, no ~/.loca
 
 
 @pytest.fixture()
-def repo(root):
+def repo(root, monkeypatch):
+    # These tests need a shell where a bare `coven` does not resolve. An installed venv or CI puts one on PATH: drop it.
+    keep = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d and not (Path(d) / "coven").exists()]
+    monkeypatch.setenv("PATH", os.pathsep.join(keep))
     folder = root / ".kiro" / "hooks"
     folder.mkdir(parents=True)
     (folder / "telemetry.json").write_text(json.dumps({

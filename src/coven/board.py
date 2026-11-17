@@ -393,10 +393,14 @@ def push_done(root: Path, ref: str, branch: str, ok: bool, detail: str | None = 
     return _member_event(root, "push_done", payload)
 
 
-def task_merged(root: Path, ref: str, branch: str, commit: str, base: str, reviewers: list[str], decided_by: str) -> dict:
-    """The host merged a reviewed branch into the base and pushed it (auto-merge): the board shows the task done."""
+def task_merged(root: Path, ref: str, branch: str, commit: str, base: str, reviewers: list[str], decided_by: str,
+                author: str | None = None) -> dict:
+    """The host merged a branch into the base and pushed it: on the Chair's decision (auto-merge, `decided_by`
+    grey-witch) or a person's Accept (`decided_by` person, with `author`). The board shows the task done."""
     payload = {"task": ref, "branch": branch, "commit": commit[:40], "base": base[:100], "reviewers": list(reviewers)[:6],
                "decided_by": decided_by, "host_id": config.host_id(root)}
+    if author:
+        payload["author"] = author[:40]
     return _member_event(root, "task_merged", payload)
 
 

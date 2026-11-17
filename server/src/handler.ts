@@ -217,6 +217,10 @@ export function createHandler(options: HandlerOptions): Handler {
 
   const need = (request: Request, url: URL, scope: Scope, allowQuery = false): void => {
     if (!authorised(request.headers.get("authorization"), url, scope, allowQuery, env)) {
+      // A signed-in reader asking for a decision is forbidden, not signed out: the page asks for the admin password.
+      if (scope === "decide" && authorised(request.headers.get("authorization"), url, "read", false, env)) {
+        throw new HttpError(403, "this decision needs the admin password");
+      }
       throw new HttpError(401, "invalid or missing token");
     }
   };
@@ -263,7 +267,7 @@ export function createHandler(options: HandlerOptions): Handler {
         }
         const problems = validateEvent(event);
         if (CLOUD_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is made by the cloud only (POST /v1/claims)`);
-        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch, /v1/board/plan or /v1/board/push), not a relay's`);
+        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch, /v1/board/plan, /v1/board/push or /v1/board/accept), not a relay's`);
         if (event.type === "task_status" && (event.payload || {}).state === "done") {
           problems.push("done is people's word (POST /v1/board/done), not a doer's report");
         }
@@ -392,7 +396,7 @@ export function createHandler(options: HandlerOptions): Handler {
 
     if (method === "POST" && path === "/v1/board/done") {
       // People accept a task's result: it moves to Done. A read token may, like a note or a chat message.
-      need(request, url, "read");
+      need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const projectId = idField(body, "project_id");
@@ -405,7 +409,7 @@ export function createHandler(options: HandlerOptions): Handler {
 
     if (method === "POST" && path === "/v1/board/retry") {
       // A person sends a failed task back to the queue: the next host that runs its witch takes it again (FR-H9).
-      need(request, url, "read");
+      need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const projectId = idField(body, "project_id");
@@ -419,7 +423,7 @@ export function createHandler(options: HandlerOptions): Handler {
     if (method === "POST" && path === "/v1/board/dispatch") {
       // A person decides that a task runs in Kiro Web, or takes that back. A read token may, like Mark done.
       // The body names the task only: the repository belongs to the host that runs it, never to the browser.
-      need(request, url, "read");
+      need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const projectId = idField(body, "project_id");
@@ -433,7 +437,7 @@ export function createHandler(options: HandlerOptions): Handler {
 
     if (method === "POST" && path === "/v1/board/push") {
       // The only way a branch is pushed: a person asks the host that holds it (spec multi-host, R2.3). Nothing pushes by itself.
-      need(request, url, "read");
+      need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const projectId = idField(body, "project_id");
@@ -444,10 +448,29 @@ export function createHandler(options: HandlerOptions): Handler {
       return json(201, { event_id: event.event_id, branch: event.payload.branch, host_id: event.payload.host_id });
     }
 
+    if (method === "POST" && path === "/v1/board/accept") {
+      // The final evaluation (FR-AC1): a person accepts a submitted branch, and the host that holds it merges it
+      // under the auto-merge checks and pushes the base; or asks for changes, with the reason the Dev reads.
+      need(request, url, "decide");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = idField(body, "project_id");
+      const task = optionalString(body, "task") ?? "";
+      if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
+      const decision = optionalString(body, "decision") ?? "";
+      if (!["accept", "changes"].includes(decision)) throw validation("decision", "accept or changes");
+      const reason = (optionalString(body, "reason") ?? "").trim().slice(0, 300);
+      if (decision === "changes" && !reason) throw validation("reason", "say what to change");
+      const author = (optionalString(body, "author") ?? "someone").slice(0, 40);
+      const event = await store.postWebAccept(projectId, task, decision, redactEvent({ payload: { reason } }).payload.reason || "", author);
+      if (!event) throw new HttpError(409, "no submitted branch of that task waits on a host");
+      return json(201, { event_id: event.event_id, branch: event.payload.branch, host_id: event.payload.host_id });
+    }
+
     if (method === "POST" && path === "/v1/board/plan") {
       // A person approves or rejects the Elder Witch's plan. Approval turns its tasks into build tasks for the Dev;
       // the plan is decided once. A read token may, like Mark done: people decide, and every signed-in person is one.
-      need(request, url, "read");
+      need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const projectId = idField(body, "project_id");

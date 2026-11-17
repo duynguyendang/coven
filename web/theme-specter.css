@@ -3,9 +3,10 @@
  * Specter Core tokens in .uiux/specter_core/DESIGN.md supply the purple ramp).
  *
  * It re-points the Astryx neutral theme's tokens (vendor/astryx/theme-neutral.css) at the Halloween
- * palette: void-obsidian and midnight-plum surfaces, violet hairlines, pumpkin orange as the one brand
- * action colour, slime green for ok, candy-corn amber for attention, crimson for failure, candy purple
- * for info. Dark is the designed scheme; light keeps lavender-white surfaces with the same orange.
+ * palette, made flat (no gradient, no glow): neutral near-black (light: near-white) surfaces and hairlines, so the
+ * ops screens stay calm and dense; pumpkin orange as the one flat brand colour; green ok, amber attention,
+ * crimson failure, candy purple for info and the witches. Lilac (--coven-lilac) is an accent, used only on the
+ * front door (sign-in, empty states), never as a background for the app.
  * Every value is a light-dark() pair, so the colour-scheme toggle in index.html keeps working. The hex
  * values live here and nowhere in index.html: the harness forbids hard-coded colours in the page itself.
  *
@@ -13,29 +14,29 @@
  */
 html[data-astryx-theme="neutral"] {
   /* surfaces: body < chrome/sidebar < panel < muted wells */
-  --color-background-body: light-dark(#f6f2fb, #0a0612);
-  --color-background-card: light-dark(#ffffff, #0f0a1b);
-  --color-background-popover: light-dark(#ffffff, #261a40);
-  --color-background-surface: light-dark(#ffffff, #1b122e);
-  --color-background-muted: light-dark(#efe9f8, #140d24);
+  --color-background-body: light-dark(#f6f6f7, #0b0b0e);
+  --color-background-card: light-dark(#ffffff, #0f0f13);
+  --color-background-popover: light-dark(#ffffff, #1a1a20);
+  --color-background-surface: light-dark(#ffffff, #141419);
+  --color-background-muted: light-dark(#efeff2, #18181e);
   --color-overlay: light-dark(#00000080, #000000CC);
-  --color-overlay-hover: light-dark(#2a124a0D, #c084fc1F);
-  --color-overlay-pressed: light-dark(#2a124a1A, #c084fc33);
+  --color-overlay-hover: light-dark(#0000000D, #ffffff0F);
+  --color-overlay-pressed: light-dark(#0000001A, #ffffff1A);
 
   /* lines */
-  --color-border: light-dark(#2a124a1F, #a855f738);
-  --color-border-emphasized: light-dark(#d3c6e8, #4a2f78);
+  --color-border: light-dark(#00000017, #ffffff17);
+  --color-border-emphasized: light-dark(#d4d4d8, #34343c);
 
   /* text */
-  --color-text-primary: light-dark(#1a1228, #fbf7ff);
-  --color-text-secondary: light-dark(#54486b, #b9a8d3);
-  --color-text-disabled: light-dark(#9d92b3, #8a7b9e);
-  --color-text-accent: light-dark(#b34e00, #ff9e42);
+  --color-text-primary: light-dark(#111114, #f5f5f7);
+  --color-text-secondary: light-dark(#52525b, #a1a1aa);
+  --color-text-disabled: light-dark(#a1a1aa, #63636b);
+  --color-text-accent: light-dark(#b34400, #ff9b4a);
 
   /* brand action: pumpkin flame; info: candy purple */
-  --color-accent: light-dark(#ff7700, #ff7700);
-  --color-accent-muted: light-dark(#ffe0c7, #ff77003D);
-  --color-on-accent: #1a0b00;
+  --color-accent: light-dark(#e86a00, #ff7a1a);
+  --color-accent-muted: light-dark(#ffe3cc, #ff7a1a33);
+  --color-on-accent: #140800;
   --color-icon-accent: light-dark(#b34e00, #ff9e42);
   --color-info: light-dark(#9333ea, #c084fc);
   --color-info-muted: light-dark(#e9d5ff, #c084fc3D);
@@ -72,21 +73,30 @@ html[data-astryx-theme="neutral"] {
   --color-background-cyan: light-dark(#c8eef5, #0c2f38);
   --color-border-cyan: light-dark(#7ccfe0, #06b6d4);
   --color-text-cyan: light-dark(#0e4a58, #67e8f9);
-  --color-background-gray: light-dark(#e6e0f0, #2a2040);
-  --color-border-gray: light-dark(#d3c6e8, #3e2f5e);
-  --color-text-gray: light-dark(#2d2540, #d6cbe8);
+  --color-background-gray: light-dark(#e4e4e7, #24242b);
+  --color-border-gray: light-dark(#d4d4d8, #34343c);
+  --color-text-gray: light-dark(#27272a, #d4d4d8);
 
   /* shape: 12px elements, 16px panels; pills stay full */
   --radius-inner: 0.375rem;
   --radius-element: 0.75rem;
   --radius-container: 1rem;
 
-  /* elevation: spectral glow on dark, plain shadow on light */
+  /* elevation: plain shadows; no glow */
   --shadow-low: 0 1px 2px light-dark(oklch(0 0 0 / 8%), oklch(0 0 0 / 40%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 5%));
   --shadow-med: 0 4px 6px -1px light-dark(oklch(0 0 0 / 12%), oklch(0 0 0 / 50%)), 0 2px 4px -2px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 50%));
-  --shadow-high: 0 8px 28px -4px light-dark(oklch(0 0 0 / 20%), oklch(0 0 0 / 75%)), 0 0 18px light-dark(transparent, #ff77001f), inset 0 0 0 1px light-dark(transparent, #a855f740);
+  --shadow-high: 0 8px 28px -4px light-dark(oklch(0 0 0 / 20%), oklch(0 0 0 / 75%)), inset 0 0 0 1px light-dark(transparent, #ffffff1f);
   --shadow-inset-hover: inset 0 0 0 2px #ff77004D;
   --shadow-inset-selected: inset 0 0 0 2px #ff770080;
+
+  /* the front door (sign-in, empty states): a flat dark stage, one flat lilac panel, one flat brand block (kiro.dev's recipe).
+     The same in both schemes: the stage is always dark. */
+  --coven-stage: #0a0a0d;
+  --coven-stage-ink: #f5f5f7;
+  --coven-stage-muted: #a1a1aa;
+  --coven-lilac: #c59eff;
+  --coven-on-lilac: #160a2b;
+  --coven-caret: #9147ff;
 
   /* type: Space Grotesk and JetBrains Mono when installed; the CSP allows no remote fonts */
   --font-family-body: "Space Grotesk", Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

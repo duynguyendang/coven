@@ -54,6 +54,8 @@ export const EVENT_TYPES = new Set([
   "task_dispatch",
   "push_request",
   "task_merged",
+  // a person's final evaluation of a submitted branch (POST /v1/board/accept) — contract §6.2
+  "task_accept",
   "push_done",
   // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
   "plan_proposed",
@@ -70,7 +72,7 @@ export const HOST_ID = /^h_[0-9a-f]{8}$/;
 export const EXPECTS = new Set(["answer", "plan", "review", "test_result"]);
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
 /** People's word, made by the cloud from the web (POST /v1/board/dispatch); a relay may not send it. */
-export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request"]);
+export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request", "task_accept"]);
 export const PLAN_STATES = new Set(["approved", "rejected"]);
 export const MAX_PLAN_TASKS = 5;
 const TASK_ID = /^[A-Za-z0-9._-]{1,20}$/;
@@ -219,8 +221,19 @@ export function validateEvent(event: Json): string[] {
     if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("task_merged branch must be coven/<name>");
     if (typeof p.commit !== "string" || !/^[0-9a-f]{7,40}$/.test(p.commit)) errors.push("task_merged needs the merge commit");
     if (typeof p.base !== "string" || !p.base || p.base.length > 100) errors.push("task_merged needs the base branch");
-    if (!Array.isArray(p.reviewers) || !p.reviewers.length || !p.reviewers.every((r: unknown) => typeof r === "string" && AGENT_SLUGS.has(r))) errors.push("task_merged names the witches who passed it");
-    if (p.decided_by !== "grey-witch") errors.push("task_merged is decided by the Chair (grey-witch)");
+    // Decided by the Chair on three passes (auto-merge), or by a person's Accept (then `author` says who).
+    const byPerson = p.decided_by === "person";
+    if (!Array.isArray(p.reviewers) || (!byPerson && !p.reviewers.length) || !p.reviewers.every((r: unknown) => typeof r === "string" && AGENT_SLUGS.has(r))) errors.push("task_merged names the witches who passed it");
+    if (p.decided_by !== "grey-witch" && !byPerson) errors.push("task_merged is decided by the Chair (grey-witch) or a person");
+    if (byPerson && (typeof p.author !== "string" || !p.author.trim() || p.author.length > 40)) errors.push("a person's merge names its author");
+  }
+  if (event.type === "task_accept") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_accept needs task as <spec>#<task>");
+    if (!["accept", "changes"].includes(p.decision)) errors.push("task_accept decision is accept or changes");
+    if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("task_accept branch must be coven/<name>");
+    if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push("task_accept names the host that holds the branch");
+    if (p.reason !== undefined && (typeof p.reason !== "string" || p.reason.length > 300)) errors.push("task_accept reason is at most 300 characters");
   }
   if (event.type === "plan_proposed") {
     const p = isObject(payload) ? payload : {};

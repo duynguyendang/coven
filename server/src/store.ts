@@ -194,7 +194,7 @@ export class MemoryStore {
       this.publish({ kind: "event", event: this.view(event), run: { ...run } });
       // An answer or a note arrives from a relay as an ordinary event: tell the chat and board pages too.
       if (event.type === "chat_message") this.publish({ kind: "chat", project_id: event.project_id });
-      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch", "plan_proposed", "plan_decision", "push_request", "push_done", "task_merged"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
+      else if (["board_note", "host_online", "task_status", "task_created", "task_dispatch", "plan_proposed", "plan_decision", "push_request", "push_done", "task_merged", "task_accept"].includes(event.type)) this.publish({ kind: "board", project_id: event.project_id });
     }
     return true;
   }
@@ -543,6 +543,18 @@ export class MemoryStore {
     return event;
   }
 
+  /** A person's final evaluation of a submitted branch (a `task_accept`, from the web). Null when no submitted branch waits on a host.
+   *  Request changes also leaves the reason on the board as a review note on the task: the Dev's rework reads it. */
+  async postWebAccept(projectId: string, task: string, decision: string, reason: string, author: string): Promise<Json | null> {
+    const where = this.board.acceptableBranch(projectId, task);
+    if (!where) return null;
+    const event = this.boardEvent(projectId, "task_accept", undefined, { task, ...where, decision, ...(reason ? { reason } : {}), author }, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    if (decision === "changes") await this.postWebNote(projectId, { note: `Changes requested: ${reason}`.slice(0, 400), kind: "review", task, author });
+    this.publish({ kind: "board", project_id: projectId });
+    return event;
+  }
+
   /** A person approves or rejects a proposed plan (a `plan_decision`, from the web). Null when there is no such plan waiting. */
   async postWebPlanDecision(projectId: string, payload: Json): Promise<Json | null> {
     const plan = this.board.plans.get(projectId)?.get(String(payload.plan));
@@ -564,7 +576,7 @@ export class MemoryStore {
   thread(projectId: string, ref: string, limit = 80): Json[] {
     const spec = ref.slice(0, ref.indexOf("#")), id = ref.slice(ref.indexOf("#") + 1);
     const key = this.board.tasks.get(projectId)?.get(spec)?.find((t) => t.task_id === id)?.task_key ?? null;
-    const kinds = new Set(["board_note", "task_status", "task_created", "chat_message", "task_claimed", "task_released", "push_request", "push_done", "plan_proposed", "plan_decision"]);
+    const kinds = new Set(["board_note", "task_status", "task_created", "chat_message", "task_claimed", "task_released", "push_request", "push_done", "plan_proposed", "plan_decision", "task_accept"]);
     const mine: Json[] = [];
     const ids = new Set<string>();
     for (const e of this.events.values()) {

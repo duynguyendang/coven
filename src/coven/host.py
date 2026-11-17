@@ -332,6 +332,108 @@ def link_dependencies(root: Path, path: Path) -> list[str]:
     return linked
 
 
+HOST_LOCK = "host.lock"
+
+
+def hold_host_lock(root: Path):
+    """One host per working copy. Two would share one name and one host id, so the cloud would take them for one
+    claimant: both would win the same claim and answer the same message twice. Returns the open lock file (keep it
+    for the life of the process), or None when another host already runs here."""
+    try:
+        import fcntl
+    except ImportError:  # not POSIX: no lock, as before
+        return open(os.devnull)
+    path = config.state_dir(root) / HOST_LOCK
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, "a+")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return None
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f"{os.getpid()}\n")
+    handle.flush()
+    return handle
+
+
+def host_lock_pid(root: Path) -> str:
+    try:
+        return (config.state_dir(root) / HOST_LOCK).read_text().strip() or "unknown"
+    except OSError:
+        return "unknown"
+
+
+NODE_MIN = (22, 18)
+KIRO_HOST = "app.kiro.dev"  # kiro-cli reaches Kiro through names like this one, which have no IPv6 address
+SLOW_DNS_SECONDS = 3.0
+
+
+def slow_dns(host: str = KIRO_HOST, limit: float = SLOW_DNS_SECONDS, resolve=None) -> float | None:
+    """Seconds a full lookup (IPv4 and IPv6) of `host` takes, when it is longer than `limit`; else None.
+
+    WSL's DNS tunnel can leave IPv6 lookups unanswered for names that have no IPv6 address: each one then waits
+    out its timeout, and kiro-cli gives up loading its models. It reads like a Kiro outage; it is this machine."""
+    import socket
+    import threading
+    resolve = resolve or (lambda: socket.getaddrinfo(host, 443))
+    done = threading.Event()
+
+    def look():
+        try:
+            resolve()
+        except OSError:
+            pass
+        done.set()
+
+    started = time.monotonic()
+    threading.Thread(target=look, daemon=True).start()
+    if done.wait(limit):
+        return None
+    done.wait(10)
+    return round(time.monotonic() - started, 1)
+
+
+def self_check(root: Path, run=subprocess.run, which=shutil.which, dns=slow_dns) -> tuple[list[str], list[str]]:
+    """What a build needs on this machine, checked before the first task (not found out by a failed build).
+
+    Fixes what it can (the main checkout's `npm ci`, which every worktree links) and returns (fixed, problems),
+    each one plain sentence. Only what this repository uses is checked."""
+    fixed, problems = [], []
+    waited = dns()
+    if waited:
+        problems.append(f"looking up {KIRO_HOST} takes {waited} s on this machine (IPv6 lookups hang): kiro-cli cannot load its models and every run "
+                        "fails as if Kiro were down. On WSL set dnsTunneling=false under [wsl2] in %UserProfile%\\.wslconfig, then `wsl --shutdown`.")
+    if not which("git"):
+        problems.append("git is not on PATH: the host cannot make worktrees or commits.")
+    if (root / "Makefile").exists() and not which("make"):
+        problems.append("make is not on PATH: `make verify` cannot run.")
+    for package in (rel for rel in ("server", "server/worker") if (root / rel / "package.json").exists()):
+        node = which("node")
+        if not node:
+            problems.append(f"node is not on PATH: {package}'s tests cannot run (Node {NODE_MIN[0]}.{NODE_MIN[1]} or newer).")
+            break
+        if not (root / package / "node_modules").is_dir():
+            if not which("npm") or not (root / package / "package-lock.json").exists():
+                problems.append(f"{package}/node_modules is missing: run `npm ci` in {package}.")
+                continue
+            done = run(["npm", "ci", "--no-audit", "--no-fund"], cwd=root / package, capture_output=True, text=True, check=False)
+            if done.returncode == 0:
+                fixed.append(f"installed {package}'s dependencies (npm ci); worktrees link them.")
+            else:
+                problems.append(f"`npm ci` failed in {package}: {(done.stderr or done.stdout or '').strip().splitlines()[-1:] or ['no output']}"[:300])
+    node = which("node")
+    if node and any((root / rel / "package.json").exists() for rel in ("server",)):
+        out = run([node, "-p", "process.versions.node"], capture_output=True, text=True, check=False).stdout.strip()
+        try:
+            if tuple(int(x) for x in out.split(".")[:2]) < NODE_MIN:
+                problems.append(f"node {out} is too old: Coven needs {NODE_MIN[0]}.{NODE_MIN[1]} or newer.")
+        except ValueError:
+            pass
+    return fixed, problems
+
+
 def task_changes(root: Path, path: Path, task: dict) -> list[str]:
     """The task's change in its worktree: what git sees, without the host's dependency links, and with what Kiro
     rewrites by itself put back (it upgrades `.kiro/agents/*.json` when it runs; that is not the task's work)."""
@@ -456,7 +558,21 @@ def _lease_lost(root: Path, ref: str) -> dict | None:
 
 
 def _fail(root: Path, ref: str, agent: str, reason: str) -> dict:
-    """The agent could not finish: say so on the board, let go of the task, keep the record so it is not retried blindly."""
+    """The agent could not finish: say so on the board, let go of the task, keep the record so it is not retried blindly.
+
+    Kiro's models being down is not the task's failure: the task goes back to the queue, no note, and the host pauses."""
+    if council.kiro_down(reason):
+        work._release_quietly(root, ref, "Kiro unavailable")
+        record = load(root).get(ref) or {}
+        if not record.get("commits"):  # nothing built yet: start clean next time
+            remove_worktree(root, record.get("worktree"))
+            _drop_unused_branch(root, record)
+            _forget(root, ref)
+            _status(root, ref, "queued", agent, "Kiro models were unavailable; queued again")
+        else:  # a rework of a branch that has commits: the branch stays submitted, the rework comes again with the next feedback
+            _update(root, ref, state="submitted", error=None)
+            _status(root, ref, "submitted", agent, "Kiro models were unavailable; the rework waits")
+        return {"action": "paused", "task": ref, "agent": agent, "error": reason}
     work._release_quietly(root, ref, f"{agent} failed")
     _note(root, f"{agents.label(agent)} could not finish {ref}: {reason}"[:400], agent, ref, kind="question", host_says=True)
     record = _update(root, ref, state="failed", error=reason[:300], finished_at=events.now_iso())
@@ -906,7 +1022,7 @@ def _scribe_answers(root: Path, reply: str | None, ref: str, agent: str, guidanc
         reason = str(exc)[:300] if isinstance(exc, (HostError, work.WorkError)) else f"{type(exc).__name__}: {exc}"[:300]
         if reply:
             try:
-                board.answer(root, reply, f"{agents.label(agent)} could not do it: {reason}"[:400], role=agent, kind="error")
+                board.answer(root, reply, f"{agents.label(agent)} could not do it: {council.plain_error(reason)}"[:400], role=agent, kind="error")
             except Exception:  # noqa: BLE001
                 pass
         if job:
@@ -919,15 +1035,44 @@ def _scribe_answers(root: Path, reply: str | None, ref: str, agent: str, guidanc
 def execute_request(root: Path, message: dict, agent: str, runner: Runner = run_agent, notes: list[dict] | None = None,
                     context: dict | None = None) -> dict:
     """Run the witch on one chat request and answer it in the chat. Never raises."""
+    result = {"action": "failed"}
+    try:
+        result = _execute_request(root, message, agent, runner, notes, context)
+        return result
+    finally:
+        # One answer per message. The reply goes through the relay and may reach the cloud after this host's next
+        # look at the chat; without this the message still looks open and is taken again (one error per tick).
+        # A message paused because Kiro is down is kept: it is answered when Kiro is back.
+        if result.get("action") != "paused":
+            council._remember(root, message["message_id"])
+            _PAUSE_SAID.discard(message["message_id"])
+
+
+_PAUSE_SAID: set[str] = set()  # messages told "paused" by this host (once each)
+
+
+def _paused(root: Path, reply: str, role: str, ref: str, agent: str, reason: str) -> dict:
+    """Kiro's models are down: say so once on the message, keep it open, answer later."""
+    if reply not in _PAUSE_SAID:
+        _PAUSE_SAID.add(reply)
+        try:
+            board.answer(root, reply, council.KIRO_PAUSED, role=role, kind="working")
+        except Exception:  # noqa: BLE001
+            pass
+    return {"action": "paused", "task": ref, "agent": agent, "error": reason}
+
+
+def _execute_request(root: Path, message: dict, agent: str, runner: Runner, notes: list[dict] | None, context: dict | None) -> dict:
     ref = request_ref(message)
     host = board.member(root)
     reply = message["message_id"]
     if is_triage(message):
         return execute_triage(root, message, host, runner, notes, context)
-    try:
-        board.answer(root, reply, f"{agents.info(agent)['label']} is on it, on {host}.", role=agent, kind="working")
-    except Exception:  # noqa: BLE001 - the status line is a courtesy
-        pass
+    if reply not in _PAUSE_SAID:
+        try:
+            board.answer(root, reply, f"{agents.info(agent)['label']} is on it, on {host}.", role=agent, kind="working")
+        except Exception:  # noqa: BLE001 - the status line is a courtesy
+            pass
     if agent == SCRIBE:
         return _scribe_answers(root, reply, ref, agent, message.get("message"), message.get("task"), runner)
     path = None
@@ -949,8 +1094,10 @@ def execute_request(root: Path, message: dict, agent: str, runner: Runner = run_
         return {"action": "answered", "task": ref, "agent": agent, "steps": len(steps)}
     except Exception as exc:  # noqa: BLE001 - a crashed run must not take the host down
         reason = str(exc)[:300] if isinstance(exc, (HostError, work.WorkError)) else f"{type(exc).__name__}: {exc}"[:300]
+        if council.kiro_down(reason):
+            return _paused(root, reply, agent, ref, agent, reason)
         try:
-            board.answer(root, reply, f"{agents.info(agent)['label']} could not do it: {reason}"[:400], role=agent, kind="error")
+            board.answer(root, reply, f"{agents.info(agent)['label']} could not do it: {council.plain_error(reason)}"[:400], role=agent, kind="error")
         except Exception:  # noqa: BLE001
             pass
         return {"action": "failed", "task": ref, "agent": agent, "error": reason}
@@ -1070,7 +1217,7 @@ def execute_triage(root: Path, message: dict, host: str, runner: Runner, notes: 
     """The Chair reads a request, makes a task for each witch it needs, and says so in the chat."""
     reply, ref = message["message_id"], request_ref(message)
     try:
-        if message.get("kind") == "do":
+        if message.get("kind") == "do" and reply not in _PAUSE_SAID:
             board.answer(root, reply, f"{agents.label(CHAIR)} is on it, on {host}.", role=CHAIR, kind="working")
         context = {**(context or {}), **design_check(root, message, ref, runner, host, context)}
         prompt = triage_prompt(message, host, root, notes, context)
@@ -1099,8 +1246,10 @@ def execute_triage(root: Path, message: dict, host: str, runner: Runner, notes: 
         return {"action": "dispatched", "task": ref, "agent": CHAIR, "jobs": made}
     except Exception as exc:  # noqa: BLE001
         reason = str(exc)[:300] if isinstance(exc, (HostError, work.WorkError)) else f"{type(exc).__name__}: {exc}"[:300]
+        if council.kiro_down(reason):
+            return _paused(root, reply, CHAIR, ref, CHAIR, reason)
         try:
-            board.answer(root, reply, f"{agents.label(CHAIR)} could not dispatch it: {reason}"[:400], role=CHAIR, kind="error")
+            board.answer(root, reply, f"{agents.label(CHAIR)} could not dispatch it: {council.plain_error(reason)}"[:400], role=CHAIR, kind="error")
         except Exception:  # noqa: BLE001
             pass
         return {"action": "failed", "task": ref, "agent": CHAIR, "error": reason}
@@ -1398,8 +1547,12 @@ def short_text(text: object, n: int = 120) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
-def merge_qualified(root: Path, ref: str, record: dict, reviewers: list[str]) -> dict:
-    """Merge the branch into the base in a throw-away checkout, run the project check there, push the base. Never force."""
+def merge_qualified(root: Path, ref: str, record: dict, reviewers: list[str], decided_by: str = CHAIR, author: str | None = None) -> dict:
+    """Merge the branch into the base in a throw-away checkout, run the project check there, push the base. Never force.
+
+    Decided by the Chair (auto-merge) or by a person's Accept (`decided_by` "person", `author`): the checks are the same."""
+    who = f"{author or 'a person'}'s Accept" if decided_by == "person" else f"{agents.label(CHAIR)}'s decision"
+    passed = f"reviewed and passed by {', '.join(agents.label(r) for r in reviewers)}" if reviewers else "accepted by a person"
     branch, base = record["branch"], record["base"]
     remote = bool(work._git(root, "remote", check=False))
     if remote:
@@ -1412,8 +1565,8 @@ def merge_qualified(root: Path, ref: str, record: dict, reviewers: list[str]) ->
         remove_worktree(root, path)
     work._git(root, "worktree", "add", "--detach", str(path), work._git(root, "rev-parse", start))
     try:
-        merged = subprocess.run(["git", "merge", "--no-ff", "--no-edit", "-m", f"Merge {branch} ({ref}): reviewed and passed by {', '.join(agents.label(r) for r in reviewers)}; "
-                                 f"merged by {agents.label(CHAIR)}'s decision", branch], cwd=path, capture_output=True, text=True, check=False)
+        merged = subprocess.run(["git", "merge", "--no-ff", "--no-edit", "-m", f"Merge {branch} ({ref}): {passed}; merged by {who}", branch],
+                                cwd=path, capture_output=True, text=True, check=False)
         if merged.returncode != 0:
             subprocess.run(["git", "merge", "--abort"], cwd=path, capture_output=True, check=False)
             return _hold(root, ref, record, f"{branch} does not merge cleanly into {base}")
@@ -1449,11 +1602,12 @@ def merge_qualified(root: Path, ref: str, record: dict, reviewers: list[str]) ->
     if remote and subprocess.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=root, capture_output=True, check=False).returncode == 0:
         subprocess.run(["git", "push", "origin", "--delete", branch], cwd=root, capture_output=True, check=False)
     try:
-        board.task_merged(root, ref, branch, sha, base, reviewers, CHAIR)
+        board.task_merged(root, ref, branch, sha, base, reviewers, "person" if decided_by == "person" else CHAIR, author if decided_by == "person" else None)
     except Exception:  # noqa: BLE001
         pass
-    _note(root, f"Merged {ref} into {base} at {sha[:7]}{' and pushed' if remote else ''}: {', '.join(agents.label(r) for r in reviewers)} passed it, "
-                f"{agents.label(CHAIR)} decided, `{merge_check()}` passed on the merged tree. Working copy {local}."[:400],
+    passers = f"{', '.join(agents.label(r) for r in reviewers)} passed it, " if reviewers else ""
+    _note(root, f"Merged {ref} into {base} at {sha[:7]}{' and pushed' if remote else ''}: {passers}merged on {who}, "
+                f"`{merge_check()}` passed on the merged tree. Working copy {local}."[:400],
           CHAIR, ref, kind="note", host_says=True)
     work._release_quietly(root, ref, "merged")
     _forget(root, ref)
@@ -1551,8 +1705,12 @@ class Host:
         self.kiro_web = kiro_web
         self.auto_merge = auto_merge  # act on reviewers' verdicts: rework, or the Chair's decision and a qualified merge and push
         self.cloud_runner = run_cloud_agent(kiro_web, runner) if kiro_web else None
-        self.root, self.slots, self.review_limit, self.runner, self.out = root, max(1, slots), review_limit, runner, out
+        self.root, self.slots, self.review_limit, self.out = root, max(1, slots), review_limit, out
         self.clock, self.sleep = clock, sleep
+        # Kiro's models down: every run would fail the same way. Pause all dispatch, back off, try again by itself.
+        self.kiro_down_until: float | None = None
+        self._down_step = 0
+        self.runner = self._watched(runner)
         have = agents.installed(root)
         self.can_run = [a for a in have if not only or a in only]
         self.pool = ThreadPoolExecutor(max_workers=self.slots, thread_name_prefix="coven-agent")
@@ -1570,6 +1728,34 @@ class Host:
                 _update(self.root, ref, state="failed", error="the host restarted while the agent was running")
 
     # -- bookkeeping each tick
+    PAUSE_STEPS = (60, 120, 240, 480, 900)  # seconds: back off up to 15 minutes, then keep trying every 15
+
+    def _watched(self, runner: Runner) -> Runner:
+        """The runner, watched for Kiro being down: one failure pauses the host; one success ends the pause."""
+        def watched(*args, **kwargs):
+            text, error = runner(*args, **kwargs)
+            if not text and council.kiro_down(error):
+                wait = self.PAUSE_STEPS[min(self._down_step, len(self.PAUSE_STEPS) - 1)]
+                if self.kiro_down_until is None or self.clock() >= self.kiro_down_until:
+                    self._down_step += 1
+                    self.kiro_down_until = self.clock() + wait
+                    self.out(f"host: Kiro models are unavailable; pausing dispatch for {wait} s")
+            elif text:
+                if self.kiro_down_until is not None:
+                    self.out("host: Kiro is back; dispatch resumes")
+                self.kiro_down_until, self._down_step = None, 0
+            return text, error
+        for attr in ("cloud",):  # keep the markers other code reads off the runner
+            if hasattr(runner, attr):
+                setattr(watched, attr, getattr(runner, attr))
+        return watched
+
+    def paused(self) -> float:
+        """Seconds left in a Kiro-down pause (0: not paused)."""
+        if self.kiro_down_until is None:
+            return 0.0
+        return max(0.0, self.kiro_down_until - self.clock())
+
     def _reap(self) -> None:
         for ref, future in list(self.running.items()):
             if future.done():
@@ -1655,7 +1841,10 @@ class Host:
     def _requests(self, chat: dict, notes: list[dict]) -> list[str]:
         """Chat requests addressed to a witch this host runs: claim, then run her on it."""
         started = []
+        handled = council.answered(self.root)  # answered here already, even if the reply is still on its way
         for message in open_requests(chat):
+            if message["message_id"] in handled:
+                continue
             if len(self.running) >= self.slots:
                 break
             agent, ref = request_agent(message), request_ref(message)
@@ -1836,6 +2025,36 @@ class Host:
                 done.append(ref)
         return done
 
+    def _accepts(self, view: dict) -> list[dict]:
+        """A person's final evaluation of a branch this host holds. Accept: merge it under the auto-merge checks
+        (clean merge, the project check on the merged tree) and push the base. Request changes: the reason is a review
+        note on the task, which the rework reads; nothing to do here. Once per request, also after a restart."""
+        done = []
+        handled = set(_handled_pushes(self.root))  # one file for the person's requests this host acted on
+        for sp in view.get("specs") or []:
+            for t in sp.get("tasks") or []:
+                accept = t.get("accept") or {}
+                ref = f"{sp.get('spec')}#{t.get('task_id')}"
+                if accept.get("state") != "requested" or accept.get("host_id") != self.host_id or accept.get("request_id") in handled:
+                    continue
+                if ref in self.running:
+                    continue  # a rework or a review runs on it now: next tick
+                handled.add(accept.get("request_id"))
+                _remember_push(self.root, accept.get("request_id"))
+                if accept.get("decision") != "accept":
+                    continue
+                record = load(self.root).get(ref) or {}
+                if record.get("state") != "submitted" or not record.get("branch"):
+                    _note(self.root, f"{ref}: {accept.get('by') or 'a person'} accepted it, but this host holds no submitted branch of it any more.",
+                          CHAIR, ref, kind="question", host_says=True)
+                    continue
+                reviews = review_state(view, record.get("review_jobs") or [])
+                passed = [r.get("agent") or "" for r in reviews.values() if r.get("verdict") == "pass" and r.get("agent")]
+                self.out(f"host: {accept.get('by') or 'a person'} accepted {ref}: merging {record['branch']}")
+                result = merge_qualified(self.root, ref, record, passed, decided_by="person", author=accept.get("by"))
+                done.append(result)
+        return done
+
     def presence(self, force: bool = False) -> None:
         if force or self._presence_at is None or self.clock() - self._presence_at >= PRESENCE_EVERY:
             try:
@@ -1863,7 +2082,13 @@ class Host:
         # Plan tasks a person approved live on the board, not in tasks.md: settle and rework them the same way.
         tasks.update({ref: record["plan_task"] for ref, record in load(self.root).items() if record.get("plan_task")})
         self._requeued(view)
-        pushed = self._pushes(view)
+        pushed = self._pushes(view)  # a push needs no model: it goes on while paused
+        accepted = self._accepts(view)  # nor does a person's Accept: merge, check, push
+        if self.paused():
+            # Kiro is down: start nothing that needs a model. Messages and tasks wait; the pause ends by itself.
+            finished = self._release_finished(tasks, view)
+            return {"finished": finished, "requests": [], "reworked": [], "taken": [], "running": sorted(self.running),
+                    "paused": round(self.paused()), **({"pushed": pushed} if pushed else {}), **({"accepted": accepted} if accepted else {})}
         settled = self._settle(view, chat, notes) if self.auto_merge else []
         finished = self._release_finished(tasks, view)
         waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
@@ -1872,7 +2097,7 @@ class Host:
         waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
         taken = self._take(view, notes, waiting)
         return {"finished": finished, "requests": asked, "reworked": reworked, "taken": taken, "running": sorted(self.running),
-                **({"pushed": pushed} if pushed else {}), **({"settled": settled} if settled else {})}
+                **({"pushed": pushed} if pushed else {}), **({"settled": settled} if settled else {}), **({"accepted": accepted} if accepted else {})}
 
     def run(self, once: bool = False, interval: float = 15.0) -> dict:
         """Tick until stopped. With `once`: one tick, then wait for the runs it started and settle them."""

@@ -444,6 +444,50 @@ describe("several hosts (spec multi-host)", () => {
       assert.deepEqual([task.push.state, task.branch_host, task.branch_host_online], ["pushed", "h_0000000a", false]);
     } finally { await s.close(); }
   });
+
+  test("a person's final evaluation: Accept asks the host to merge; Request changes leaves the reason for the Dev; a relay cannot decide", async () => {
+    const s = await startServer();
+    try {
+      const accept = (body: Json) => postJson(s.base, "/v1/board/accept", { project_id: "shop", task: "s#1", author: "duy", ...body }, auth());
+      assert.equal((await accept({ decision: "accept" })).status, 409, "nothing submitted yet");
+      await send(s.base, [ev("task_status", { task: "s#1", state: "submitted", agent: "green-witch", branch: "coven/s-1", branch_host: "h_0000000a", host_id: "h_0000000a" })]);
+      assert.equal((await accept({ decision: "maybe" })).status, 422);
+      assert.equal((await accept({ decision: "changes" })).status, 422, "changes need a reason");
+      const asked = await accept({ decision: "changes", reason: "an empty cart crashes the total" });
+      assert.deepEqual([asked.status, asked.body.branch, asked.body.host_id], [201, "coven/s-1", "h_0000000a"]);
+      const view = await board(s.base);
+      assert.ok(view.notes.some((n: Json) => n.kind === "review" && n.task === "s#1" && n.note.includes("an empty cart crashes")), "the reason is a review note the rework reads");
+      assert.equal((await accept({ decision: "accept" })).status, 201);
+      await send(s.base, [ev("spec_artifact_updated", { spec: "s", tasks: [{ task_id: "1", title: "x" }] })]);
+      let task = (await board(s.base)).specs.find((x: Json) => x.spec === "s").tasks[0];
+      assert.deepEqual([task.accept.decision, task.accept.state, task.accept.by], ["accept", "requested", "duy"]);
+      const sneaky = await send(s.base, [ev("task_accept", { task: "s#1", decision: "accept", branch: "coven/s-1", host_id: "h_0000000a", author: "x" })]);
+      assert.equal(sneaky.body.accepted, 0, "only people decide");
+      const merged = await send(s.base, [ev("task_merged", { task: "s#1", branch: "coven/s-1", commit: "abcdef1", base: "main", reviewers: [], decided_by: "person", author: "duy", host_id: "h_0000000a" })]);
+      assert.equal(merged.body.accepted, 1, "a person's merge needs no reviewer list");
+      task = (await board(s.base)).specs.find((x: Json) => x.spec === "s").tasks[0];
+      assert.equal(task.doer_state, "done");
+      assert.match(task.doer_detail, /accepted by duy/);
+      const nobody = await send(s.base, [ev("task_merged", { task: "s#2", branch: "coven/s-2", commit: "abcdef2", base: "main", reviewers: [], decided_by: "person", host_id: "h_0000000a" })]);
+      assert.equal(nobody.body.accepted, 0, "a person's merge names the person");
+    } finally { await s.close(); }
+  });
+
+  test("decisions need the admin password when one is set; a reader gets 403, not a sign-out", async () => {
+    const s = await startServer({ env: { COVEN_TOKENS: "reader", COVEN_ADMIN_TOKEN: "boss" } });
+    try {
+      const body = { project_id: "shop", task: "s#1", author: "duy" };
+      for (const path of ["/v1/board/done", "/v1/board/retry", "/v1/board/push", "/v1/board/accept", "/v1/board/plan", "/v1/board/dispatch"]) {
+        assert.equal((await postJson(s.base, path, body, auth("reader"))).status, 403, `${path} with the read token`);
+        assert.equal((await postJson(s.base, path, body, auth("nobody"))).status, 401, `${path} with no valid token`);
+        assert.notEqual((await postJson(s.base, path, body, auth("boss"))).status, 403, `${path} with the admin token`);
+      }
+      assert.equal((await postJson(s.base, "/v1/board/notes", { project_id: "shop", note: "hi", author: "duy" }, auth("reader"))).status, 201, "a reader still writes notes");
+      assert.equal((await postJson(s.base, "/v1/chat", { project_id: "shop", message: "hi", author: "duy" }, auth("reader"))).status, 201, "and chats");
+      assert.equal((await getJson(s.base, "/v1/board?project_id=shop", auth("boss"))).status, 200, "the admin password signs in to the dashboard too");
+      assert.equal((await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "x", events: [] }, auth("boss"))).status, 401, "but it is not a relay's");
+    } finally { await s.close(); }
+  });
 });
 
 describe("witches working together (spec witch-collaboration)", () => {

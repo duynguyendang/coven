@@ -358,6 +358,21 @@ def cmd_host(args: argparse.Namespace) -> int:
     except host.HostError as exc:
         print(f"coven host run: {exc}", file=sys.stderr)
         return 2
+    lock = host.hold_host_lock(root)
+    if lock is None:
+        print(f"coven host run: a host already runs in this working copy (pid {host.host_lock_pid(root)}); stop it first. "
+              "Two hosts here would share one name and answer every message twice.", file=sys.stderr)
+        return 2
+    fixed, problems = host.self_check(root)
+    for line in fixed:
+        print(f"host: self-check: {line}", flush=True)
+    for line in problems:
+        print(f"host: self-check: {line}", file=sys.stderr, flush=True)
+    if problems:
+        try:  # said once, on the board, where people look; the host still runs (thinking witches need none of this)
+            board.post(root, "Host self-check on " + board.member(root) + ": " + " ".join(problems), kind="note")
+        except Exception:  # noqa: BLE001
+            pass
     print(f"host: {board.member(root)} runs {', '.join(runner.can_run) or 'no agents'} in {runner.slots} slot(s) for project "
           f"{config.project_id(root)!r}{'' if args.once else ' (Ctrl-C to stop)'}", flush=True)
     try:

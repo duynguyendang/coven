@@ -214,11 +214,15 @@ sequenceDiagram
     H->>H: Dev builds each on coven/council-<id>, host checks paths and verify, commits locally
     H->>C: task_status submitted · task_created review jobs (white-hat, black-hat, branch)
     H->>H: reviewers run in a checkout of that branch
-    P->>P: reads the reviews, merges (or rejects: the Dev reworks the branch)
+    P->>C: POST /v1/board/accept: Accept (the host merges, checks, pushes) or Request changes (the Dev reworks)
 ```
 
 No model starts a build alone: the cloud makes a build task only from a person's
-`plan_decision`, and refuses a relay's `task_created` for the Dev. A person may also send an
+`plan_decision`, and refuses a relay's `task_created` for the Dev. No model merges alone either,
+unless a person started the host with `--auto-merge`: the person's **final evaluation** (`POST /v1/board/accept`)
+is the merge gate. Accept makes the host that holds the branch merge it under the same checks as auto-merge
+(it merges cleanly, `COVEN_MERGE_CHECK` passes on the merged tree) and push the base; Request changes sends
+the reason to the Dev, whose rework is reviewed again. A person may also send an
 approved task to Kiro Web (§FR-H11) before a host takes it.
 
 ### 4.3.2 Witches work together (FR-CO1–CO8)
@@ -345,7 +349,7 @@ claimants.
 | Deviation and relay health | `spec_deviation`, `policy_block`, `warning`, `daemon_connected`, `daemon_disconnected` |
 | Council review | `council_opened`, `claim_proposed`, `claim_challenged`, `test_result`, `verify_result`, `chair_summary`, `chair_proposal`, `guard_verdict`, `council_closed` |
 | Flows | `flow_started`, `flow_step_started`, `flow_step_finished`, `flow_finished` |
-| Board | `task_claimed` (`{claim_id, spec, task_id, member, agent, kind, paths, lease_until, task_key?, attempt_id?, host_id?}`), `task_released`, `board_note` (`{note, kind, task?, reply_to?, agent?, role?, task_key?, attempt_id?}`), `task_status` (`{task, state: working|submitted|answered|failed|queued|done, agent?, detail?, task_key?, attempt_id?, host_id?, branch_host?, branch?, verdict?}`; `verdict` is a reviewer's `pass` or `changes`; `done` refused from `/v1/events`; a `submitted` status names `branch_host`, the host that holds the commits), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?, task_key?, from?, expects?, reply_to?, depth?}`; `expects` is `answer`, `plan`, `review` or `test_result`, `depth` 0–2; for the Dev only with `expects: answer`, a read-only question about the code; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author, reasons?}`; the reasons are read by the next planning round; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`), `push_request` (`{task, branch, host_id, author}`; a person asks the host that holds a submitted branch to push it; refused from `/v1/events`; the only way anything pushes), `push_done` (`{task, branch, host_id, ok, detail?}`; that host's report), `task_merged` (`{task, branch, commit, base, reviewers, decided_by: grey-witch, host_id?}`; `host_id` is carried, not validated; an auto-merge host merged a reviewed branch and pushed the base; the board shows the task done) |
+| Board | `task_claimed` (`{claim_id, spec, task_id, member, agent, kind, paths, lease_until, task_key?, attempt_id?, host_id?}`), `task_released`, `board_note` (`{note, kind, task?, reply_to?, agent?, role?, task_key?, attempt_id?}`), `task_status` (`{task, state: working|submitted|answered|failed|queued|done, agent?, detail?, task_key?, attempt_id?, host_id?, branch_host?, branch?, verdict?}`; `verdict` is a reviewer's `pass` or `changes`; `done` refused from `/v1/events`; a `submitted` status names `branch_host`, the host that holds the commits), `task_created` (a council job: `{task, title, agent, detail, source, plan?, branch?, review_of?, task_key?, from?, expects?, reply_to?, depth?}`; `expects` is `answer`, `plan`, `review` or `test_result`, `depth` 0–2; for the Dev only with `expects: answer`, a read-only question about the code; `plan: true` is a planning job for the Elder Witch, `branch` (`coven/…`) and `review_of` make a review job run in a checkout of that branch), `plan_proposed` (`{plan, agent, summary, source?, tasks: [{task_id, title, detail?, paths, verify}]}`, 1–5 tasks, repo-relative narrow paths, one verify command each), `plan_decision` (`{plan, state: approved|rejected, author, reasons?}`; the reasons are read by the next planning round; a person's decision, refused from `/v1/events`; approval makes the plan's tasks build tasks of the spec `council` for the Dev, with `from_plan` and `approved_by`), `task_dispatch` (`{task, via: kiro-web, state: requested|cancelled, author}`; a person's decision, refused from `/v1/events`), `push_request` (`{task, branch, host_id, author}`; a person asks the host that holds a submitted branch to push it; refused from `/v1/events`; the only way anything pushes), `push_done` (`{task, branch, host_id, ok, detail?}`; that host's report), `task_merged` (`{task, branch, commit, base, reviewers, decided_by: grey-witch|person, author?, host_id?}`; `host_id` is carried, not validated; the host merged a branch and pushed the base, on the Chair's decision (auto-merge, `reviewers` not empty) or on a person's Accept (`decided_by: person`, `author` required, `reviewers` the ones who passed, may be empty); the board shows the task done), `task_accept` (`{task, branch, host_id, decision: accept|changes, reason?, author}`; a person's final evaluation of a submitted branch, refused from `/v1/events`; `accept` asks the host that holds the branch to merge it under the auto-merge checks (clean merge, `COVEN_MERGE_CHECK` on the merged tree) and push the base; `changes` needs a `reason` (≤ 300 characters), which the cloud also posts as a `review` note on the task for the rework; the board view shows the latest as `accept: {decision, state: requested, by, reason, branch, host_id, request_id}`) |
 | Chat | `chat_message` (kinds ask, idea, suggestion, do, reject, answer, working, error), `council_listening` |
 | Hosts | `host_online` (`{agents, slots, running, cloud?, host_id?, free_slots?}`; `cloud` names the repositories this host may run Kiro Web sessions on; `free_slots` is what the Chair routes by) |
 
@@ -372,18 +376,24 @@ Bearer token (`Authorization: Bearer …`, constant-time compare); `?token=` onl
 | `POST /v1/claims`, `POST /v1/claims/{id}/renew`, `POST /v1/claims/{id}/release` | ingest | claims with `agent`, `task_key`, `attempt_id`, `host_id`; 409 held or paths overlap; 403 another host's claim; 404 unknown claim; 410 released, or the lease expired |
 | `GET /v1/board` | read | board view: tasks, claims, notes, status, hosts |
 | `POST /v1/board/notes` | read | a person's note (untrusted, redacted) |
-| `POST /v1/board/done` | read | a person accepts a task (`task_status done`) |
-| `POST /v1/board/plan` | read | a person approves or rejects a proposed plan (`plan_decision`); 409 when no such plan waits; the board view lists `plans` |
-| `POST /v1/board/retry` | read | a person sends a failed task back to the queue (`task_status queued`); the host that failed it forgets that run, and the next host that runs its witch takes it |
-| `POST /v1/board/push` | read | a person asks the host that holds a task's submitted branch to push it once (`push_request`); 409 when no submitted branch waits on a host |
+| `POST /v1/board/done` | decide | a person accepts a task (`task_status done`) |
+| `POST /v1/board/accept` | decide | a person's final evaluation of a submitted branch (`task_accept`): `decision: accept` (the host merges it under the auto-merge checks and pushes the base) or `changes` with a `reason`; 422 bad decision or no reason; 409 when no submitted branch waits on a host |
+| `POST /v1/board/plan` | decide | a person approves or rejects a proposed plan (`plan_decision`); 409 when no such plan waits; the board view lists `plans` |
+| `POST /v1/board/retry` | decide | a person sends a failed task back to the queue (`task_status queued`); the host that failed it forgets that run, and the next host that runs its witch takes it |
+| `POST /v1/board/push` | decide | a person asks the host that holds a task's submitted branch to push it once (`push_request`); 409 when no submitted branch waits on a host |
 | `GET /v1/board/thread?project_id&task` | read | one task's conversation: its notes, statuses, jobs, claims and the chat replies to them, oldest first |
-| `POST /v1/board/dispatch` | read | a person sends a ready build task to Kiro Web, or takes that back (`task_dispatch`); the board view then shows `dispatch_via`/`dispatch_by` on the task |
+| `POST /v1/board/dispatch` | decide | a person sends a ready build task to Kiro Web, or takes that back (`task_dispatch`); the board view then shows `dispatch_via`/`dispatch_by` on the task |
 | `GET /v1/chat`, `POST /v1/chat` | read | the council chat; a Do it to the Dev is 422 |
 | `GET /v1/stream` | read | SSE: events and view updates |
 | `POST /v1/seed/purge` | ingest | remove demo data |
 
+**The decide scope.** People's decisions (`done`, `accept`, `plan`, `retry`, `push`, `dispatch`) take the admin
+password `COVEN_ADMIN_TOKEN` when it is set; a read token then gets 403 (the dashboard asks for the admin password
+once and keeps it in the browser). The admin password also has the read scope, so it signs in to the dashboard; it is not an ingest token. Without `COVEN_ADMIN_TOKEN` decisions take the read scope, as before. Notes and chat
+messages always take the read scope.
+
 **Idempotency-Key.** `POST /v1/claims`, `/v1/board/notes`, `/v1/board/done`, `/v1/board/plan`,
-`/v1/board/dispatch`, `/v1/board/push`, `/v1/board/retry` and `/v1/chat` accept an `Idempotency-Key` header (1–128 of
+`/v1/board/dispatch`, `/v1/board/push`, `/v1/board/accept`, `/v1/board/retry` and `/v1/chat` accept an `Idempotency-Key` header (1–128 of
 `A-Z a-z 0-9 . _ : -`). The first 2xx answer for a key is kept for `COVEN_IDEMPOTENCY_TTL` seconds
 (default 86400), scoped to the caller's token, and replayed for the same key and body
 (`idempotent-replayed: true`); the same key with another body is 422; a refusal or an error is not

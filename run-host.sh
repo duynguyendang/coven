@@ -46,7 +46,7 @@ saved_url="$(coven doctor 2>&1 | sed -n 's/^cloud: //p' | head -n 1)"
 if [ "${saved_url%/}" != "${cloud_url%/}" ]; then
   echo "host: logging in to $cloud_url (was: ${saved_url:-none})"
   coven login --cloud-url "$cloud_url" --token "${COVEN_TOKEN:-dev}" >/dev/null
-  coven relay down >/dev/null 2>&1 || true # a running relay still sends to the old cloud
+  coven relay down >/dev/null 2>&1 || true # a per-repo relay keeps the old cloud; the machine relay rereads the login
 fi
 coven doctor 2>&1 | grep -E "^(project|cloud|token|health):" || true
 if ! coven doctor 2>&1 | grep -q "^health: 200"; then

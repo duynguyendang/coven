@@ -2,22 +2,26 @@
 version: alpha
 name: Coven Night Console
 description: >-
-  A calm, dense operations console for watching Kiro agents and talking to the council.
-  Linear-style app shell (hairline borders, crisp small type, mono for data) with
-  real-time-monitoring status rules, on the Astryx neutral theme in light and dark.
-  The only playful element is the witches' ghost icons.
+  A calm, dense operations console for watching Kiro agents and talking to the council,
+  with a playful front door. Linear-style app shell (hairline borders, crisp small type, mono
+  for data) with real-time-monitoring status rules, on Astryx tokens re-pointed by
+  web/theme-specter.css, in light and dark. Flat colour, one brand colour (pumpkin), no
+  gradients or glow. The ghost is a character: it peeks, types, thinks, shrugs and ducks.
 colors:
   # Light scheme (the dark value of each token is listed under the same name with -dark).
-  # Normative source: web/vendor/astryx/theme-neutral.css (light-dark() pairs).
-  primary: "#1B1B1B"
-  on-primary: "#FFFFFF"
-  background: "#F1F1F1"
+  # Normative source: web/theme-specter.css over web/vendor/astryx/theme-neutral.css (light-dark() pairs).
+  primary: "#E86A00"
+  on-primary: "#140800"
+  background: "#F6F6F7"
   surface: "#FFFFFF"
-  surface-muted: "#F1F1F1"
-  border: "#D4D4D4"
-  text: "#000000"
-  text-muted: "#474747"
-  link: "#0067CE"
+  surface-muted: "#EFEFF2"
+  border: "#D4D4D8"
+  text: "#111114"
+  text-muted: "#52525B"
+  link: "#B34400"
+  stage: "#0A0A0D"
+  stage-panel: "#C59EFF"
+  caret: "#9147FF"
   success: "#2F7D33"
   warning: "#836700"
   error: "#C0262C"
@@ -31,19 +35,25 @@ colors:
   on-error-tint: "#76000C"
   info-tint: "#B9D7FF"
   on-info-tint: "#003978"
-  primary-dark: "#F1F1F1"
-  on-primary-dark: "#111111"
-  background-dark: "#1B1B1B"
-  surface-dark: "#262626"
-  border-dark: "#525252"
-  text-dark: "#FFFFFF"
-  text-muted-dark: "#9E9E9E"
-  link-dark: "#A1CAFF"
+  primary-dark: "#FF7A1A"
+  on-primary-dark: "#140800"
+  background-dark: "#0B0B0E"
+  surface-dark: "#141419"
+  border-dark: "#34343C"
+  text-dark: "#F5F5F7"
+  text-muted-dark: "#A1A1AA"
+  link-dark: "#FF9B4A"
   success-dark: "#90CA90"
   warning-dark: "#EEC448"
   error-dark: "#FFAEA7"
   warning-tint-dark: "#453A1C"
 typography:
+  front-door:
+    # sign-in headline, empty-state sentence, the chat's title only
+    fontFamily: ui-serif (Iowan Old Style, Palatino, Georgia)
+    fontSize: 40px
+    fontWeight: 600
+    lineHeight: 1.1
   display:
     fontFamily: Figtree
     fontSize: 22px
@@ -236,22 +246,35 @@ uses the **Astryx neutral** theme (`web/vendor/astryx/`), and the harness forbid
 not Astryx tokens; Linear's structure and the monitoring rules sit on those tokens without adding a
 palette. The Kiroween character comes from the witches' ghost icons, not from the chrome.
 
-**Specter Core skin.** `web/theme-specter.css` (loaded after the neutral theme) re-points the Astryx
-tokens at the Specter Core palette from the design export: violet-tinted dark surfaces, electric purple
-accent, pumpkin for attention, green ok, crimson failure, 8px element radius, Space Grotesk and JetBrains
-Mono when installed (the CSP allows no remote fonts). Hex values live only in that file; the page still
-uses tokens only.
+**The look (theme-specter.css and the "Coven look" block at the end of the stylesheet).** Two rooms:
+
+- **The ops rooms** (sessions, board, councils, flows, a session) stay dense and calm: neutral
+  near-black (light: near-white) surfaces, hairlines, small type. Numbers have to be trusted, so
+  nothing decorates them.
+- **The front door** (sign-in, empty states, the head of the council chat) gets the character, after
+  kiro.dev's hero: a flat dark stage, one flat lilac panel (`--coven-lilac`), one flat brand block (the
+  pumpkin Connect button), a large serif headline ("Kiro, meet your Coven.", typed once on load with a
+  violet caret), and the ghost peeking over the panel's edge. The stage is dark in both schemes.
+- **The ghost reacts:** it peeks up on the sign-in and over empty states, ducks behind the panel on
+  a wrong password, bobs while connecting and while a message waits for the council, and shrugs on a
+  council error. A new chat message slides in once. All of it stops under `prefers-reduced-motion`.
+- **Copy has a voice** where nothing is happening ("The cauldron is cold.", "Every witch stayed inside
+  her circle.") and states facts everywhere else. A witch's first "never" is on her card.
+
+Hex values live only in `web/theme-specter.css`; the page uses tokens only (the harness checks).
+No gradients, no glow, no web fonts (the CSP allows none): the serif and Space Grotesk are used when installed.
 
 ## Overview
 
-**Calm night console, alive where it matters.** Neutral greys carry everything; colour appears only
-to say something about state (working, ready, needs a host, failed, deviation). Density is high
-(8/10), variance low, motion minimal and functional.
+**Calm night console, alive where it matters.** Neutral greys carry the ops screens; colour appears
+there only to say something about state (working, ready, needs a host, failed, deviation), plus one
+flat brand colour for the main action and the current place. Density is high (8/10), variance low,
+motion minimal and functional. The front door is where the play is (see "The look" above).
 
 - **Audience:** developers, leads and reviewers watching a fleet of Kiro agents, and people chatting
   with the council.
-- **Personality:** precise, quiet, trustworthy; one wink of play in the ghost icons (each witch is
-  the Kiro ghost in her outfit).
+- **Personality:** precise, quiet, trustworthy in the ops rooms; playful at the front door, where the
+  ghost (each witch is the Kiro ghost in her outfit) acts as a character.
 - **Honesty is a visual rule:** seeded, estimated or unproven data is labelled as such, in the UI,
   never hidden by styling.
 - **Both schemes are first-class.** The page follows the system scheme unless the reader picks one
@@ -263,14 +286,15 @@ Neutral by default, semantic by exception. Values are the Astryx neutral tokens;
 the Coven aliases at the top of `index.html` (`--bg`, `--panel`, `--line`, `--text`, `--muted`,
 `--ok-*`, `--warn-*`, `--bad-*`, `--info-*`), never a literal.
 
-- **Primary — Ink (#1B1B1B / dark #F1F1F1):** the accent of a neutral theme: primary buttons,
-  emphasis. Not a brand colour.
-- **Background — Paper grey (#F1F1F1 / dark #1B1B1B):** the body behind the workspace.
-- **Surface (#FFFFFF / dark #262626):** cards, tiles, sidebar, bubbles.
-- **Border — Hairline (#D4D4D4 emphasised; the default line is 8 % ink / 10 % white):** 1 px,
+- **Brand — Pumpkin (#E86A00 / dark #FF7A1A), flat:** the one main action per view (Connect, Send,
+  Post, Open session), the current nav item and tab, links, the focus ring. Never a gradient.
+- **Background (#F6F6F7 / dark #0B0B0E):** the body behind the workspace.
+- **Surface (#FFFFFF / dark #141419):** cards, tiles, sidebar, bubbles.
+- **Border — Hairline (#D4D4D8 / #34343C emphasised; the default line is 9 % ink / white):** 1 px,
   everywhere; the main way to separate things.
-- **Text (#000000 / #FFFFFF) and Muted (#474747 / #9E9E9E):** content and metadata.
-- **Info — Signal blue (#0067CE / #A1CAFF):** links, focus ring, the selected nav item, *Working*.
+- **Text (#111114 / #F5F5F7) and Muted (#52525B / #A1A1AA):** content and metadata.
+- **Front door only:** stage #0A0A0D, lilac panel #C59EFF, caret violet #9147FF.
+- **Info — Candy purple (#7E22CE / #D8B4FE):** *Working*, question notes.
 - **Success — Moss (#2F7D33 / #90CA90):** LIVE, Available, accepted, Done.
 - **Warning — Amber (#836700 / #EEC448):** STALE, *needs a host*, waiting; tint #FAE19E / #453A1C.
 - **Error — Ember (#C0262C / #FFAEA7):** DISCONNECTED, failed, Blocked, spec deviation, Reject.
@@ -288,8 +312,9 @@ the Coven aliases at the top of `index.html` (`--bg`, `--panel`, `--line`, `--te
 Two families from Astryx: **Figtree** (UI, falls back to the system sans) and **ui-monospace**
 (`SF Mono`, Consolas…). Base 14 px / 1.45. Nothing readable is below 12 px; 11 px is only for caps labels, pills and badges.
 
-- **Headlines:** Figtree 600, 17–22 px; no display sizes above 22 px inside the app.
-- **Brand:** `COVEN` in Figtree 600 with 0.22 em tracking, beside the ghost.
+- **Headlines:** Figtree 600, 17–22 px in the ops rooms. Only the front door goes bigger, in a
+  serif: the sign-in headline (~40 px), an empty state's sentence (22 px), the chat's title (28–40 px).
+- **Brand:** `COVEN` in pumpkin, 700, with 0.12 em tracking, beside the ghost.
 - **Body:** Figtree 400, 14 px; secondary text 12.5 px muted.
 - **Section labels:** 11 px, uppercase, 0.12 em tracking, 600, muted.
 - **Data is mono:** ids (`coven-relay#13`), counts, durations, paths, timestamps, pills and badges,
@@ -344,7 +369,7 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
 - **Board order:** plans that wait for you, then Tasks (a column is always open: the person's choice, else the most urgent with tasks), then Witches (cards only for those working, available or waiting for a slot; the rest fold behind one row of their ghosts), then the Whiteboard.
 - **Plans:** only plans that wait for a person are cards (above Tasks). Decided plans fold below the task list into one line each: the decision, the plan, its summary, how many of its tasks are done, who and when; opening one shows the reasons and its tasks.
 - **Long columns:** more than 8 tasks are grouped by spec (newest first), each group a fold with its count; Done folds by default, other columns stay open; a filter above the list finds a task by id, title or witch and opens its group.
-- **Notes:** neutral cards (surface, hairline); only the kind tag carries colour (idea amber, question blue, answer green, review red, review wanted purple).
+- **Notes:** neutral cards (surface, hairline); only the kind tag carries colour (idea amber, question purple, answer green, review red, review wanted purple).
 - **Your name:** one field in the sidebar signs notes, chat messages and decisions; the composers show *as <name>*, which focuses that field.
 - **Session title:** what the session works on (its task title, else its last tool call); the id stays in the crumbs and the facts.
 - **Witch card:** 40 px ghost, name, role, state (Working · Available · Waiting for a slot · Not
@@ -384,10 +409,13 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
   `prefers-reduced-motion` honoured; keep text at WCAG AA.
 - ✓ Put ids, numbers, paths and times in mono.
 - ✓ Label what is seeded, estimated or not yet proven.
-- ✗ Don't add gradients, glows, glassmorphism, or a brand accent colour.
-- ✗ Don't animate data for effect (no hover scale, no springs, no pulsing badges). Motion is
-  functional only: colour fades of 120–150 ms on controls, a 0.97 press on buttons, a one-time 1.6 s
-  highlight of a newly arrived event row, the *working…* dots; all off under `prefers-reduced-motion`.
+- ✗ Don't add gradients, glows or glassmorphism. One flat brand colour (pumpkin); lilac only on the
+  front door, never as the app's background.
+- ✗ Don't animate data for effect (no hover scale, no springs on numbers). Motion is functional:
+  colour fades of 120–150 ms on controls, a 0.97 press on buttons, a one-time highlight of a newly
+  arrived event row, a new chat message sliding in once, the *working…* dots, the LIVE dot's pulse.
+  The ghost's moods (peek, type, think, shrug, duck) are the one playful motion, on the front door and
+  in the chat. All of it is off under `prefers-reduced-motion`.
 - ✗ Don't use emoji as UI; use the ghost icons and text.
 - ✗ Don't show file contents, diffs, prompts or model output: only paths and counts (NFR-SEC1).
 - ✗ Don't add a framework, a web font download or a build step: one HTML file (NFR-MNT3).

@@ -56,7 +56,7 @@ def test_three_passes_and_the_chairs_decision_merge_and_push(repo, origin, monke
     cloud = FakeCloud().install(monkeypatch)
     monkeypatch.setenv("COVEN_MERGE_CHECK", "test -f src/cart/total.py")
     merged = []
-    monkeypatch.setattr(board, "task_merged", lambda root, ref, branch, commit, base, reviewers, decided_by: merged.append((ref, branch, base, reviewers, decided_by)) or {})
+    monkeypatch.setattr(board, "task_merged", lambda root, ref, branch, commit, base, reviewers, decided_by, author=None: merged.append((ref, branch, base, reviewers, decided_by)) or {})
     record = submitted(repo, cloud)
     git(repo, "push", "-q", "origin", "coven/shop-1")  # a branch that is also on origin is deleted there too
     runner = Runner({"grey-witch": MERGE})
@@ -175,3 +175,34 @@ def test_a_plans_steps_go_in_order_built_and_merged_one_after_the_other(repo, mo
     assert "council#r1-1b1" in host.load(repo) and "council#r1-1b2" not in host.load(repo), "step 2 waits for step 1"
     view["specs"][0]["tasks"][0]["doer_state"] = "done"
     assert host.plan_waits_for(view, "council#r1-1b2") is None, "once step 1 is merged, step 2 may start"
+
+
+def test_a_persons_accept_merges_on_a_host_without_auto_merge_under_the_same_checks(repo, origin, monkeypatch):
+    from coven import config
+    cloud = FakeCloud().install(monkeypatch)
+    monkeypatch.setenv("COVEN_MERGE_CHECK", "test -f src/cart/total.py")
+    merged = []
+    monkeypatch.setattr(board, "task_merged", lambda root, ref, branch, commit, base, reviewers, decided_by, author=None: merged.append((ref, reviewers, decided_by, author)) or {})
+    record = submitted(repo, cloud)
+    view = board_with(record, ["pass", "changes", None])  # a person may accept what the reviewers did not all pass
+    accept = {"decision": "accept", "state": "requested", "branch": "coven/shop-1", "host_id": config.host_id(repo), "by": "duy", "request_id": "evt_acc1"}
+    view["specs"].append({"spec": "shop", "tasks": [{"task_id": "1", "accept": accept}]})
+    h = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)  # no --auto-merge
+    done = h._accepts(view)
+    assert [d["action"] for d in done] == ["merged"]
+    assert git(origin, "log", "-1", "--format=%s", "main") == "Merge coven/shop-1 (shop#1): reviewed and passed by White Hat Witch — Tester; merged by duy's Accept"
+    assert merged == [("shop#1", ["white-hat"], "person", "duy")]
+    assert h._accepts(view) == [], "once per request"
+
+
+def test_an_accept_that_fails_the_project_check_holds_and_pushes_nothing(repo, origin, monkeypatch):
+    from coven import config
+    cloud = FakeCloud().install(monkeypatch)
+    monkeypatch.setenv("COVEN_MERGE_CHECK", "false")
+    record = submitted(repo, cloud)
+    before = git(origin, "rev-parse", "main")
+    view = board_with(record, ["pass", "pass", "pass"])
+    view["specs"].append({"spec": "shop", "tasks": [{"task_id": "1", "accept": {"decision": "accept", "state": "requested", "host_id": config.host_id(repo), "by": "duy", "request_id": "evt_acc2"}}]})
+    (result,) = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)._accepts(view)
+    assert result["action"] != "merged" and git(origin, "rev-parse", "main") == before
+    assert any("failed on the merged tree" in n["note"] for n in cloud.notes)

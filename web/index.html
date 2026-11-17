@@ -606,151 +606,118 @@
     background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
   .toast button:hover { border-color: var(--bad-line); }
   .toast button .ico { inline-size: 14px; block-size: 14px; }
-  /* ===== Halloween edition layout (.uiux/*_halloween_edition, hallow_coven/DESIGN.md) =====
-     Late in the sheet on purpose: it restyles the shell, cards, buttons and chips above without changing markup or hooks. */
+  /* ===== Coven look (docs/DESIGN.md "Look"): flat, one brand colour, character on the front door =====
+     Late in the sheet on purpose: it restyles the shell, cards, buttons and chips above without changing markup or hooks.
+     No gradients, no glows. Ops screens (sessions, board) stay dense; only the sign-in, empty states and the chat's head get room. */
   :root {
-    --hex-glow: color-mix(in srgb, var(--color-accent) 35%, transparent);
-    --violet-line: color-mix(in srgb, var(--color-border-purple) 38%, transparent);
-    --flame: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 70%, var(--color-warning)));
-    --canvas-glow: radial-gradient(60rem 28rem at 70% -8%, color-mix(in srgb, var(--color-border-purple) 12%, transparent), transparent 70%);
     --blue: var(--color-text-accent);
     --selected: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    --font-display: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   }
-  body { background: var(--bg) var(--canvas-glow) no-repeat; background-attachment: fixed; }
   ::selection { background: color-mix(in srgb, var(--color-accent) 35%, transparent); }
   :focus-visible { outline-color: var(--color-accent); }
-  h1, h2, h3, .brand b, .nav-h, .stat .k, .tile .l, th { font-family: var(--font-family-heading); }
+  a, button.link { color: var(--color-text-accent); }
 
-  /* sidebar: deep plum, flame brand, gradient active pill */
-  .sidebar { background: var(--chrome); border-right-color: var(--violet-line); padding: 12px 10px; box-shadow: 8px 0 32px -16px color-mix(in srgb, var(--color-border-purple) 30%, transparent); }
-  .brand { padding: 4px 8px 14px; }
-  .brand b { color: var(--color-text-accent); font-size: 1.125rem; letter-spacing: 0.08em; font-weight: 700; }
-  .nav-h { color: var(--muted); letter-spacing: 0.14em; font-size: 0.625rem; }
-  .nav-item { gap: 10px; padding: 8px 10px; border-radius: var(--radius-element); border: 1px solid transparent; font-weight: 500; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }
-  .nav-item:hover { background: var(--panel); color: var(--text); }
-  .nav-item[aria-current="page"] { color: var(--text); font-weight: 600; border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
-    background: linear-gradient(90deg, var(--panel), color-mix(in srgb, var(--color-border-purple) 22%, var(--panel)) 60%, var(--panel)); box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+  /* sidebar and top bar: flat, quiet; the current place is a flat brand-tinted row */
+  .brand b { color: var(--color-text-accent); font-size: 1.0625rem; letter-spacing: 0.12em; font-weight: 700; }
+  .nav-item { border-radius: var(--radius-element); }
+  .nav-item[aria-current="page"] { border-left-color: var(--color-accent); background: var(--selected); }
   .nav-item[aria-current="page"] .label { color: var(--color-text-accent); }
-  .nav-item .count { border: 1px solid var(--violet-line); border-radius: var(--radius-inner); padding: 0 6px; background: var(--panel); }
-  .nav-item[aria-current="page"] .count { color: var(--color-text-accent); border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); background: var(--color-accent-muted); }
-  .count.warn { color: var(--color-text-warning); border-color: var(--warn-line); background: var(--warn-bg); }
-  .nav-sub { border-left-color: var(--violet-line); }
-  .me { border-top-color: var(--violet-line); }
-  .me input, .toolbar input[type="search"], .toolbar select, .compose textarea, .compose select, .compose input, .column-detail .col-filter, .plan .decide .why { background: var(--well); border: 1.5px solid var(--violet-line); border-radius: var(--radius-element); }
-  .me input:focus, .toolbar input:focus, .toolbar select:focus, .compose textarea:focus, .compose input:focus, .compose select:focus, .login input:focus { border-color: var(--color-accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent); }
-  .side-foot { padding-top: 10px; border-top: 1px solid var(--violet-line); margin-top: 8px; }
+  .pill.ok::before, .pill.bad::before { content: ""; display: inline-block; inline-size: 7px; block-size: 7px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: currentColor; }
 
-  /* top bar: slim, translucent, with the connection pill on the right */
-  .topbar { padding: 6px 24px; min-block-size: 44px; background: color-mix(in srgb, var(--chrome) 92%, transparent); backdrop-filter: blur(10px); border-bottom-color: var(--violet-line); }
-  .icon { border-radius: var(--radius-element); border-color: var(--violet-line); background: var(--well); }
-  .pill { text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; padding: 4px 12px; background: var(--well); border-color: var(--violet-line); }
-  .pill.ok { box-shadow: 0 0 12px color-mix(in srgb, var(--color-success) 25%, transparent); }
-  .pill.ok::before { content: ""; display: inline-block; inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--color-success); margin-right: 8px; vertical-align: 1px; }
-  .pill.bad::before { content: ""; display: inline-block; inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--color-error); margin-right: 8px; vertical-align: 1px; }
+  /* summary tiles are links into what they count */
+  a.stat { display: flex; flex-direction: column; color: inherit; transition: border-color 120ms ease-out, background-color 120ms ease-out; }
+  a.stat:hover { text-decoration: none; border-color: var(--line-strong); background: var(--panel-2); }
+  a.stat[aria-current] { border-color: var(--color-accent); box-shadow: inset 0 -2px 0 var(--color-accent); }
 
-  /* workspace: wider canvas, big poster-style headings */
-  main { max-width: 1440px; padding: 22px 32px 28px; }
-  footer { max-width: 1440px; padding: 0 32px 28px; border-top: 1px solid var(--violet-line); padding-top: 14px; }
-  @media (max-width: 640px) { main { padding: 14px 14px 20px; } footer { padding: 14px 14px 28px; } }
-  .crumbs { font-family: var(--mono); font-size: 0.75rem; }
-  .crumbs a { color: var(--muted); } .crumbs a:hover { color: var(--color-text-accent); }
-  .page-h { margin-bottom: 18px; }
-  .page-h h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
-  @media (max-width: 640px) { .page-h h1 { font-size: 1.5rem; } }
-  .page-h .lede { font-size: 0.9375rem; margin-top: 6px; }
-  h2 { color: var(--color-text-accent); letter-spacing: 0.12em; }
-
-  /* panels: plum cards, 16px radius, violet hairline, flame border on hover */
-  .card, .stat, .scard, .tile, .witch, .column, .column-detail, .turn, .sticky, .tcard, .trow, .plan-row > summary, .plan-body, .thread, .chat-compose, .gate, .proj, .msg, .more-witches > summary { border-color: var(--violet-line); }
-  .card, .proj, .turn, .scard, .gate, .column-detail, .column, .thread { border-radius: var(--radius-container); }
-  .card, .scard, .turn, .proj { background: linear-gradient(180deg, color-mix(in srgb, var(--color-border-purple) 7%, var(--panel)), var(--panel) 38%); box-shadow: 0 8px 28px -14px color-mix(in srgb, black 80%, transparent); }
-  .scard, .tile, .witch, .trow, .sticky { transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background-color 140ms ease-out; }
-  .scard:hover, .tile:hover, .trow:hover, .witch:hover, .sticky:hover { border-color: var(--color-accent); box-shadow: 0 0 20px color-mix(in srgb, var(--color-accent) 22%, transparent); }
-  .card > .head { background: color-mix(in srgb, var(--color-border-purple) 9%, transparent); border-bottom-color: var(--violet-line); border-radius: var(--radius-container) var(--radius-container) 0 0; padding: 13px 18px; }
-  .card > .body { padding: 16px 18px; }
-  .scard { padding: 14px 18px; }
-  .scard .l2 { font-size: 0.9688rem; font-weight: 500; }
-  .scard.attn { border-left-width: 4px; }
-  .stats, .tiles { gap: 14px; }
-  .stat .v, .tile .n { font-weight: 600; letter-spacing: -0.01em; }
-  .stat { border-radius: var(--radius-container); }
-  .stat:has(.v.warn) { border-color: var(--warn-line); } .stat:has(.v.bad) { border-color: var(--bad-line); }
-  .witch.working { border-color: var(--color-accent); background: var(--selected); box-shadow: 0 0 18px color-mix(in srgb, var(--color-accent) 18%, transparent); }
-  .tile[aria-expanded="true"] { border-color: var(--color-accent); box-shadow: inset 0 -2px 0 var(--color-accent), 0 0 18px color-mix(in srgb, var(--color-accent) 18%, transparent); }
-  .tcard.mine { border-color: var(--color-accent); }
-  .council-card { border-left-color: var(--color-border-purple); }
-  .dev-card { border-left-color: var(--color-error); }
-  .deviation { border-radius: var(--radius-container); background: var(--warn-soft); box-shadow: 0 0 22px color-mix(in srgb, var(--color-warning) 12%, transparent); }
-
-  /* chips and badges: pills with a state tint */
-  .badge, .chip { border-radius: var(--radius-full); padding: 2px 10px; font-weight: 600; }
-  .badge.live::before, .badge.pass::before, .badge.accept::before { content: ""; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
-  .badge.live::before { animation: pulse 1.8s ease-in-out infinite; }
+  /* buttons: one flat brand action, quiet for the rest */
+  .act.primary, .login button[type="submit"], .chat-compose .send { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); box-shadow: none; }
+  .act.primary:hover:not(:disabled), .login button[type="submit"]:hover, .chat-compose .send:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 86%, var(--color-text-primary)); }
+  .filter[aria-pressed="true"], .tab[aria-selected="true"] { border-color: var(--color-accent); }
+  .tab[aria-selected="true"] { color: var(--color-text-accent); }
+  .tile[aria-expanded="true"] { border-color: var(--color-accent); box-shadow: inset 0 -2px 0 var(--color-accent); }
+  .witch.working, .tcard.mine { border-color: var(--color-accent); }
+  .badge.live::before { content: ""; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; animation: pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: 0.35; } }
-  @media (prefers-reduced-motion: reduce) { .badge.live::before { animation: none; } }
-  .filter { border-radius: var(--radius-full); border-color: var(--violet-line); padding: 4px 14px; }
-  .filter[aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-accent-muted); color: var(--color-text-accent); font-weight: 600; }
-  .seg { border-radius: var(--radius-full); border-color: var(--violet-line); }
-  .dot.live { box-shadow: 0 0 8px var(--color-success); }
 
-  /* buttons: flame pill for the main action, ghost for the rest */
-  .act { border-radius: var(--radius-full); border-color: var(--violet-line); background: var(--well); padding: 6px 14px; font-weight: 600; }
-  .act:hover:not(:disabled) { background: color-mix(in srgb, var(--color-border-purple) 16%, var(--well)); border-color: var(--color-border-purple); }
-  .act.primary { background: var(--flame); border-color: transparent; box-shadow: 0 0 16px var(--hex-glow); }
-  .act.primary:hover:not(:disabled) { background: var(--flame); filter: brightness(1.1); box-shadow: 0 0 24px var(--hex-glow); scale: 1.03; }
-  .act.good { border-color: var(--ok-line); } .act.bad { border-color: var(--bad-line); }
-  .act.quiet { background: transparent; border-color: transparent; }
-  .act.sm { padding: 3px 11px; }
-  button.link { color: var(--color-text-accent); }
-  a { color: var(--color-text-accent); }
+  /* a witch's "never" is on her card */
+  .changes-form { display: flex; gap: 8px; margin-top: 6px; }
+  .changes-form input { flex: 1; min-inline-size: 0; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-inner); padding: 5px 9px; }
+  .accept-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .witch .never { grid-column: 2; margin: 2px 0 0; font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
+  .witch .never b { color: var(--bad-ink); font-weight: 600; margin-right: 4px; }
+  .witch .motto { grid-column: 2; margin: 2px 0 0; font-family: var(--font-display); font-style: italic; font-size: 0.8125rem; color: var(--muted); }
 
-  /* tabs: flame underline */
-  .tabs { border-bottom-color: var(--violet-line); gap: 8px; }
-  .tab { padding: 10px 16px; font-weight: 600; font-family: var(--font-family-heading); }
-  .tab[aria-selected="true"] { color: var(--color-text-accent); border-bottom-color: var(--color-accent); box-shadow: 0 6px 12px -8px var(--hex-glow); }
+  /* the ghost as a character: it peeks, thinks, shrugs and ducks. Motion is gentle and off with reduced motion. */
+  .ghost-mood { display: inline-flex; flex: none; }
+  .ghost-mood .av { margin: 0; }
+  .ghost-mood.think { animation: bob 1.6s ease-in-out infinite; }
+  .ghost-mood.shrug .av { animation: shrug 0.9s ease-in-out 2; transform-origin: 50% 90%; }
+  @keyframes bob { 50% { translate: 0 -3px; } }
+  @keyframes shrug { 25% { rotate: -9deg; } 75% { rotate: 9deg; } }
+  .msg.council.error > .ghost-mood { grid-row: 1 / span 9; }
+  .msg.council.error > .ghost-mood .av { width: 34px; height: 34px; margin-top: 2px; }
+  .status.thinking { display: flex; align-items: center; gap: 6px; font-style: normal; }
+  .status.thinking .av { width: 20px; height: 20px; }
+  .status.thinking .dots::after { content: "…"; animation: dots 1.2s steps(3, end) infinite; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; }
+  .msg.arrive { animation: arrive 260ms ease-out; }
+  @keyframes arrive { from { opacity: 0; translate: 0 8px; } }
 
-  /* session turns and rows */
-  .turn-head { padding: 13px 18px; }
-  .turn-head:hover, .row:hover { background: color-mix(in srgb, var(--color-border-purple) 10%, var(--panel)); }
-  .rows { border-top-color: var(--violet-line); }
-  .row { border-bottom-color: var(--violet-line); padding: 9px 18px; }
-  .row.dev { box-shadow: inset 3px 0 0 var(--color-warning); }
-  .row.fail { box-shadow: inset 3px 0 0 var(--color-error); }
-  .turn.failed { border-left-width: 4px; }
-  th { color: var(--color-text-accent); } td, th { border-bottom-color: var(--violet-line); }
-  .facts { padding: 10px 14px; background: var(--well); border: 1px solid var(--violet-line); border-radius: var(--radius-container); }
-  .persona, .ev-link { border-radius: var(--radius-full); }
-  .empty { text-align: center; padding: 40px 16px; }
-  .empty code, .note code, code { border-color: var(--violet-line); background: var(--well); color: var(--color-text-accent); }
+  /* chat: a roomier head; a visible label on the kind group */
+  .chat-page .page-h { padding-block: 10px 6px; }
+  .chat-page .page-h h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.01em; }
+  .chat-page .page-h .lede { font-size: 0.9375rem; max-inline-size: 62ch; }
+  .chat-compose .kinds-label { font-size: 0.75rem; color: var(--muted); margin-right: 2px; }
+  .live-pause { margin-left: 8px; }
 
-  /* chat: plum bubbles, flame send button */
-  .thread { background: var(--well); }
-  .msg { border-radius: 18px; background: var(--panel); }
-  .msg.human { background: color-mix(in srgb, var(--color-accent) 12%, var(--panel)); border-color: color-mix(in srgb, var(--color-accent) 40%, transparent); }
-  .msg.council { border-color: var(--violet-line); }
-  .chat-compose { border-radius: var(--radius-container); background: var(--panel); }
-  .chat-compose:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent); }
-  .chat-compose .kinds { background: var(--well); border-radius: var(--radius-full); }
-  .chat-compose .kind { border-radius: var(--radius-full); }
-  .chat-compose .kind:has(input:checked) { color: var(--color-text-accent); }
-  .chat-compose .send { background: var(--flame); box-shadow: 0 0 14px var(--hex-glow); }
-  .chat-compose .send:hover:not(:disabled) { background: var(--flame); filter: brightness(1.1); }
+  /* empty states: a sentence with a voice and a ghost peeking over the edge */
+  .empty.voice { position: relative; padding: 56px 20px 40px; text-align: center; font-size: 1rem; color: var(--text); overflow: hidden; }
+  .empty.voice .say { display: block; font-family: var(--font-display); font-size: 1.375rem; margin-bottom: 6px; }
+  .empty.voice .then { color: var(--muted); font-size: 0.875rem; }
+  .peek { display: block; inline-size: 44px; block-size: 26px; margin: 0 auto 14px; overflow: hidden; }
+  .peek .av { width: 44px; height: 44px; margin: 0; animation: peek 2.8s ease-in-out 0.4s both; }
+  @keyframes peek { 0% { translate: 0 100%; } 30%, 80% { translate: 0 8%; } 100% { translate: 0 30%; } }
 
-  /* dialogs and toasts */
-  .login, .task-dialog, .drawer { border-color: var(--violet-line); }
-  .login { border-radius: var(--radius-container); background: linear-gradient(180deg, color-mix(in srgb, var(--color-border-purple) 12%, var(--panel)), var(--panel)); box-shadow: var(--shadow-high), 0 0 40px color-mix(in srgb, var(--color-accent) 14%, transparent); }
-  .login h2 b { color: var(--color-text-accent); letter-spacing: 0.12em; }
-  .login input { background: var(--well); border: 1.5px solid var(--violet-line); border-radius: var(--radius-element); }
-  .login button { background: var(--flame); border-radius: var(--radius-full); box-shadow: 0 0 16px var(--hex-glow); }
-  .task-dialog { border-radius: var(--radius-container); }
-  .task-dialog .td-head, .drawer .dh, .drawer .dn { border-bottom-color: var(--violet-line); }
-  .drawer { border-left-color: var(--violet-line); }
-  .toast { border-radius: var(--radius-container); box-shadow: var(--shadow-high); }
+  /* the front door: a flat dark stage, one flat lilac panel the ghost peeks over, a big serif headline typed once */
+  .login::backdrop { background: var(--coven-stage); }
+  .login { background: var(--coven-stage); color: var(--coven-stage-ink); border: 0; box-shadow: none; inline-size: min(560px, calc(100vw - 2rem)); overflow: visible; }
+  .login form { padding: 8px 4px 24px; gap: 14px; }
+  .login .login-brand { gap: 8px; margin: 0; }
+  .login h2 { flex-direction: row; align-items: baseline; gap: 10px; }
+  .login h2 b { color: var(--color-accent); font-size: 0.875rem; letter-spacing: 0.2em; }
+  .login h2 span { color: var(--coven-stage-muted); font-size: 0.8125rem; }
+  .login .hero { margin: 4px 0 0; font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 6vw, 2.75rem); line-height: 1.1; letter-spacing: -0.015em; color: var(--coven-stage-ink); min-block-size: 2.3em; }
+  .login .hero .caret { display: inline-block; inline-size: 0.08em; block-size: 0.9em; margin-left: 0.06em; vertical-align: -0.08em; background: var(--coven-caret); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .login .tagline code, #login-why code { color: var(--coven-stage-ink); background: color-mix(in srgb, var(--coven-stage-ink) 10%, transparent); border: 0; }
+  .login .tagline { color: var(--coven-stage-muted); font-size: 1rem; line-height: 1.5; margin: 0 0 8px; }
+  .login-panel { position: relative; background: var(--coven-lilac); color: var(--coven-on-lilac); border-radius: var(--radius-container); padding: 22px 20px 18px; margin-top: 34px; display: grid; gap: 10px; }
+  .login-panel p, .login-panel label { color: var(--coven-on-lilac); }
+  .login-panel .ghost-peek { position: absolute; top: -34px; right: 26px; inline-size: 56px; block-size: 36px; overflow: hidden; }
+  .login-panel .ghost-peek .av { width: 56px; height: 56px; margin: 0; translate: 0 0; transition: translate 380ms cubic-bezier(.3,1.4,.5,1); }
+  .login-panel .ghost-peek.peeking .av { animation: peek-up 900ms cubic-bezier(.3,1.4,.5,1) 600ms both; }
+  @keyframes peek-up { from { translate: 0 100%; } }
+  .login.wrong .ghost-peek .av { translate: 0 92%; animation: none; }
+  .login.busy .ghost-peek .av { animation: bob 1.2s ease-in-out infinite; }
+  .login input { background: var(--coven-stage); color: var(--coven-stage-ink); border: 1px solid transparent; border-radius: var(--radius-element); padding: 11px 12px; }
+  .login input::placeholder { color: var(--coven-stage-muted); }
+  .login input:focus { border-color: var(--coven-caret); box-shadow: none; }
+  .login button[type="submit"] { border-radius: var(--radius-element); padding: 11px 14px; font-size: 0.9375rem; }
+  .login .error { color: var(--coven-on-lilac); font-weight: 600; }
+  .login .install { display: flex; align-items: center; gap: 8px; margin-top: 4px; background: color-mix(in srgb, var(--coven-stage-ink) 6%, var(--coven-stage)); border: 1px solid color-mix(in srgb, var(--coven-stage-ink) 16%, transparent); border-radius: var(--radius-element); padding: 6px 6px 6px 12px; }
+  .login .install code { flex: 1; min-inline-size: 0; overflow-x: auto; white-space: nowrap; font-family: var(--mono); font-size: 0.75rem; color: var(--coven-stage-ink); background: none; border: 0; padding: 0; }
+  .login .install button { flex: none; color: var(--coven-stage-ink); background: transparent; border: 1px solid color-mix(in srgb, var(--coven-stage-ink) 30%, transparent); border-radius: var(--radius-inner); padding: 4px 10px; font: inherit; font-size: 0.75rem; cursor: pointer; }
+  .login #login-why { color: var(--coven-stage-muted); font-size: 0.75rem; }
+  @media (prefers-reduced-motion: reduce) {
+    .ghost-mood.think, .ghost-mood.shrug .av, .msg.arrive, .peek .av, .login-panel .ghost-peek.peeking .av, .login.busy .ghost-peek .av, .badge.live::before { animation: none; }
+    .login-panel .ghost-peek .av { transition: none; }
+    .login .hero .caret { animation: none; }
+  }
 </style>
 </head>
 <body>
 <!-- UI icons: one stroke set, drawn in currentColor so they follow the text colour and every theme. -->
-<svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0"><defs><symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol><symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol><symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z"/></symbol><symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol><symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3M15.5 16.5L20 12l-4.5-4.5M20 12H9.5"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6.5L9.5 17 4 11.5"/></symbol><symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7.5a4.5 4.5 0 1 1 .9-8.9 6 6 0 0 1 11.3 2.3A3.4 3.4 0 0 1 17.5 19z"/></symbol><symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol><symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14"/></symbol><symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z"/></symbol><symbol id="i-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A9.6 9.6 0 0 1 12 5c5 0 8.6 4 9.5 7a11 11 0 0 1-2.3 3.3M6.5 6.5A11.4 11.4 0 0 0 2.5 12c.9 3 4.5 7 9.5 7a9.6 9.6 0 0 0 5.3-1.6"/></symbol><symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol><symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h8.5M16.5 3.6a2.1 2.1 0 1 1 3 3L7.5 18.6 3.5 19.5l.9-4z"/></symbol></defs></svg>
+<svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0"><defs><symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol><symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol><symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z"/></symbol><symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol><symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3M15.5 16.5L20 12l-4.5-4.5M20 12H9.5"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6.5L9.5 17 4 11.5"/></symbol><symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7.5a4.5 4.5 0 1 1 .9-8.9 6 6 0 0 1 11.3 2.3A3.4 3.4 0 0 1 17.5 19z"/></symbol><symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol><symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14"/></symbol><symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z"/></symbol><symbol id="i-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A9.6 9.6 0 0 1 12 5c5 0 8.6 4 9.5 7a11 11 0 0 1-2.3 3.3M6.5 6.5A11.4 11.4 0 0 0 2.5 12c.9 3 4.5 7 9.5 7a9.6 9.6 0 0 0 5.3-1.6"/></symbol><symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol><symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5v14M15 5v14"/></symbol><symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></symbol><symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h8.5M16.5 3.6a2.1 2.1 0 1 1 3 3L7.5 18.6 3.5 19.5l.9-4z"/></symbol></defs></svg>
 <a class="skip" href="#main">Skip to content</a>
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar" aria-label="Sidebar">
@@ -776,7 +743,8 @@
     </header>
     <main id="main" tabindex="-1"><div class="empty">Loading…</div></main>
     <footer>
-      Coven records tool calls after they happen: intent, programs, exit codes, file paths and sizes. Never output, file contents or command arguments. It never edits the repo.
+      Coven records tool calls after they happen: intent, programs, exit codes, file paths and sizes; never output, file contents or command arguments.
+      This page and the cloud change nothing in your repository. Your hosts do: they build each task on a <code>coven/</code> branch, tick <code>tasks.md</code>, and with <code>--auto-merge</code> merge and push what every reviewer passed.
     </footer>
   </div>
 </div>
@@ -794,15 +762,21 @@
   <div class="td-body" id="task-dialog-body"></div>
 </dialog>
 
-<dialog class="login" id="login" aria-labelledby="login-title" aria-describedby="login-why">
+<dialog class="login" id="login" aria-labelledby="login-title" aria-describedby="login-tagline">
   <form id="login-form">
-    <div class="login-brand"><span id="login-ghost"></span><h2 id="login-title"><b>COVEN</b><span>Sign in</span></h2></div>
-    <p>Password for this Coven Cloud.<span id="dev-hint" hidden> A development server accepts <code>dev</code>.</span></p>
-    <p class="error" id="login-error" hidden>Wrong password.</p>
-    <label class="sr" for="token-input">Password</label>
-    <input id="token-input" type="password" autocomplete="current-password" placeholder="password" />
-    <button type="submit">Connect</button>
-    <p id="login-why">The password stays in this browser and is sent as a bearer header. The live stream carries it once as a query parameter, because a browser cannot set headers on an event stream.</p>
+    <div class="login-brand"><h2 id="login-title"><b>COVEN</b><span>Sign in</span></h2></div>
+    <p class="hero" id="login-hero" data-text="Kiro, meet your Coven.">Kiro, meet your Coven.</p>
+    <p class="tagline" id="login-tagline">Watch every Kiro session live, and let the witches work: your hosts build each task on its own branch, tick <code>tasks.md</code>, and merge what every reviewer passed.</p>
+    <div class="login-panel">
+      <span class="ghost-peek" id="login-ghost" aria-hidden="true"></span>
+      <p>Password for this Coven Cloud.<span id="dev-hint" hidden> A development server accepts <code>dev</code>.</span></p>
+      <p class="error" id="login-error" hidden>Wrong password. The ghost is hiding until you try again.</p>
+      <label class="sr" for="token-input">Password</label>
+      <input id="token-input" type="password" autocomplete="current-password" placeholder="password" />
+      <button type="submit">Connect</button>
+    </div>
+    <div class="install"><code id="install-cmd">coven login --cloud-url https://your-coven --token &lt;password&gt;</code><button type="button" id="install-copy" data-key="install-copy">Copy</button></div>
+    <p id="login-why">Run that on each machine with Kiro, then <code>coven relay up</code>. The password stays in this browser and is sent as a bearer header; the live stream carries it once as a query parameter, because a browser cannot set headers on an event stream.</p>
   </form>
 </dialog>
 <div class="toasts" role="region" aria-label="Notifications">
@@ -842,6 +816,8 @@
     council: null,
     expanded: new Map(),   // "<runId>:<turn index>" -> boolean, set by the user
     seen: new Set(),       // event ids already rendered, to highlight new ones
+    paused: false,         // the reader paused the live timeline of a session
+    held: [],              // events that arrived while paused
     items: [],             // events behind clickable rows (drawer)
     evidence: [],          // evidence items behind council links
     expandDeviations: false,
@@ -902,6 +878,8 @@
 
   /* ---------------------------------------------------------------- helpers */
   const $ = (id) => document.getElementById(id);
+  /** An empty state with a voice: one sentence that sounds like the coven, what to do next, and a ghost peeking over the edge. */
+  const voice = (say, then, who = "coven") => `<div class="empty voice"><span class="peek" aria-hidden="true">${avatar(who)}</span><span class="say">${say}</span><span class="then">${then}</span></div>`;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const cls = (v) => String(v || "unknown").toLowerCase().replace(/[^a-z-]/g, "");
   const short = (id, n = 14) => (String(id || "").length > n ? String(id).slice(0, n) + "…" : String(id || ""));
@@ -966,19 +944,33 @@
   function showLogin() {
     document.body.classList.add("signed-out");
     const dialog = $("login");
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) { dialog.showModal(); greet(); }
     $("token-input").focus();
   }
   function hideLogin() {
     document.body.classList.remove("signed-out");
+    $("login").classList.remove("busy", "wrong");
     if ($("login").open) $("login").close();
   }
   const writeKey = () => (globalThis.crypto && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `w-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-  async function api(path, options = {}) {
+  /** People's decisions: with an admin password set on the cloud, only it may make them (NFR-SEC7). */
+  const DECISIONS = /^\/v1\/board\/(done|retry|dispatch|push|plan|accept)$/;
+  async function api(path, options = {}, asked = false) {
     const keyed = options.method === "POST" ? { "Idempotency-Key": writeKey() } : {};
-    const response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${state.token}`, "Content-Type": "application/json", ...keyed, ...(options.headers || {}) } });
+    const decision = options.method === "POST" && DECISIONS.test(path);
+    const admin = decision ? localStorage.getItem("coven_admin") : null;
+    const response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${admin || state.token}`, "Content-Type": "application/json", ...keyed, ...(options.headers || {}) } });
+    if (response.status === 403 && decision && !asked) {
+      // Signed in, but this cloud keeps decisions for its admin password: ask once, keep it in this browser, try again.
+      const given = window.prompt("This decision needs the Coven admin password:");
+      if (given && given.trim()) { localStorage.setItem("coven_admin", given.trim()); return api(path, options, true); }
+      throw new Error("needs the admin password");
+    }
+    if (response.status === 403 && decision) { localStorage.removeItem("coven_admin"); throw new Error("the admin password was not accepted"); }
     if (response.status === 401) {
       $("login-error").hidden = !state.token;
+      $("login").classList.remove("busy");
+      $("login").classList.toggle("wrong", Boolean(state.token));
       showLogin();
       throw new Error("unauthorised");
     }
@@ -1039,12 +1031,17 @@
       state.lastListRoute = next;
     }
     closeNav();
-    if (next.view === "board") { if (changed) state.board = null; await loadBoard(); }
-    if (next.view === "chat") { if (changed) state.chat = null; await loadChat(); }
-    if (next.view === "session") {
-      if (changed) { state.run = null; state.events = []; state.council = null; state.seen = new Set(); render(); }
-      await loadSession();
+    // Draw the new place at once (its own "Loading…" if its data is not here yet), then fill it in:
+    // the old panel must never stay on screen under a new URL while a request is on its way.
+    if (changed) {
+      if (next.view === "board") state.board = null;
+      if (next.view === "chat") state.chat = null;
+      if (next.view === "session") { state.run = null; state.events = []; state.council = null; state.seen = new Set(); state.paused = false; state.held = []; }
+      render();
     }
+    if (next.view === "board") await loadBoard();
+    if (next.view === "chat") await loadChat();
+    if (next.view === "session") await loadSession();
     render({ keepScroll: !changed });
     if (changed) {
       if (window.scrollY > 0) window.scrollTo(0, 0);
@@ -1090,9 +1087,11 @@
     const project = defaultBoardProject();
     if (!project) { state.chat = null; return; }
     try {
-      state.chat = await api(`/v1/chat?project_id=${encodeURIComponent(project)}`);
+      // the chat and the task list for "About" in parallel, not one after the other
+      const needBoard = !state.board || state.board.project_id !== project;
+      const [chat] = await Promise.all([api(`/v1/chat?project_id=${encodeURIComponent(project)}`), needBoard ? loadBoard() : null]);
+      state.chat = chat;
       state.boardProject = project;
-      if (!state.board || state.board.project_id !== project) await loadBoard(); // the task list for "About"
     } catch (error) { quiet(error); }
   }
 
@@ -1106,6 +1105,7 @@
       quiet(error);
       return;
     }
+    render({ keepScroll: true }); // the timeline is here: show it, then add the council (one more request)
     await loadCouncil();
   }
 
@@ -1252,7 +1252,9 @@
     const views = [
       boardProject ? item(`#/board/${encodeURIComponent(boardProject)}`, "board", "Coven board", null, "", r.view === "board") : "",
       boardProject ? item(`#/chat/${encodeURIComponent(boardProject)}`, "chat", "Council chat",
-        state.chat && state.chat.project_id === boardProject ? state.chat.waiting.length : null, "warn", r.view === "chat") : "",
+        // the number of messages in the chat; amber while some still wait for the council
+        state.chat && state.chat.project_id === boardProject ? (state.chat.messages || []).length : null,
+        state.chat && state.chat.project_id === boardProject && (state.chat.waiting || []).length ? "warn" : "", r.view === "chat") : "",
       item("#/", "all", "All sessions", runs.length, "", onList && r.filter === "all"),
       item("#/?f=live", "live", "Live", live, "", onList && r.filter === "live"),
       item("#/?f=attention", "attention", "Needs attention", attention, "warn", onList && r.filter === "attention"),
@@ -1326,7 +1328,8 @@
     if (!list.length) {
       const why = [state.query.trim() ? `“${esc(state.query.trim())}”` : "", state.route.filter !== "all" ? esc(STATUS_LABEL[state.route.filter]) : ""].filter(Boolean).join(" under ");
       const has = state.query.trim() || state.route.filter !== "all";
-      return `<div class="card"><div class="empty">${has ? `Nothing matches ${why}. <button class="link" type="button" data-clear>Clear</button>` : "No sessions here yet."}</div></div>`;
+      if (!has) return `<div class="card">${voice("The cauldron is cold.", "No Kiro session has reported in yet. Link a repo with <code>coven project link &lt;name&gt;</code> and start Kiro: its first tool call lands here.")}</div>`;
+      return `<div class="card"><div class="empty">Nothing matches ${why}. <button class="link" type="button" data-clear>Clear</button></div></div>`;
     }
     const sort = (SORTS[state.ui.sort] || SORTS.attention)[1];
     const ids = [...new Set(list.map((x) => x.project_id))].sort();
@@ -1401,11 +1404,19 @@
     return `${demoBanner(scope.some((x) => x.seeded) || seededProject(project))}
       ${head}
       <section class="stats" aria-label="Summary">
-        <div class="stat"><div class="k">Live</div><div class="v">${live}</div><div class="f">heartbeat under 15 s</div></div>
-        <div class="stat"><div class="k">Need attention</div><div class="v ${attention ? "warn" : ""}">${attention}</div><div class="f">failing, looping, off-spec or stalled</div></div>
-        <div class="stat"><div class="k">Failures</div><div class="v ${failures ? "bad" : ""}">${failures}</div><div class="f">failed tool calls, last 10 min</div></div>
-        <div class="stat"><div class="k">Open deviations</div><div class="v ${deviations.length ? "warn" : ""}">${deviations.length}</div><div class="f">possible, not confirmed</div></div>
-        ${credited.length ? `<div class="stat"><div class="k">Credits</div><div class="v">${num(credited.reduce((sum, x) => sum + Number(x.credits || 0), 0))}</div><div class="f">headless runs, as reported</div></div>` : ""}
+        ${(() => {
+          // Each tile is the way into what it counts. Credits sorts by spend; it shows 0 until a headless run reports some.
+          const at = (filter) => listHash({ project, spec, filter });
+          const credits = credited.reduce((sum, x) => sum + Number(x.credits || 0), 0);
+          const tile = (href, key, k, v, tone, f, current) => `<a class="stat" href="${href}" data-key="stat-${key}"${current ? ' aria-current="true"' : ""}><span class="k">${k}</span><span class="v ${tone}">${v}</span><span class="f">${f}</span></a>`;
+          return [
+            tile(at("live"), "live", "Live", live, "", "heartbeat under 15 s", r.filter === "live"),
+            tile(at("attention"), "attention", "Need attention", attention, attention ? "warn" : "", "failing, looping, off-spec or stalled", r.filter === "attention"),
+            tile(at("attention"), "failures", "Failures", failures, failures ? "bad" : "", "failed tool calls, last 10 min", false),
+            tile("#/deviations", "deviations", "Open deviations", deviations.length, deviations.length ? "warn" : "", "possible, not confirmed", false),
+            tile(at("all"), "credits", "Credits", num(credits), "", credited.length ? `${plural(credited.length, "headless run")}, as reported` : "no headless run reported yet", false),
+          ].join("");
+        })()}
       </section>
       ${spec ? specCard(project, spec) : project ? projectOverview(project) : ""}
       ${deviationBanner(deviations)}
@@ -1431,7 +1442,7 @@
       lede: "Writes outside the declared paths of the current task. Advisory: Coven cannot know if the write was right. Dismiss what you have read." })}
       ${list.length
         ? `<ul class="devlist">${list.map(deviationCard).join("")}</ul>`
-        : '<div class="card"><div class="empty">No open deviations. One appears when a session writes outside the <span class="mono">_Paths:_</span> declared for its current task.</div></div>'}`;
+        : `<div class="card">${voice("Every witch stayed inside her circle.", 'No open deviations. One appears when a session writes outside the <span class="mono">_Paths:_</span> declared for its current task.', "black-hat")}</div>`}`;
   }
 
   /* -------------------------------------------------------------- coven board */
@@ -1551,6 +1562,22 @@
     } catch (error) { list.innerHTML = '<li class="hint">Could not load the conversation.</li>'; quiet(error); }
   }
   /** A submitted branch lives on one host (nothing pushes). A person may ask that host to push it, once. */
+  /** The final evaluation of a submitted branch: Accept (the host that holds it merges it under the auto-merge checks)
+      or Request changes (the reason goes to the Dev). Shown while the branch waits on a host. */
+  function acceptLine(t) {
+    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return "";
+    const a = t.accept;
+    if (a && a.state === "requested" && a.decision === "accept") {
+      return `<div class="who"><span class="badge working">Accepted</span> <span class="hint">by ${esc(a.by || "someone")}: the host that holds the branch merges it once it merges cleanly and <code>make verify</code> passes on the result</span></div>`;
+    }
+    const asking = state.changesFor === t.ref;
+    const form = asking ? `<form class="changes-form" data-changes-form="${esc(t.ref)}"><label class="sr" for="changes-${esc(t.ref)}">What should change</label>
+        <input id="changes-${esc(t.ref)}" data-key="changes-${esc(t.ref)}" maxlength="300" required placeholder="What should change? The Dev reads this." />
+        <button class="act bad" type="submit">${icon("send")}<span>Send to the Dev</span></button></form>` : "";
+    const last = a && a.decision === "changes" ? `<span class="hint">changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span> ` : "";
+    return `<div class="who accept-row">${last}<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>
+      <button class="act quiet" type="button" data-changes="${esc(t.ref)}" data-key="changes-btn-${esc(t.ref)}" aria-expanded="${asking}">${icon("undo")}<span>Request changes</span></button></div>${form}`;
+  }
   function pushLine(t) {
     if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return "";
     const p = t.push;
@@ -1568,7 +1595,9 @@
   const openGroups = new Map(); // "column:spec" -> open or not, as the person left it
   function columnDetail(key, label, list) {
     const head = `<h3>${esc(label)} · ${plural(list.length, "task")}</h3>`;
-    if (!list.length) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<div class="hint" style="padding:4px">No tasks here.</div></section>`;
+    const quiet = { ready: "Nothing is ready: the witches are waiting for a plan or a task in tasks.md.", claimed: "Nothing claimed yet: no witch has picked up a task.",
+      review: "Nothing waits for review: every branch has been judged.", failed: "Nothing is blocked.", done: "Nothing is done yet: the first merge lands here." };
+    if (!list.length) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<div class="hint" style="padding:4px">${esc(quiet[key] || "No tasks here.")}</div></section>`;
     if (list.length <= LONG_COLUMN) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<ul class="tlist">${list.map(taskRow).join("")}</ul></section>`;
     const groups = new Map();
     for (const t of list) groups.set(t.spec, [...(groups.get(t.spec) || []), t]);
@@ -1612,7 +1641,12 @@
     const dialog = $("task-dialog"), body = $("task-dialog-body");
     const t = selectedTask();
     $("task-dialog-title").textContent = t ? `${t.ref}${t.title ? ` · ${t.title}` : ""}` : state.openTask || "Task";
+    // a live update redraws the task: keep what the person is typing (a reason for changes)
+    const drafts = new Map([...body.querySelectorAll("input[data-key]")].map((el) => [el.dataset.key, el.value]));
+    const focused = document.activeElement && body.contains(document.activeElement) ? document.activeElement.dataset.key : null;
     body.innerHTML = t ? taskCard(t) : '<p class="hint">This task is no longer on the board.</p>';
+    for (const el of body.querySelectorAll("input[data-key]")) if (drafts.has(el.dataset.key)) el.value = drafts.get(el.dataset.key);
+    if (focused) { const again = body.querySelector(`[data-key="${window.CSS && CSS.escape ? CSS.escape(focused) : focused}"]`); if (again) again.focus(); }
     wire(body);
     return dialog;
   }
@@ -1634,9 +1668,9 @@
     const stuck = state.runnable && isStuck(t, state.runnable);
     const mergedLine = t.merged ? `<div class="state"><span class="badge accept">Merged</span> <span class="hint">into <code>${esc(t.merged.base)}</code> at <code>${esc(String(t.merged.commit).slice(0, 7))}</code> · passed by ${(t.merged.reviewers || []).map((r) => esc(agentName(r))).join(", ")} · decided by ${esc(agentName("grey-witch"))}</span></div>`
       : t.doer_verdict ? `<div class="state"><span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes needed"}</span>${t.review_of ? `<span class="hint">review of ${esc(t.review_of)}</span>` : ""}</div>` : "";
-    const planLine = t.from_plan ? `<div class="hint">from plan ${esc(t.from_plan)}, approved by ${esc(t.approved_by || "a person")}</div>` : "";
+    const planLine = t.from_plan ? `<div class="hint">from <a href="#/board/${encodeURIComponent(state.boardProject || "")}" data-key="from-plan-${esc(t.ref)}" data-plan-link="${esc(t.from_plan)}">plan ${esc(t.from_plan)}</a>, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${acceptLine(t)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>`;
   }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
@@ -1661,7 +1695,10 @@
     roster.sort((x, y) => order[x.state] - order[y.state]);
     const text = { working: "Working", available: "Available", full: "Waiting for a slot", offline: "Not available" };
     const card = (w) => {
-      const where = w.state === "working" ? w.jobs.map((j) => `${j.task.startsWith("chat#") ? "on a chat request" : "on " + esc(j.task)} · ${esc(j.host)}`).join("; ")
+      // the task she works on opens it, like its row in a column does
+      const job = (j) => (j.task.startsWith("chat#") ? `on <a href="#/chat/${encodeURIComponent(b.project_id || "")}" data-key="witch-job-${esc(w.slug)}-${esc(j.task)}">a chat request</a>`
+        : `on <button class="link" type="button" data-task-open="${esc(j.task)}" data-key="witch-job-${esc(w.slug)}-${esc(j.task)}">${esc(j.task)}</button>`);
+      const where = w.state === "working" ? w.jobs.map((j) => `${job(j)} · ${esc(j.host)}`).join("; ")
         : w.offers.length ? `on ${w.offers.map((o) => esc(o.host)).join(", ")}` : "no host runs it";
       return `<div class="witch ${w.state}" data-key="witch-${w.slug}">${avatar(w.slug)}<div class="nm">${esc(agentName(w.slug))}</div><div class="rl">${esc(AGENT_ROLE[w.slug])}</div>
         <div class="st"><span class="dot ${w.state === "working" ? "live" : w.state === "available" ? "live" : ""}" aria-hidden="true"></span>${text[w.state]}</div><div class="where">${where}</div>${roleCard(w.slug)}</div>`;
@@ -1669,17 +1706,25 @@
     const active = roster.filter((w) => w.state !== "offline"), idle = roster.filter((w) => w.state === "offline");
     // Who can work now gets a card; the witches no host runs fold behind one row of their ghosts (still a click away).
     const folded = idle.length ? `<details class="more-witches" data-key="more-witches"${state.ui.allWitches ? " open" : ""}><summary><span class="faces" aria-hidden="true">${idle.map((w) => avatar(w.slug)).join("")}</span>
-      <span>${idle.length} ${idle.length === 1 ? "witch is" : "witches are"} not on any host</span></summary><div class="witches">${idle.map(card).join("")}</div></details>` : "";
+      <span>${idle.length <= 3 ? `${idle.map((w) => esc(agentName(w.slug))).join(", ")} ${idle.length === 1 ? "is" : "are"} not on any host${idle.some((w) => w.slug === "green-witch") ? ": nothing gets built until a host runs her (<code>./run-host.sh --all</code>)" : ""}`
+        : `${idle.length} witches are not on any host`}</span></summary><div class="witches">${idle.map(card).join("")}</div></details>` : "";
     const html = `${active.length ? `<div class="witches">${active.map(card).join("")}</div>` : ""}${folded}`;
     return { html, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
   }
+  /** Each witch's line in her own voice: copy, not a rule (her rules are WITCH_ROLES). */
+  const WITCH_MOTTO = { "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
+    "white-hat": "Show me the test.", "elder-witch": "Read the spec first.", "green-witch": "Inside the paths, or not at all.", "imp": "Two eyes are good; four are better.",
+    "raven": "I watch. I do not touch.", "scribe": "No task leaves without paths and a verify.", "herald": "Only what the guard said.", "weaver": "You decide at the gate." };
   /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
   function roleCard(slug) {
     const r = WITCH_ROLES[slug];
     if (!r) return "";
     const who = (list) => list.map((n) => (AGENT_NAME[n] ? agentName(n) : n)).join(", ");
     const row = (label, value) => `<dt>${label}</dt> <dd>${esc(value)}</dd> `;
-    return `<details class="duty" data-key="duty-${slug}"><summary>Responsibilities</summary><dl>${row("Owns", r.owns.join("; "))}${row("Produces", r.produces.join("; "))}
+    // Her "never" is her character: on the card, not behind a click. The rest folds.
+    const motto = WITCH_MOTTO[slug] ? `<p class="motto">“${esc(WITCH_MOTTO[slug])}”</p>` : "";
+    return `<p class="never"><b>Never</b> ${esc(r.never[0])}${r.never.length > 1 ? ` <span class="hint">+${r.never.length - 1}</span>` : ""}</p>${motto}
+      <details class="duty" data-key="duty-${slug}"><summary>Responsibilities</summary><dl>${row("Owns", r.owns.join("; "))}${row("Produces", r.produces.join("; "))}
       ${row("Hands off to", who(r.hands_off_to))}${row("Never", r.never.join("; "))}</dl></details>`;
   }
   function boardView() {
@@ -1723,7 +1768,7 @@
       ${decidedList(decidedPlans, b)}
       <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? members.html : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
       <h2>Whiteboard</h2>${compose}
-      <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">Nothing on the board yet. Post the first note.</p>'}</div>`;
+      <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">The whiteboard is blank. The Elf has ideas; so do you: post the first note.</p>'}</div>`;
   }
 
   /* ------------------------------------------------------------- council chat */
@@ -1746,15 +1791,43 @@
       : `<div class="status"><b>No online host runs ${esc(witch)}.</b> It waits until one does: <code>coven host run</code> on a machine that has her agent.</div>`;
   }
   /** One bubble per reply: a witch's steps that answer the same message, one after another, read as one answer. */
+  /** A failure as a person reads it: no pasted JSON, no protocol codes. (Old replies were stored raw.) */
+  function plainError(text) {
+    const t = String(text || "");
+    if (/could not load the available models|ModelRegistryUnavailable/i.test(t)) {
+      const who = (t.match(/^(.*?) could not (?:do|dispatch|answer)/) || [])[1];
+      return `${who ? `${who}: ` : ""}Kiro's models are unavailable right now (an outage on Kiro's side, not in Coven). Send the message again in a few minutes.`;
+    }
+    return t.replace(/\s*\{.*\}\s*/g, " ").replace(/\s*\(code -?\d+\)\s*:?/g, "").trim();
+  }
   function chatGroups(messages) {
     const out = [];
     for (const m of messages) {
       const last = out[out.length - 1];
+      // the same failure, again, for the same message: one bubble that says how many times
+      if (m.role === "council" && m.kind === "error") {
+        const same = out.find((x) => x.role === "council" && x.kind === "error" && x.reply_to === m.reply_to && plainError(x.message) === plainError(m.message));
+        if (same) { same.repeats = (same.repeats || 1) + 1; same.parts = [...same.parts, m]; continue; }
+      }
       if (m.role === "council" && m.kind === "answer" && last && last.role === "council" && last.kind === "answer"
           && last.reply_to === m.reply_to && last.persona === m.persona) last.parts.push(m);
       else out.push({ ...m, parts: [m] });
     }
     return out;
+  }
+  const arrived = (m) => {
+    const seen = state.chatSeen || (state.chatSeen = { ids: new Set(), primed: false });
+    const fresh = seen.primed && !seen.ids.has(m.message_id);
+    seen.ids.add(m.message_id);
+    return fresh ? "arrive" : "";
+  };
+  /** A message that waits: who is thinking about it, if anyone really is (a host's Chair, or a listening member). Never a fake. */
+  function waitLine(m, ctx) {
+    const triage = !m.to || m.to === "chair" || m.to === "grey-witch";
+    const chair = (ctx.hosts || []).some((h) => h.online && (h.agents || []).includes("grey-witch"));
+    const who = triage && chair ? "grey-witch" : ctx.listening ? (ROLE_SLUG[m.to] || (triage ? "grey-witch" : m.to)) : null;
+    if (!who) return '<div class="status">waiting for the council: nobody is listening yet.</div>';
+    return `<div class="status thinking"><span class="ghost-mood think" aria-hidden="true">${avatar(who)}</span>${esc(agentName(who))} is thinking<span class="dots" aria-hidden="true"></span></div>`;
   }
   function chatMessage(m, byId, waiting, ctx = { final: new Set(), working: new Set(), hosts: [] }) {
     const when = agoTag(m.ts);
@@ -1766,21 +1839,21 @@
     if (m.role === "council") {
       const asked = byId.get(m.reply_to);
       const parts = m.parts || [m];
-      const body = parts.length > 1
+      const body = parts.length > 1 && m.kind !== "error"
         ? `<ol class="steps">${parts.map((x) => `<li data-key="msg-${esc(x.message_id)}">${esc(x.message)}</li>`).join("")}</ol>`
-        : `<div class="body">${esc(m.message)}</div>`;
-      return `<li class="msg council ${m.kind === "error" ? "error" : ""}" data-key="msg-${esc(m.message_id)}">${avatar(m.persona)}
+        : `<div class="body">${esc(m.kind === "error" ? plainError(m.message) : m.message)}${m.repeats > 1 ? ` <span class="hint">(${m.repeats} tries)</span>` : ""}</div>`;
+      return `<li class="msg council ${m.kind === "error" ? "error" : ""} ${arrived(m)}" data-key="msg-${esc(m.message_id)}">${m.kind === "error" ? `<span class="ghost-mood shrug" aria-hidden="true">${avatar(m.persona)}</span>` : avatar(m.persona)}
         <div class="meta"><b>${esc(personaTitle(m.persona) || "The council")}</b><span>on ${esc(m.author)}</span><span>${agoTag(parts[parts.length - 1].ts)}</span></div>
         ${asked ? `<div class="re" title="${esc(asked.message)}">↪ ${esc(asked.author)}: “${esc(short(asked.message, 80))}”</div>` : ""}
         ${body}</li>`;
     }
     const to = m.to ? `to ${esc(personaTitle(m.to) || m.to)}` : "to the council";
-    return `<li class="msg human ${esc(cls(m.kind))}" data-key="msg-${esc(m.message_id)}">
+    return `<li class="msg human ${esc(cls(m.kind))} ${arrived(m)}" data-key="msg-${esc(m.message_id)}">
       <div class="meta"><span class="badge ${m.kind === "reject" ? "reject" : "grey"}">${esc(CHAT_KIND_LABEL[m.kind] || m.kind)}</span>
         <b>${esc(m.author)}</b><span>${to}</span>${m.task ? `<span class="mono">on ${esc(m.task)}</span>` : ""}<span>${when}</span></div>
       <div class="body">${esc(m.message)}</div>
       ${m.kind === "reject" ? '<div class="status">Binding: the guard of this task\'s flow rejects until new work comes after it.</div>' : ""}
-      ${m.kind === "do" ? requestStatus(m, ctx) : waiting.has(m.message_id) ? '<div class="status">waiting for the council…</div>' : ""}</li>`;
+      ${m.kind === "do" ? requestStatus(m, ctx) : waiting.has(m.message_id) ? waitLine(m, ctx) : ""}</li>`;
   }
   function chatView() {
     const project = defaultBoardProject();
@@ -1800,16 +1873,17 @@
     const byId = new Map((c.messages || []).map((m) => [m.message_id, m]));
     const waiting = new Set(c.waiting || []);
     const replies = (kinds) => new Set((c.messages || []).filter((m) => m.role === "council" && kinds.includes(m.kind)).map((m) => m.reply_to));
-    const ctx = { final: replies(["answer", "error"]), working: replies(["working"]), hosts: c.hosts || [] };
+    const ctx = { final: replies(["answer", "error"]), working: replies(["working"]), hosts: c.hosts || [], listening: online.length > 0 };
     const thread = (c.messages || []).length
       ? `<ol class="chat" aria-label="Conversation" aria-live="polite">${chatGroups(c.messages).map((m) => chatMessage(m, byId, waiting, ctx)).join("")}</ol>`
-      : '<div class="empty">No messages yet. Ask the council something, or choose Do it and say what you want done.</div>';
+      : voice("The council is gathered and quiet.", "Ask it something, or choose Do it and say what you want done. The Chair answers and hands the work to the witches.", "grey-witch");
+    if (state.chatSeen) state.chatSeen.primed = true; // from now on, a new message slides in
     const tasks = ((state.board && state.board.project_id === project && state.board.specs) || [])
       .flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => [`${s.spec}#${t.task_id}`, t.title || ""]));
     const kinds = ["ask", "idea", "suggestion", "reject", "do"].map((k, i) => `<label class="kind" title="${esc(KIND_HELP[k])}"><input type="radio" name="chat-kind" value="${k}" data-key="chat-kind-${k}" ${i === 0 ? "checked" : ""} />${CHAT_KIND_LABEL[k]}</label>`).join("");
     const compose = `<form class="chat-compose" id="chat-form" aria-label="Message the council">
         <div class="crow">
-          <fieldset class="kinds"><legend class="sr">What you are sending</legend>${kinds}</fieldset>
+          <span class="kinds-label" id="chat-kinds-label">Send as</span><fieldset class="kinds" aria-labelledby="chat-kinds-label">${kinds}</fieldset>
           <span class="spacer"></span>
           <label class="pick">To <select id="chat-to" data-key="chat-to"><option value="">the council (Chair)</option>${Object.entries(CHAT_ROLE_NAME).filter(([r]) => r !== "chair").map(([r, n]) => `<option value="${r}">${esc(n)}</option>`).join("")}<optgroup label="Other witches">${OTHER_WITCHES.map((r) => `<option value="${r}">${esc(PERSONA_OF[r])}</option>`).join("")}</optgroup></select></label>
           <label class="pick">About <select id="chat-task" data-key="chat-task"><option value="">the whole project</option>${tasks.map(([ref, title]) => `<option value="${esc(ref)}">${esc(ref)} ${esc(short(title, 40))}</option>`).join("")}</select></label>
@@ -1844,7 +1918,7 @@
     return `${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Flows" }], title: "Flows",
       lede: "Spec tasks carried from ready to delivered by Kiro agents. Kiro runs them; Coven records each step and checks the result. Answer gates in the Kiro session." })}
       ${list.length ? `<ul class="devlist">${list.map(flowCard).join("")}</ul>`
-        : '<div class="card"><div class="empty">No flows yet. Ask the Weaver agent in Kiro to start one, or run <code>coven flow new &lt;spec&gt;#&lt;task&gt;</code>.</div></div>'}`;
+        : `<div class="card">${voice("No spell is being woven.", "Ask the Weaver agent in Kiro to start a flow, or run <code>coven flow new &lt;spec&gt;#&lt;task&gt;</code>.", "weaver")}</div>`}`;
   }
   function flowView() {
     const f = state.flows.find((x) => x.flow_id === state.route.flowId);
@@ -1888,7 +1962,7 @@
     const list = state.councils;
     return `${demoBanner(list.some((c) => c.mode === "seeded"))}${pageHeader({ crumbs: [{ label: "Sessions", href: "#/" }, { label: "Councils" }], title: "Councils",
       lede: "Post-task reviews: the Chair proposes, the Guard decides by its own checks. Recorded only; nothing is changed in the repo." })}
-      ${list.length ? `<ul class="devlist">${list.map(councilCard).join("")}</ul>` : '<div class="card"><div class="empty">No councils yet.</div></div>'}`;
+      ${list.length ? `<ul class="devlist">${list.map(councilCard).join("")}</ul>` : `<div class="card">${voice("No council has sat yet.", "One sits after a task is built: White Hat, Black Hat and the Elder Witch review it and the Chair proposes.", "grey-witch")}</div>`}`;
   }
 
   function firstRun() {
@@ -2027,7 +2101,7 @@
     if (councils.length) tabs.push(["council", `Council (${councils.length})`]);
     return `${demoBanner(Boolean(run.seeded) || events.some((e) => e.source === "seed"))}
       ${sessionHeader(run)}
-      <p class="summary" aria-live="polite">${parts.join(" · ")}</p>
+      <p class="summary" aria-live="polite">${parts.join(" · ")}${running ? `<button class="act sm quiet live-pause" type="button" data-live-pause data-key="live-pause" aria-pressed="${Boolean(state.paused)}">${icon(state.paused ? "play" : "pause")}<span>${state.paused ? `Resume (${state.held.length} new)` : "Pause live"}</span></button>` : ""}</p>
       <div class="facts">${facts.map((f) => `<span>${f}</span>`).join("")}</div>
       ${!started && first ? '<p class="note">Resumed session: Kiro does not report a start, so the duration counts from the first tool call.</p>' : ""}
       <div class="tabs" role="tablist" aria-label="Session">
@@ -2365,6 +2439,29 @@
         if (box.open) { closedThreads.delete(box.dataset.thread); loadThread(box); } else closedThreads.add(box.dataset.thread);
       });
     });
+    const evaluate = async (task, decision, reason) => {
+      await api("/v1/board/accept", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task, decision, reason,
+        author: localStorage.getItem("coven_author") || undefined }) });
+      state.changesFor = null;
+      await loadBoard();
+      render({ keepScroll: true });
+    };
+    root.querySelectorAll("[data-accept]").forEach((el) => el.addEventListener("click", async () => {
+      el.disabled = true;
+      try { await evaluate(el.dataset.accept, "accept"); } catch (error) { el.disabled = false; quiet(error); }
+    }));
+    root.querySelectorAll("[data-changes]").forEach((el) => el.addEventListener("click", () => {
+      state.changesFor = state.changesFor === el.dataset.changes ? null : el.dataset.changes;
+      render({ keepScroll: true });
+      const box = document.getElementById(`changes-${el.dataset.changes}`);
+      if (box) box.focus();
+    }));
+    root.querySelectorAll("[data-changes-form]").forEach((form) => form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const reason = form.querySelector("input").value.trim();
+      if (!reason) return;
+      try { await evaluate(form.dataset.changesForm, "changes", reason); } catch (error) { quiet(error); }
+    }));
     root.querySelectorAll("[data-push]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try {
@@ -2469,6 +2566,19 @@
         render({ keepScroll: true });
       } catch (error) { quiet(error); }
     }));
+    root.querySelectorAll("[data-live-pause]").forEach((el) => el.addEventListener("click", () => {
+      state.paused = !state.paused;
+      if (!state.paused && state.held.length) {
+        for (const e of state.held) if (!state.events.some((x) => x.event_id === e.event_id)) state.events.push(e);
+        state.events.sort(byTime);
+      }
+      if (!state.paused) state.held = [];
+      render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-plan-link]").forEach((el) => el.addEventListener("click", () => {
+      if ($("task-dialog").open) $("task-dialog").close();
+      setTimeout(() => { const at = document.querySelector(".decided-plans, [data-key^='plan-']"); if (at) { if (at.tagName === "DETAILS") at.open = true; at.scrollIntoView({ block: "start" }); } }, 0);
+    }));
     root.querySelectorAll("[data-council-picker]").forEach((el) => el.addEventListener("change", () => go(`#/run/${encodeURIComponent(state.route.runId)}/council/${encodeURIComponent(el.value)}`)));
   }
 
@@ -2487,6 +2597,12 @@
     try { data = JSON.parse(message.data); } catch { return; }
     if (data.kind === "event" && data.event && state.route.view === "session" && data.event.run_id === state.route.runId
         && !state.events.some((e) => e.event_id === data.event.event_id)) {
+      if (state.paused) { // the reader paused the live timeline: hold new events, say how many, show them on Resume
+        if (!state.held.some((e) => e.event_id === data.event.event_id)) state.held.push(data.event);
+        const btn = document.querySelector("[data-live-pause]");
+        if (btn) btn.querySelector("span").textContent = `Resume (${state.held.length} new)`;
+        return;
+      }
       state.events.push(data.event);
       state.events.sort(byTime);
       if (data.run) state.run = { ...state.run, ...data.run, health: state.run.health, attention: state.run.attention };
@@ -2501,7 +2617,12 @@
     state.source = source;
     const pill = $("stream-pill");
     source.onopen = () => { pill.textContent = "CONNECTED"; pill.className = "pill ok"; pill.title = "Live updates are streaming"; };
-    source.onerror = () => { pill.textContent = navigator.onLine === false ? "OFFLINE" : "RECONNECTING"; pill.className = "pill bad"; pill.title = "Live updates paused; retrying"; };
+    source.onerror = () => {
+      const off = navigator.onLine === false;
+      pill.textContent = off ? "OFFLINE · the coven can't hear you" : "RECONNECTING · listening again…";
+      pill.className = "pill bad";
+      pill.title = off ? "This browser is offline: live updates stop until the network is back" : "The live stream dropped; the browser is reconnecting";
+    };
     ["event", "heartbeat", "dismiss", "board", "chat"].forEach((name) => source.addEventListener(name, onMessage));
   }
 
@@ -2539,8 +2660,11 @@
     const value = $("token-input").value.trim();
     if (!value) return;
     state.token = value;
+    $("login").classList.remove("wrong");
+    $("login").classList.add("busy");
     start();
   });
+  $("token-input").addEventListener("input", () => $("login").classList.remove("wrong")); // trying again: it comes back
   $("drawer-close").addEventListener("click", closeDrawer);
   $("drawer").addEventListener("close", () => $("drawer").classList.remove("open"));
   $("task-dialog").addEventListener("close", () => { state.openTask = null; $("task-dialog-body").innerHTML = ""; $("task-dialog").returnValue = ""; });
@@ -2617,6 +2741,27 @@
   });
   document.querySelectorAll(".brand").forEach((el) => el.insertAdjacentHTML("afterbegin", avatar("coven")));
   $("login-ghost").innerHTML = avatar("coven");
+  // Each time the sign-in opens, the headline types itself once, with a blinking caret, and the ghost peeks up.
+  // Its full text is the label, for readers; under reduced motion it is simply there.
+  let typing = null;
+  function greet() {
+    const el = $("login-hero"), text = el.dataset.text;
+    el.setAttribute("aria-label", text);
+    clearInterval(typing);
+    const peek = $("login-ghost");
+    peek.classList.remove("peeking"); void peek.offsetWidth; peek.classList.add("peeking"); // restart its animation
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = text; return; }
+    let n = 0;
+    const draw = () => { el.innerHTML = `<span aria-hidden="true">${esc(text.slice(0, n))}</span><span class="caret" aria-hidden="true"></span>`; };
+    draw();
+    typing = setInterval(() => { n += 1; draw(); if (n >= text.length) clearInterval(typing); }, 55);
+  }
+  $("install-cmd").textContent = `coven login --cloud-url ${location.origin} --token <password>`;
+  $("install-copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("install-cmd").textContent); $("install-copy").textContent = "Copied"; }
+    catch { $("install-copy").textContent = "Select it"; }
+    setTimeout(() => { $("install-copy").textContent = "Copy"; }, 1600);
+  });
   // One name signs notes, chat messages and decisions; it is kept in this browser only.
   $("me").value = localStorage.getItem("coven_author") || "";
   $("me").addEventListener("change", () => {
