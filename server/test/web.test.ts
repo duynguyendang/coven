@@ -1208,9 +1208,12 @@ describe("council chat", () => {
     const chat = (await getJson(s.base, "/v1/chat?project_id=shop")).body;
     const asked = chat.messages[0];
     const raw = "Grey Witch — Senior Kiro · Chair could not dispatch it: the run failed at prompt: Kiro could not load the available models. Please try again. (code -32000): {\"errorType\":\"ModelRegistryUnavailableError\"}";
-    await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "member_wsl-9", events: [1, 2, 3, 4].map((n) => (
-      { event_id: `evt_err_${n}`, project_id: "shop", run_id: "member_wsl-9", type: "chat_message", ts: new Date(Date.now() + n).toISOString(), member: "wsl-9",
-        payload: { role: "council", kind: "error", message: raw, reply_to: asked.message_id, persona: "grey-witch" } })) });
+    // four runs (one per retry), each saying the same failure: the cloud keeps them all (one run's repeat it drops)
+    for (const n of [1, 2, 3, 4]) {
+      await postJson(s.base, "/v1/events", { project_id: "shop", run_id: `member_wsl-${n}`, events: [
+        { event_id: `evt_err_${n}`, project_id: "shop", run_id: `member_wsl-${n}`, type: "chat_message", ts: new Date(Date.now() + n).toISOString(), member: "wsl-9",
+          payload: { role: "council", kind: "error", message: raw, reply_to: asked.message_id, persona: "grey-witch" } }] });
+    }
     streams[0].emit("chat", { kind: "chat", project_id: "shop" });
     await wait(900);
     const errors = [...doc().querySelectorAll(".chat .msg.council.error")];

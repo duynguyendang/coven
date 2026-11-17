@@ -1,36 +1,49 @@
+# What a change must pass before it is committed (AGENTS.md: `make verify`), on every push and pull request:
+# the cloud's type check, the cross-file harness, the Python suite (it starts the Node cloud, so Node 22.18 is
+# installed for it too) and the Node suite; and the Worker's type check. Nothing here calls a model, deploys or pushes.
 name: ci
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  python:
-    runs-on: ubuntu-latest
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -e ".[dev]"
-      - run: python -m pytest -q
-
-  cloud:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22.18"
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: node --test "test/**/*.test.ts"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Git identity for the tests that commit in throw-away repos
+        run: |
+          git config --global user.email "ci@coven.invalid"
+          git config --global user.name "Coven CI"
+      - name: Install
+        run: make install
+      - name: Cloud type check
+        run: cd server && npx tsc --noEmit
+      - name: Harness and Python suite
+        run: PYTHONPATH=src python -m pytest
+      - name: Node suite
+        run: cd server && node --test "test/**/*.test.ts"
 
   worker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,5 +53,6 @@ jobs:
         working-directory: server
       - run: npm ci
         working-directory: server/worker
-      - run: npx wrangler types && npx tsc --noEmit
+      - name: Worker type check (server/worker)
+        run: npx wrangler types && npx tsc --noEmit
         working-directory: server/worker

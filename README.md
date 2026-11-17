@@ -273,7 +273,7 @@ Nothing else is posted in the meantime.
 
 **Host self-check.** `coven host run` first checks git, make, Node 22.18+ and installed dependencies,
 runs `npm ci` itself when `node_modules` is missing, and says once on the board what it cannot fix.
-CI runs `make verify` on every push and pull request (`.github/workflows/verify.yml`).
+CI runs `make verify` on every push and pull request (`.github/workflows/ci.yml`; it also type-checks the Worker).
 
 **Several hosts, one project.** Each host has an id (`.coven/host.json`). A submitted branch stays
 on the host that built it; its rework goes back there. Nothing is pushed unless you press **Ask

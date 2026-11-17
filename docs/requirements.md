@@ -173,7 +173,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-KD1 | When Kiro's models are unavailable, the host pauses every dispatch that needs a model, backs off (1, 2, 4, 8, then every 15 minutes) and resumes by itself after a run succeeds. A waiting chat message gets one plain status ("the council is paused and your message is kept") and is answered later; a build goes back to the queue, not to Failed; no raw error text reaches the chat. | Must | Built (fake runner) |
 | FR-KD2 | A failed run's reason reaches the chat in plain words, once per message: no pasted JSON, no protocol codes, and identical repeats shown as one. | Must | Built |
 | FR-HC1 | On `coven host run` the host checks what builds need (git, make, Node ≥ 22.18, installed `node_modules`), runs `npm ci` itself when the dependencies are missing, and says what it cannot fix once, on the board. | Should | Built |
-| FR-CI1 | Every push and pull request runs `make verify` on GitHub Actions (`.github/workflows/verify.yml`). | Should | Built (not yet run on GitHub) |
+| FR-CI1 | Every push and pull request runs `make verify` on GitHub Actions (`.github/workflows/ci.yml`; it also type-checks the Worker). | Should | Built (not yet run on GitHub) |
 
 ### 4.10 Witches working together
 

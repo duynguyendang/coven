@@ -281,8 +281,8 @@ def test_the_repositorys_own_spec_parses_in_kiro_format():
 
     assert t["coven-relay#9"]["title"] == "Fleet dashboard"
     assert t["coven-relay#9"]["paths"] == ["web/index.html", "server/test/web.test.ts"]
-    assert all(t[f"coven-relay#{n}"]["done"] for n in range(1, 13)), "tasks 1-12 are done"
-    assert t["coven-relay#13"]["paths"] == [".github/workflows/"] and not t["coven-relay#13"]["done"]
+    assert all(t[f"coven-relay#{n}"]["done"] for n in range(1, 15)), "tasks 1-14 are done"
+    assert t["coven-relay#13"]["paths"] == [".github/workflows/"]
     assert t["coven-relay#14"]["paths"] == ["server/src/sqlstore.ts", "server/test/sqlstore.test.ts"]
 
 
