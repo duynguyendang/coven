@@ -342,6 +342,10 @@ than the background, separated by 1 px hairlines. Shadows are only Astryx `--sha
 bubbles and popovers; nothing glows. A selected or working thing is shown by a tinted background
 and a coloured border, not by lifting it.
 
+The one exception is the board's Stage: a collapsible `details` with CSS `perspective` and a floor
+tilted by `rotateX`. Its five stations (board, chat, review, build, rest) are flat tokened panels,
+and the witch sprites are counter-rotated so they stand upright. Colours are Astryx tokens only.
+
 ## Shapes
 
 Soft, small radii, from Astryx: 4 px for badges and chips, 6 px for buttons, inputs and nav items,
