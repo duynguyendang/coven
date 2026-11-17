@@ -558,3 +558,51 @@ describe("retry (FR-H9)", () => {
     } finally { await s.close(); }
   });
 });
+
+describe("council reply repeat rule", () => {
+  let ids: string[] = [];
+  const reply = (id: string, run: string, message: string, extra: Json = {}): Json => ({
+    event_id: `evt_rep_${id}`, project_id: "shop", run_id: run, type: "chat_message", ts: new Date().toISOString(), source: "coven-cli", member: "ana",
+    payload: { role: "council", kind: "answer", message, reply_to: ids[0], persona: "chair", ...extra },
+  });
+  const send = (base: string, events: Json[]) => postJson(base, "/v1/events", { project_id: "shop", run_id: events[0].run_id, events }, auth("dev"));
+  const council = async (base: string) => (await getJson(base, "/v1/chat?project_id=shop")).body.messages.filter((m: Json) => m.role === "council");
+  // A council reply must answer a real message, so each test first asks twice and the replies name those ids.
+  const ask = async (base: string) => {
+    const ids: string[] = [];
+    for (const message of ["first", "second"]) ids.push((await postJson(base, "/v1/chat", { project_id: "shop", kind: "ask", message, author: "duy" }, auth("dev"))).body.message_id);
+    return ids;
+  };
+
+  test("one run saying the same reply twice is stored once", async () => {
+    const s = await startServer();
+    try {
+      ids = await ask(s.base);
+      await send(s.base, [reply("a", "run_1", "Done.")]);
+      await send(s.base, [reply("b", "run_1", "Done.")]);
+      assert.equal((await council(s.base)).length, 1);
+    } finally { await s.close(); }
+  });
+
+  test("the same reply from another run stays", async () => {
+    const s = await startServer();
+    try {
+      ids = await ask(s.base);
+      await send(s.base, [reply("a", "run_1", "Done.")]);
+      await send(s.base, [reply("b", "run_2", "Done.")]);
+      assert.equal((await council(s.base)).length, 2);
+    } finally { await s.close(); }
+  });
+
+  test("a different reply_to, persona, kind or text in the same run stays", async () => {
+    const s = await startServer();
+    try {
+      ids = await ask(s.base);
+      await send(s.base, [
+        reply("a", "run_1", "Done."), reply("b", "run_1", "Done.", { reply_to: ids[1] }), reply("c", "run_1", "Done.", { persona: "elf" }),
+        reply("d", "run_1", "Done.", { kind: "working" }), reply("e", "run_1", "Done too."),
+      ]);
+      assert.equal((await council(s.base)).length, 5);
+    } finally { await s.close(); }
+  });
+});
