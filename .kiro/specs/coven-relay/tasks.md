@@ -71,7 +71,7 @@ The relay and CLI run on the developer machine (Python); Coven Cloud and the das
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_board.py tests/test_board_live.py`_
   - _Requirements: 4.1_
 
-- [ ] 13. Restore CI
+- [x] 13. Restore CI
   - A GitHub Actions workflow on push and pull request: the Python suite, the Node cloud suite and its type check, and the Worker type check. The old workflow tested the removed Python cloud.
   - _Paths: `.github/workflows/`_
   - _Verify: `python3 -c "import sys; t=open('.github/workflows/ci.yml').read(); sys.exit(0 if all(k in t for k in ('pytest', 'node --test', 'tsc --noEmit', 'server/worker')) else 1)"`_
