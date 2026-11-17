@@ -547,6 +547,15 @@
   @media (prefers-reduced-motion: reduce) { .row.fresh { animation: none; } }
   @media (max-width: 640px) { .row { grid-template-columns: 56px 18px minmax(0, 1fr); } .row .side { grid-column: 3; } }
 
+  /* stage: a 3D scene; actors stand on the floor at a depth slot (static, no script) */
+  .stage { position: relative; perspective: 900px; perspective-origin: 50% 30%; min-block-size: 220px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-element); background: var(--panel); }
+  .stage-floor { position: absolute; inset: auto 0 0 0; block-size: 70%; transform-style: preserve-3d; transform-origin: 50% 100%; transform: rotateX(60deg); border-top: 1px solid var(--line); background: var(--well); }
+  .actor { position: absolute; transform-style: preserve-3d; transition: transform 300ms ease-out, opacity 300ms ease-out; color: var(--text); }
+  .actor.slot-front { transform: translateZ(0); inset-block-end: 8%; }
+  .actor.slot-mid { transform: translateZ(-120px); inset-block-end: 20%; opacity: 0.9; }
+  .actor.slot-back { transform: translateZ(-240px); inset-block-end: 32%; opacity: 0.8; }
+  @media (prefers-reduced-motion: reduce) { .stage, .stage-floor, .actor { transition: none; animation: none; } }
+
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
   td { padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 0.8125rem; }
