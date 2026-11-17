@@ -142,14 +142,19 @@ export class Board {
       this.notes.set(project, list);
     } else if (event.type === "chat_message") {
       const list = this.chat.get(project) ?? [];
-      list.push({
+      const entry = {
         message_id: event.event_id, project_id: project, ts: event.ts, role: p.role, kind: p.kind,
         message: String(p.message ?? "").slice(0, MAX_NOTE_CHARS), task: typeof p.task === "string" ? p.task : null,
         to: typeof p.to === "string" ? p.to : null, reply_to: typeof p.reply_to === "string" ? p.reply_to : null,
         // A human message is the cloud's (POST /v1/chat): its author is the name they typed. An answer names its member.
         author: p.role === "human" ? `${p.author || "someone"}` : (event.member || "unknown"),
         persona: p.role === "council" && typeof p.persona === "string" ? p.persona : null, run_id: event.run_id,
-      });
+      };
+      // One repeat rule: a council reply is dropped only when reply_to, persona, kind, message and run_id all equal
+      // an existing one (one run said it twice). The same words from another run stay.
+      if (entry.role === "council" && list.some((m) => m.role === "council" && m.reply_to === entry.reply_to
+        && m.persona === entry.persona && m.kind === entry.kind && m.message === entry.message && m.run_id === entry.run_id)) return;
+      list.push(entry);
       if (list.length > MAX_CHAT) list.splice(0, list.length - MAX_CHAT);
       this.chat.set(project, list);
     } else if (event.type === "task_created" && typeof p.task === "string" && p.task.includes("#")) {
