@@ -77,7 +77,7 @@ The relay and CLI run on the developer machine (Python); Coven Cloud and the das
   - _Verify: `python3 -c "import sys; t=open('.github/workflows/ci.yml').read(); sys.exit(0 if all(k in t for k in ('pytest', 'node --test', 'tsc --noEmit', 'server/worker')) else 1)"`_
   - _Requirements: 2.3_
 
-- [ ] 14. Expire old events in the Durable Object store
+- [x] 14. Expire old events in the Durable Object store
   - SqlStore keeps every event forever; DynamoStore expires them after `COVEN_TTL_DAYS` (default 30). Give SqlStore the same rule: a `ttlDays` option, events older than it are not replayed on hydrate and are deleted, with tests on `node:sqlite`.
   - _Paths: `server/src/sqlstore.ts`, `server/test/sqlstore.test.ts`_
   - _Verify: `cd server && node --test test/sqlstore.test.ts`_
