@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     // One SQLite file on a persistent disk (a VM): the Durable Object's SqlStore over node:sqlite.
     const file = process.env.COVEN_DB ?? "/data/coven.db";
     const { openSqlite } = await import("./sqlite.ts");
-    const sqlStore = new SqlStore(openSqlite(file));
+    const sqlStore = new SqlStore(openSqlite(file), Number(process.env.COVEN_TTL_DAYS ?? 30)); // 0: keep events forever
     console.log(`coven cloud: rehydrated ${await sqlStore.hydrate()} events from ${file}`);
     store = sqlStore;
   } else if (storeName === "memory") {
