@@ -251,6 +251,14 @@ def cmd_flow(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_flow_stats(args: argparse.Namespace) -> int:
+    from . import flowstats
+
+    rows = flowstats.compute(flowstats.read_events(_root()))
+    print(json.dumps(rows) if args.json else flowstats.render(rows))
+    return 0
+
+
 def cmd_member(args: argparse.Namespace) -> int:
     from . import board
 
@@ -685,6 +693,10 @@ def build_parser() -> argparse.ArgumentParser:
     flow_step = flow_sub.add_parser("run-step", help="a model-free flow step, run by a Kiro watch node (reads stdin)")
     flow_step.add_argument("step", choices=["verify", "guard", "close"])
     flow_parser.set_defaults(func=cmd_flow)
+
+    stats_parser = sub.add_parser("flow-stats", help="read-only report per task: rejections, rework loops, time to first review verdict")
+    stats_parser.add_argument("--json", action="store_true")
+    stats_parser.set_defaults(func=cmd_flow_stats)
 
     host_parser = sub.add_parser("host", help="this machine as a host: it runs agents (personas) for the tasks that need them")
     host_sub = host_parser.add_subparsers(dest="host_command", required=True)

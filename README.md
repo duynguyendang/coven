@@ -146,6 +146,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven verify <spec>#<task>` | Run the task's `_Verify:_` command and record only its outcome (exit 0 pass, 1 fail, 3 no command) |
 | `coven flow new <spec>#<task> \| --next` | Claim the task on the board and mint a flow (`--no-claim` to work alone) |
 | `coven flow status [flow_id]` | Where each flow is: steps, the gate waiting for you, rounds, guard verdict |
+| `coven flow-stats [--json]` | Read-only report from the local event log, per task: rejections, rework loops, time from branch to first review verdict |
 | `coven flow lint` | Check `.kiro/agents/*.json` and the flow recipe (calls `kiro-cli agent validate` when installed) |
 | `coven flow run-step <verify\|guard\|close>` | A model-free flow step; Kiro runs it from the recipe, reading stdin |
 
