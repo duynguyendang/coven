@@ -86,6 +86,30 @@ def test_each_witch_file_is_a_well_formed_kiro_agent():
     assert not list(AGENTS_DIR.glob("*.bak")), "leftover Kiro agent backups (*.json.bak): delete them"
 
 
+SKELETON = ("## Definition", "## Start protocol", "## Steps", "## Boundaries", "## Output")
+
+
+def test_every_prompt_follows_the_same_skeleton_in_order():
+    """Each witch prompt has the same sections (definition, start protocol, steps, boundaries, output), then the generated role block."""
+    for slug, data in agent_files().items():
+        if slug in NOT_A_WITCH:
+            continue
+        prompt = data["prompt"]
+        found = [prompt.find(h) for h in SKELETON]
+        assert all(i >= 0 for i in found), f"{slug}.json lacks one of {SKELETON}"
+        assert found[0] < found[1] < found[2] < found[3], f"{slug}.json: sections out of order"
+        assert found[4] < prompt.index(agents.ROLE_START), f"{slug}.json: Output must come before the role block"
+
+
+def test_reviewers_carry_the_severity_rules_and_say_what_they_read():
+    """White Hat, Black Hat, the Elder Witch and the Imp judge by P0/P1/P2 with one verdict rule and list `rules_read`."""
+    files = agent_files()
+    for slug in agents.REVIEW_AGENTS:
+        prompt = files[slug]["prompt"]
+        for needle in ("P0", "P1", "P2", "any P0 or P1 means `changes`", "rules_read"):
+            assert needle in prompt, f"{slug}.json lacks {needle!r}"
+
+
 def test_every_persona_keeps_the_hard_constraints():
     """The six council personas carry the shared hard constraints (persona list, rule 6); every agent forbids leaking secrets."""
     files = agent_files()

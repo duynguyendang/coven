@@ -188,7 +188,7 @@ with no model. Design: `docs/ADD.md` §4.5.
 | `verify` | *none* | `coven flow run-step verify` runs the task's own check |
 | `checkpoint` | Raven | notes from the recorded events: on track, looping, off-spec |
 | `review-*`, `chair` | White Hat, Black Hat, Elf, Grey Witch | claim files; the Chair proposes |
-| `guard` | *none* | verify + scope + reproducing tests, measured; the verdict |
+| `guard` | *none* | verify + scope + reproducing tests, measured; the verdict. On anything but accept it writes `rework.json`: numbered items (R1, R2, …) by severity (P0, P1, P2), which the next `implement` step answers |
 | `decide` (gate) | Weaver | shows you the verdict; you choose accept, rework (≤ 2) or stop |
 | `deliver` | Herald | hand-off and pull-request text (opening the PR is yours) |
 | `close` | *none* | records the outcome |

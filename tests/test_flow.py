@@ -252,6 +252,55 @@ def test_a_failing_reproducing_test_is_a_confirmed_break(repo):
     assert challenge["result"] == "fail" and guard["verdict"] == "reject"
 
 
+def _breaking(repo):
+    (repo / "tests").mkdir(exist_ok=True)
+    (repo / "tests" / "test_break.py").write_text("def test_break():\n    assert False\n")
+    return "tests/test_break.py::test_break"
+
+
+def test_a_confirmed_p2_break_is_noted_and_never_blocks(repo):
+    made = flow.new(repo, "shop#1", claim=False)
+    _, guard = council(repo, made, challenges=[{"id": "C1", "severity": "P2", "file": "x.py", "line": 1, "rule": "naming", "repro": _breaking(repo)}])
+    challenge = next(c for c in guard["checks"] if c["name"] == "challenge")
+    assert challenge["result"] == "pass" and "P2" in challenge["detail"] and guard["verdict"] == "accept"
+    assert not (repo / made["flow_dir"] / "rework.json").exists()
+
+
+@pytest.mark.parametrize("severity", ["P0", "P1", None, "high"])
+def test_a_confirmed_break_with_no_valid_low_severity_blocks_and_leaves_a_numbered_rework(repo, severity):
+    made = flow.new(repo, "shop#1", claim=False)
+    challenge = {"id": "C1", "file": "x.py", "line": 3, "rule": "deletes events", "fix": "check ttlDays", "repro": _breaking(repo), **({"severity": severity} if severity else {})}
+    _, guard = council(repo, made, challenges=[challenge])
+    assert guard["verdict"] == "reject"
+    rework = json.loads((repo / made["flow_dir"] / "rework.json").read_text())
+    assert [i["id"] for i in rework["items"]] == ["R1"] and rework["items"][0]["source"] == "red-team"
+    assert rework["items"][0]["severity"] == (severity if severity in ("P0", "P1") else "P1") and rework["items"][0]["fix"] == "check ttlDays"
+
+
+def test_rework_lists_the_worst_first_and_an_accept_removes_it(repo):
+    made = flow.new(repo, "shop#2", claim=False)  # verify fails: a P1 item
+    _, guard = council(repo, made, challenges=[{"severity": "P0", "rule": "leaks a secret", "repro": _breaking(repo)}])
+    items = json.loads((repo / made["flow_dir"] / "rework.json").read_text())["items"]
+    assert [(i["id"], i["severity"]) for i in items] == [("R1", "P0"), ("R2", "P1")]
+    assert items[1]["source"] == "verify"
+    (repo / made["flow_dir"] / "rework.json").write_text("{}")
+    flowsteps.write_rework(repo / made["flow_dir"], 2, "accept", [], {}, [])
+    assert not (repo / made["flow_dir"] / "rework.json").exists()
+
+
+def test_findings_and_the_files_a_reviewer_read_travel_with_her_claim_clean(repo):
+    made = flow.new(repo, "shop#1", claim=False)
+    directory = repo / made["flow_dir"]
+    council(repo, made)
+    (directory / "review-tester.json").write_text(json.dumps({
+        "claim": "c", "tests": [], "evidence": [{"kind": "test", "name": "t1"}], "rules_read": ["AGENTS.md", 7, "x" * 300],
+        "findings": [{"id": "F1", "severity": "P0", "file": "a.py", "line": "no", "rule": "r", "fix": "f", "junk": "dropped"}, "bad"]}))
+    emitted, _ = flowsteps._claims(repo, flow.load(repo, made["flow_id"]), 1, {})
+    event = next(e for e in events_of(repo, "test_result") if e["event_id"] == emitted["tester"])
+    assert event["payload"]["findings"] == [{"id": "F1", "severity": "P0", "file": "a.py", "rule": "r", "fix": "f"}]
+    assert event["payload"]["rules_read"] == ["AGENTS.md", "x" * 120]
+
+
 def test_a_passing_reproducing_test_means_the_break_did_not_reproduce(repo):
     (repo / "tests").mkdir(exist_ok=True)
     (repo / "tests" / "test_fine.py").write_text("def test_fine():\n    assert True\n")
