@@ -304,8 +304,8 @@
   .stage .station { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-element); }
   .stage .pad { font-size: 0.75rem; color: var(--muted); }
   .stage .sprites { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; transform: rotateX(-45deg); transform-origin: 50% 100%; }
-  .stage .sprite .av { width: 32px; height: 36px; }
-  @media (max-width: 640px) { .stage .floor { gap: 4px; padding: 6px; } .stage .sprite .av { width: 22px; height: 26px; } }
+  .stage .stage-witch .av { width: 32px; height: 36px; }
+  @media (max-width: 640px) { .stage .floor { gap: 4px; padding: 6px; } .stage .stage-witch .av { width: 22px; height: 26px; } }
   .more-witches { margin: 0 0 14px; }
   .more-witches > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; padding: 8px 12px; min-block-size: var(--target-size);
     border: 1px dashed var(--line-strong); border-radius: var(--radius-element); color: var(--muted); font-size: 0.8125rem; }
@@ -1759,7 +1759,7 @@
     const stations = STAGE_STATIONS.map(([id, label]) => {
       const here = Object.keys(AGENT_NAME).filter((slug) => at(slug) === id);
       return `<div class="station" data-station="${id}"><div class="pad">${label}</div><div class="sprites">${here.map((slug) =>
-        `<span class="sprite" data-witch="${slug}" title="${esc(agentName(slug))}">${avatar(slug)}<span class="sr">${esc(agentName(slug))}</span></span>`).join("")}</div></div>`;
+        `<span class="stage-witch" data-witch="${slug}" title="${esc(agentName(slug))}">${avatar(slug)}<span class="sr">${esc(agentName(slug))}</span></span>`).join("")}</div></div>`;
     }).join("");
     return `<details class="stage-box" data-key="stage"${state.ui.stage === false ? "" : " open"}><summary>Stage</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div></details>`;
   }

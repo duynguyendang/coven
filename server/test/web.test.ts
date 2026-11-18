@@ -706,7 +706,9 @@ describe("session screen", () => {
     assert.ok(witches.some((m) => /Green Witch.*Working.*on shop#1 · ana/.test(m)), witches.join(" | "));
     assert.ok(witches.some((m) => /Green Witch.*Working.*on shop#2 · bo/.test(m)));
     assert.equal(doc().querySelector("#main")!.textContent!.includes("Members"), false);
-    assert.equal(doc().querySelectorAll(".stage .sprite svg").length, 11, "the stage shows all eleven witches");
+    assert.equal(doc().querySelectorAll(".stage .stage-witch svg").length, 11, "the stage shows all eleven witches");
+    // `.sprite` is the zero-size icon sheet (width 0, overflow hidden): a witch given that class is there but cannot be seen.
+    assert.equal(doc().querySelectorAll(".sprite").length, 1, "only the icon sheet uses .sprite");
     assert.equal(doc().querySelectorAll(".stage .station").length, 5);
     const tile = (label: string) => doc().querySelector(`button.tile[aria-label^="${label}:"]`) as HTMLButtonElement;
     assert.deepEqual(["Ready", "Claimed", "In review", "Done"].map((l) => tile(l).querySelector(".n")!.textContent), ["1", "1", "1", "1"], "the board shows numbers only");
