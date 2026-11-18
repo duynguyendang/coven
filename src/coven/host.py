@@ -40,7 +40,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
-from . import agents, board, brief, config, consult, council, events, specmap, taskkey, verify, work
+from . import agents, board, brief, config, consult, council, events, redact, specmap, taskkey, verify, work
 
 STATE_FILE = "host.json"
 DEFAULT_SLOTS = 2
@@ -582,13 +582,41 @@ def _fail(root: Path, ref: str, agent: str, reason: str) -> dict:
     return {"action": "failed", "task": ref, "agent": agent, "error": reason}
 
 
+def _timed(root: Path, ref: str, runner: Runner, feedback: list[dict] | None) -> Runner:
+    """The runner, keeping how long each run took in the host record (local only; it never goes to the cloud)."""
+    if feedback:
+        _update(root, ref, reworks=((load(root).get(ref) or {}).get("reworks") or 0) + 1)
+
+    def timed(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_TIMEOUT):
+        started = time.monotonic()
+        try:
+            return runner(cwd, agent, prompt, env, timeout)
+        finally:
+            steps = list((load(root).get(ref) or {}).get("steps") or [])
+            steps.append([agent, round(time.monotonic() - started, 1)])
+            _update(root, ref, steps=steps[-50:])
+    if hasattr(runner, "cloud"):
+        timed.cloud = runner.cloud
+    return timed
+
+
+def stall_report(ref: str, record: dict) -> str | None:
+    """One log line: the run that took longest and the rework count. Redacted."""
+    steps = [s for s in record.get("steps") or [] if isinstance(s, list) and len(s) == 2 and isinstance(s[1], (int, float))]
+    if not steps:
+        return None
+    agent, seconds = max(steps, key=lambda s: s[1])
+    line = f"host: {ref} done; longest step {agent} {seconds} s of {len(steps)} run(s); {record.get('reworks') or 0} rework(s)"
+    return redact.redact_text(line)[:STEP_CHARS]
+
+
 def execute(root: Path, task: dict, agent: str, runner: Runner = run_agent, feedback: list[dict] | None = None,
             notes: list[dict] | None = None, base: str | None = None) -> dict:
     """Run `agent` on `task` (already claimed for it) and settle the result. Never raises."""
     ref = f"{task['spec']}#{task['task_id']}"
     host = board.member(root)
     kind = agents.kind(agent)
-    runner = consulting(root, ref, agent, runner)
+    runner = _timed(root, ref, consulting(root, ref, agent, runner), feedback)
     _status(root, ref, "working", agent, "reworking after feedback" if feedback else None)
     try:
         base = base or (load(root).get(ref) or {}).get("base") or work.current_branch(root)
@@ -1808,6 +1836,9 @@ class Host:
             done = (tasks.get(ref) or {}).get("status") == "completed" or ref in accepted
             merged = record.get("state") == "submitted" and work._merged(self.root, record)
             if done or merged:
+                report = stall_report(ref, record)
+                if report:
+                    self.out(report)
                 work._release_quietly(self.root, ref, "done" if done else "merged")
                 remove_worktree(self.root, record.get("worktree"))
                 _forget(self.root, ref)
