@@ -296,6 +296,19 @@ derives the flow's state from events. The guard (`flowsteps.run_guard`) reads on
 measured: the verify result, the scope check, reproducing tests it ran itself, and a person's
 reject.
 
+**Stall evidence (`coven flow-stats`, read from this host's local event log; counts only).** The
+report covers 100 task keys, not the 39 finished tasks the plan named: the log also holds tasks that
+were never finished. Across them: 13 rejections on 11 tasks, 27 rework loops (a `working` status after
+a submit), and a time from first submitted branch to first review verdict for 0 tasks. Of the 27 loops,
+26 come from one task (`coven-relay#13`) and 1 from `coven-relay#14`; every other task has none.
+This is too thin to choose the next workflow change. One task dominates the loop count, and with no
+verdict times we cannot say where a task waits. Data to collect before changing the recipe: (1) the
+review verdict statuses (`task_status` with a verdict) from real review runs, so the time to first
+verdict exists; (2) the reason class of each rework loop (verify failed, scope guard, reviewer
+`changes`, person reject), as a count and never text; (3) the same report from the other hosts, since
+the log is per machine; (4) at least a few dozen finished tasks that went through the full flow.
+Until then the recipe is unchanged.
+
 ## 5. Data model
 
 ```text
