@@ -160,6 +160,28 @@ def test_a_thinking_agent_answers_in_a_note_under_its_own_name(repo, monkeypatch
     assert any(k["task_id"] == "2" for k in cloud.claims), "the claim stays until people tick the task, so nobody repeats it"
 
 
+def test_a_finished_task_logs_its_longest_step_and_rework_count(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    ticks = iter([0.0, 5.0, 10.0, 40.0, 50.0, 52.0])
+    monkeypatch.setattr(host.time, "monotonic", lambda: next(ticks))
+    runner = Runner({"elf": lambda cwd, prompt: ("An idea.", None)})
+    task = {"spec": "shop", "task_id": "2", "title": "Alternative for search"}
+    # three runs of the same task: the first, then two reworks; the second takes 30 s
+    host.execute(repo, task, "elf", runner)
+    host.execute(repo, task, "elf", runner, feedback=[{"text": "again"}])
+    host.execute(repo, task, "elf", runner, feedback=[{"text": "once more"}])
+    record = host.load(repo)["shop#2"]
+    assert record["reworks"] == 2 and [s[1] for s in record["steps"]] == [5.0, 30.0, 2.0]
+    assert host.stall_report("shop#2", record) == "host: shop#2 done; longest step elf 30.0 s of 3 run(s); 2 rework(s)"
+
+
+def test_the_stall_report_is_redacted_and_absent_without_steps():
+    assert host.stall_report("shop#1", {}) is None
+    secret = "ghp_" + "a" * 36
+    line = host.stall_report(f"shop#1 {secret}", {"steps": [["elf", 1.5]]})
+    assert secret not in line and "longest step elf 1.5 s" in line
+
+
 def test_an_inspecting_agent_gets_a_throwaway_checkout(repo, monkeypatch):
     FakeCloud().install(monkeypatch)
     runner = Runner()
