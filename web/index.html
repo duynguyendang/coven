@@ -667,6 +667,14 @@
   /* a witch's "never" is on her card */
   .changes-form { display: flex; gap: 8px; margin-top: 6px; }
   .changes-form input { flex: 1; min-inline-size: 0; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-inner); padding: 5px 9px; }
+  .needs { margin: 0 0 16px; }
+  .need-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .need-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 12px;
+    background: var(--warn-bg); border: 1px solid var(--warn-line); border-left: 4px solid var(--warn-line); border-radius: var(--radius-element); }
+  .need-what { flex: 1 1 320px; min-inline-size: 0; }
+  .need-what .tt { font-weight: 600; }
+  .need-what .hint { color: var(--warn-ink); margin-top: 2px; }
+  .need-act { display: flex; flex-wrap: wrap; gap: 6px; }
   .accept-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .witch .never { grid-column: 2; margin: 2px 0 0; font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
   .witch .never b { color: var(--bad-ink); font-weight: 600; margin-right: 4px; }
@@ -1524,7 +1532,27 @@
       }
     }
     cols.ready.sort((a, b) => (a.waits_for ? 1 : 0) - (b.waits_for ? 1 : 0)); // what can start now comes first
+    const everyTask = (b.specs || []).flatMap((spec) => spec.tasks.map((t) => ({ ...t, ref: `${spec.spec}#${t.task_id}` })));
+    for (const card of [...cols.review, ...cols.failed]) card.needs = needsYou(card, everyTask, b.notes || []);
     return cols;
+  }
+  /** What a task waits for from a PERSON, if anything: null when the witches and hosts are still on it.
+      {kind, label, why, accept}: `label` is the short badge, `why` says what to do and what happens next. */
+  function needsYou(t, all, notes) {
+    if (t.status === "completed" || t.doer_state === "done" || t.merged) return null;
+    if (t.doer_state === "failed" && !t.claimed_by) {
+      return { kind: "failed", label: "Failed: needs you", why: `${t.doer_detail ? `${short(t.doer_detail, 140)}. ` : ""}Open it to retry it, or mark it done.` };
+    }
+    if (t.doer_state !== "submitted" || !t.branch_host) return null;
+    if (t.accept && t.accept.state === "requested" && t.accept.decision === "accept") return null; // accepted: the host is merging
+    const held = notes.filter((n) => n.task === t.ref && n.kind === "question" && /holds .* for a person/i.test(n.note || "")).pop();
+    const reviews = all.filter((x) => x.review_of === t.ref);
+    const running = reviews.filter((x) => x.doer_state !== "answered" && x.doer_state !== "failed");
+    const changes = reviews.filter((x) => x.doer_verdict === "changes");
+    if (held) return { kind: "held", label: "Needs you: held", why: short(held.note.replace(/^.*?holds \S+ for a person:\s*/i, ""), 180) || "The host held this for a person.", accept: true };
+    if (running.length) return null; // the reviewers are still on it
+    if (changes.length) return { kind: "changes", label: "Needs you: decide", why: `${plural(changes.length, "reviewer")} asked for changes. Request changes (the Dev reworks it) or accept it anyway.`, accept: true };
+    return { kind: "accept", label: "Needs you: accept", why: reviews.length ? "Every reviewer passed it. Accept and merge, or request changes." : "Submitted, with no review recorded. Accept and merge, or request changes.", accept: true };
   }
   const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"]];
   const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed", queued: "Queued again" };
@@ -1558,6 +1586,17 @@
     return `<details class="decided-plans" data-key="decided-plans"${state.ui.decidedPlans ? " open" : ""}><summary>${plural(plans.length, "decided plan")}
         <span class="hint">· ${plans.filter((p) => p.state === "approved").length} approved, ${plans.filter((p) => p.state === "rejected").length} rejected</span></summary>
       <ul class="plan-rows">${shown.map(row).join("")}</ul>${plans.length > shown.length ? `<p class="hint">${plans.length - shown.length} older plans not shown.</p>` : ""}</details>`;
+  }
+  /** Everything that waits for a person, in one place at the top: what it is, why, and the button that answers it. */
+  function waitingForYou(cols) {
+    const items = [...cols.review, ...cols.failed].filter((t) => t.needs);
+    if (!items.length) return "";
+    const row = (t) => `<li class="need-row" data-key="need-${esc(t.ref)}"><div class="need-what"><button class="link mono" type="button" data-task-open="${esc(t.ref)}" data-key="need-open-${esc(t.ref)}"
+        command="show-modal" commandfor="task-dialog" aria-haspopup="dialog">${esc(t.ref)}</button> <span class="tt">${esc(short(t.title || "", 70))}</span>
+        <div class="hint">${esc(t.needs.why)}</div></div>
+      <div class="need-act">${t.needs.accept ? `<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="need-accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>` : ""}
+        <button class="act quiet" type="button" data-task-open="${esc(t.ref)}" data-key="need-view-${esc(t.ref)}" command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span>${t.needs.accept ? "Review" : "Open"}</span></button></div></li>`;
+    return `<section class="needs" aria-label="Waiting for you"><h2>Waiting for you <span class="hint">· ${plural(items.length, "task")}</span></h2><ul class="need-list">${items.map(row).join("")}</ul></section>`;
   }
   function planCard(p) {
     const items = (p.tasks || []).map((t) => `<li><b>${esc(t.title)}</b>${t.detail ? ` <span class="hint">${esc(short(t.detail, 200))}</span>` : ""}
@@ -1665,7 +1704,8 @@
     const need = t.agent || "green-witch";
     const holder = t.claimed_agent || need;
     const stuck = state.runnable && isStuck(t, state.runnable);
-    const status = t.doer_verdict ? `<span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes"}</span>`
+    const status = t.needs ? `<span class="badge warn needs-you" title="${esc(t.needs.why)}">${esc(t.needs.label)}</span>`
+      : t.doer_verdict ? `<span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes"}</span>`
       : t.merged ? '<span class="badge accept">Merged</span>'
       : t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
       ? `<span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>`
@@ -1707,8 +1747,9 @@
       t.notes ? `${plural(t.notes, "note")}` : ""].filter(Boolean).join(" · ");
     const need = t.agent || "green-witch";
     const holder = t.claimed_agent || (t.claimed_by ? null : need);
-    const stateLine = t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
-      ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "";
+    const needLine = t.needs ? `<div class="state needs-you-line"><span class="badge warn">${esc(t.needs.label)}</span><span class="hint">${esc(t.needs.why)}</span></div>` : "";
+    const stateLine = needLine || (t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
+      ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "");
     const agentLine = `<div class="agent">${avatar(holder || need)}<span>${esc(agentName(holder || need))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : t.merged || t.status === "completed" || t.doer_state === "done" ? "" : " needed"}</span></div>`;
     const stuck = state.runnable && isStuck(t, state.runnable);
     const mergedLine = t.merged ? `<div class="state"><span class="badge accept">Merged</span> <span class="hint">into <code>${esc(t.merged.base)}</code> at <code>${esc(String(t.merged.commit).slice(0, 7))}</code> · passed by ${(t.merged.reviewers || []).map((r) => esc(agentName(r))).join(", ")} · decided by ${esc(agentName("grey-witch"))}</span></div>`
@@ -1853,6 +1894,7 @@
     return `${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Coven board · ${project}`,
         lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
       ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
+      ${waitingForYou(cols)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}

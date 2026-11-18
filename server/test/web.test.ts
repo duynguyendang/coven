@@ -944,6 +944,32 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: what waits for a person is said at the top, with the button that answers it", async () => {
+    const spec = (id: string, seq: number) => ({ ...ev("member_wy", "wy", "spec_artifact_updated", { artifact: "tasks", spec: id, total: 1, done: 0, in_progress: 0, queued: 0, optional: 0,
+      tasks: [{ task_id: "1", title: `Task ${id}`, status: "not_started", paths: ["x/"] }] }, seq), member: "wy" });
+    const submitted = (id: string, seq: number) => ({ ...ev("member_wy", "wy", "task_status", { task: `${id}#1`, state: "submitted", agent: "green-witch",
+      detail: `coven/${id}-1 at abc1234`, branch: `coven/${id}-1`, branch_host: "h_0000bbbb", host_id: "h_0000bbbb" }, seq), member: "wy" });
+    const review = (id: string, job: string, verdict: string | null, seq: number) => [
+      { ...ev("member_wy", "wy", "task_created", { task: `council#${job}`, title: `Test ${id}#1`, agent: "white-hat", review_of: `${id}#1`, branch: `coven/${id}-1`, expects: "review" }, seq), member: "wy" },
+      { ...ev("member_wy", "wy", "task_status", { task: `council#${job}`, state: verdict ? "answered" : "working", agent: "white-hat", ...(verdict ? { verdict, detail: `verdict: ${verdict}` } : {}) }, seq + 1), member: "wy" }];
+    await send("wy", "member_wy", [spec("wp", 1), submitted("wp", 2), ...review("wp", "wp-t", "pass", 3),
+      spec("wc", 5), submitted("wc", 6), ...review("wc", "wc-t", "changes", 7),
+      spec("wr", 9), submitted("wr", 10), ...review("wr", "wr-t", null, 11)]);
+    await go("#/board/wy", 600);
+    const need = (ref: string) => doc().querySelector(`[data-key="need-${ref}"]`);
+    assert.match(need("wp#1")!.textContent!.replace(/\s+/g, " "), /Every reviewer passed it\. Accept and merge, or request changes\./);
+    assert.ok(doc().querySelector('[data-key="need-accept-wp#1"]'), "the answer is a button right there");
+    assert.match(need("wc#1")!.textContent!.replace(/\s+/g, " "), /1 reviewer asked for changes\. Request changes/);
+    assert.equal(need("wr#1"), null, "reviewers still at work: nothing for a person yet");
+    assert.match(doc().querySelector('[data-key="need-wp#1"]')!.closest("section")!.querySelector("h2")!.textContent!, /Waiting for you · 2 tasks/);
+    openColumn("review");
+    assert.match(doc().querySelector('[data-key="row-wp#1"]')!.textContent!, /Needs you: accept/);
+    assert.doesNotMatch(doc().querySelector('[data-key="row-wr#1"]')!.textContent!, /Needs you/);
+    assert.match(openTask("wc#1").textContent!.replace(/\s+/g, " "), /Needs you: decide.*asked for changes/);
+    closeTask();
+    await go("#/");
+  });
+
   test("board: a merged task says by whom; a review row shows its verdict", async () => {
     await send("am", "member_am", [
       { ...ev("member_am", "am", "spec_artifact_updated", { artifact: "tasks", spec: "s", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [{ task_id: "1", title: "Cart", status: "not_started", paths: ["x/"] }] }, 4), member: "am" },
