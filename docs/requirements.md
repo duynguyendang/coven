@@ -53,7 +53,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-T4 | The relay redacts before it writes anything to disk (§5.1). | Must | Built |
 | FR-T5 | Events are buffered in a local append-only JSONL log, de-duplicated by `event_id`, and pushed in batches (≤ 50 events, ≤ 200 KiB) with retry; offline is normal. | Must | Built |
 | FR-T6 | The relay sends a heartbeat every 5 s per active run; the cloud derives LIVE / STALE / DISCONNECTED from it. | Must | Built |
-| FR-T7 | A batch the cloud rejects (413/422) is split and retried; a single event that still fails is quarantined so it cannot block the queue. | Should | Partial: split/quarantine not built |
+| FR-T7 | A batch the cloud rejects (413/422) is split and retried; a single event that still fails is quarantined so it cannot block the queue. | Should | Built |
 | FR-T8 | Usage is shown as Kiro reports it (credits) and labelled by source; an estimate is never shown as a measurement. | Must | Built |
 
 ### 4.2 Spec awareness

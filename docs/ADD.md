@@ -471,8 +471,7 @@ deploy, `/healthz`'s `started_at` shows when the instance last started.
 - **Unproven end to end.** Hosts are tested with a fake `kiro-cli` and live against the hosted
   cloud; a full real model run through every path, and a real flow with both gates, are not yet
   recorded.
-- **Not built:** the pre-write gate and the control feed (FR-S3–S4), relay split and quarantine
-  (FR-T7). Kiro Web dispatch (FR-H11) is usable.
+- **Not built:** the pre-write gate and the control feed (FR-S3–S4). Kiro Web dispatch (FR-H11) is usable.
 - **Auto-merge trusts models' verdicts.** Three reviewers and the Chair are models; the host's own
   checks (no person's reject, a clean merge, `make verify` on the merged tree) are the floor. It is
   opt-in per host and has run only against a fake runner and a local origin.
