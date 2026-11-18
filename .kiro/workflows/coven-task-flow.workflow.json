@@ -33,7 +33,7 @@
           "artifacts": {
             "implement": "{{flow_dir}}/implement.md"
           },
-          "prompt": "Coven flow implementation. Flow directory: {{flow_dir}}. Read {{flow_dir}}/flow.json for the task and {{artifacts.ready}} for the agreed checklist. If {{flow_dir}}/decide.json exists, it holds the human's rework note from the last round: address it. Implement the task inside its declared `_Paths:_`, run its tests, then write your diff claim to {{flow_dir}}/implement.md as your instructions describe, and reply DONE."
+          "prompt": "Coven flow implementation. Flow directory: {{flow_dir}}. Read {{flow_dir}}/flow.json for the task and {{artifacts.ready}} for the agreed checklist. If {{flow_dir}}/rework.json exists, it lists numbered items (R1, R2, ...) the guard found last round, worst first: address each one and list the ids you addressed in your diff claim. If {{flow_dir}}/decide.json exists, it holds the human's rework note from the last round: address it too. Implement the task inside its declared `_Paths:_`, run its tests, then write your diff claim to {{flow_dir}}/implement.md as your instructions describe, and reply DONE."
         },
         {
           "type": "repeat",

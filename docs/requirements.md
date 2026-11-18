@@ -53,7 +53,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-T4 | The relay redacts before it writes anything to disk (§5.1). | Must | Built |
 | FR-T5 | Events are buffered in a local append-only JSONL log, de-duplicated by `event_id`, and pushed in batches (≤ 50 events, ≤ 200 KiB) with retry; offline is normal. | Must | Built |
 | FR-T6 | The relay sends a heartbeat every 5 s per active run; the cloud derives LIVE / STALE / DISCONNECTED from it. | Must | Built |
-| FR-T7 | A batch the cloud rejects (413/422) is split and retried; a single event that still fails is quarantined so it cannot block the queue. | Should | Partial: split/quarantine not built |
+| FR-T7 | A batch the cloud rejects (413/422) is split and retried; a single event that still fails is quarantined so it cannot block the queue. | Should | Built |
 | FR-T8 | Usage is shown as Kiro reports it (credits) and labelled by source; an estimate is never shown as a measurement. | Must | Built |
 
 ### 4.2 Spec awareness
@@ -161,6 +161,8 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-AM3 | Auto-merge is opt-in per host (`coven host run --auto-merge` or `COVEN_AUTO_MERGE=1`); without it people decide on the verdicts. | Must | Built |
 | FR-AM4 | On an auto-merge host: changes go back to the Dev with the reasons, at most two reworks; three passes go to the Chair (Senior Kiro), who decides `merge` or `hold`; on `merge` the host merges only if no person rejected or suggested a change, the branch merges cleanly, and `make verify` (`COVEN_MERGE_CHECK`) passes on the merged tree; then it pushes the base (never forced) and deletes the branch here and on origin. | Must | Built (tested with a fake runner and a local origin) |
 | FR-AM5 | The host records the merge (`task_merged`: commit, base, reviewers, the Chair) and the board shows the task done with it. | Must | Built |
+| FR-AM7 | Reviewers judge by one rule set: a pre-check (paths, verify, acceptance), findings with an id and a severity (P0, P1, P2), and one verdict rule (any P0 or P1 is `changes`). Their claims list `rules_read`. | Should | Built |
+| FR-AM8 | A rework carries its cause: the guard writes `rework.json` (numbered, worst first) and the host numbers the feedback (R1, R2, …); the Dev names the ids she addressed. A confirmed P2 break never blocks. | Should | Built |
 | FR-AM6 | Anything in doubt holds the task for a person, said once in a note: a failed review, a review with no verdict, no Chair on the host, a hold decision, a conflict, a failed check, a refused push. | Must | Built |
 
 ### 4.9.2 Final evaluation, Kiro outages, host health

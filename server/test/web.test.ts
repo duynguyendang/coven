@@ -701,12 +701,17 @@ describe("session screen", () => {
   test("board: members, their claims, and tasks in the right column", async () => {
     await go("#/board/shop", 600);
     assert.equal(doc().querySelector("#main h1")!.textContent, "Coven board · shop");
-    const witches = [...doc().querySelectorAll(".witch")].map((m) => m.textContent!.replace(/\s+/g, " "));
-    assert.equal(witches.length, 11, "the whole coven is listed");
-    assert.ok(witches.some((m) => /Green Witch.*Working.*on shop#1 · ana/.test(m)), witches.join(" | "));
-    assert.ok(witches.some((m) => /Green Witch.*Working.*on shop#2 · bo/.test(m)));
+    assert.equal(doc().querySelectorAll(".stage .stage-witch").length, 11, "the whole coven stands on the stage");
+    assert.equal(doc().querySelectorAll(".witch").length, 0, "no card until a witch is picked: one card, not eleven");
+    const pick = async (slug: string) => { (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click(); await wait(50); return doc().querySelector(".stage-card .witch")!.textContent!.replace(/\s+/g, " "); };
+    const green = await pick("green-witch");
+    assert.match(green, /Green Witch.*Working.*on shop#1 · ana/, green);
+    assert.match(green, /on shop#2 · bo/);
+    assert.equal(doc().querySelectorAll(".witch").length, 1);
     assert.equal(doc().querySelector("#main")!.textContent!.includes("Members"), false);
-    assert.equal(doc().querySelectorAll(".stage .sprite svg").length, 11, "the stage shows all eleven witches");
+    assert.equal(doc().querySelectorAll(".stage .stage-witch svg").length, 11, "the stage shows all eleven witches");
+    // `.sprite` is the zero-size icon sheet (width 0, overflow hidden): a witch given that class is there but cannot be seen.
+    assert.equal(doc().querySelectorAll(".sprite").length, 1, "only the icon sheet uses .sprite");
     assert.equal(doc().querySelectorAll(".stage .station").length, 5);
     const tile = (label: string) => doc().querySelector(`button.tile[aria-label^="${label}:"]`) as HTMLButtonElement;
     assert.deepEqual(["Ready", "Claimed", "In review", "Done"].map((l) => tile(l).querySelector(".n")!.textContent), ["1", "1", "1", "1"], "the board shows numbers only");
@@ -786,18 +791,20 @@ describe("session screen", () => {
   });
   test("board: the witches are what is shown: who works, who is available, who is not; hosts are only where", async () => {
     await go("#/board/lab", 600);
-    const by = (slug: string) => doc().querySelector(`[data-key="witch-${slug}"]`)!;
-    const text = (slug: string) => by(slug).textContent!.replace(/\s+/g, " ");
-    assert.match(text("elf"), /Working.*on lab#L1 · wsl-7/);
-    assert.ok(by("elf").classList.contains("working"));
-    assert.match(text("raven"), /Available.*on wsl-7/);
-    assert.ok(by("raven").classList.contains("available"));
-    assert.match(text("herald"), /Not available.*not on any host · (never seen|last seen)/);
-    assert.ok(by("herald").classList.contains("offline"));
-    assert.match(doc().querySelector("#main h2")!.parentElement!.textContent!, /Witches/);
+    const pick = async (slug: string) => { (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click(); await wait(50); return doc().querySelector(".stage-card .witch")!; };
+    const text = (el: Element) => el.textContent!.replace(/\s+/g, " ");
+    let card = await pick("elf");
+    assert.match(text(card), /Working.*on lab#L1 · wsl-7/);
+    assert.ok(card.classList.contains("working"));
+    card = await pick("raven");
+    assert.match(text(card), /Available.*on wsl-7/);
+    assert.ok(card.classList.contains("available"));
+    card = await pick("herald");
+    assert.match(text(card), /Not available.*not on any host · (never seen|last seen)/);
+    assert.ok(card.classList.contains("offline"));
+    assert.ok(doc().querySelector('[data-stage-pick="herald"]')!.classList.contains("off"), "a witch no host runs is dimmed on the stage");
+    assert.match(doc().querySelector(".stage-box > summary")!.textContent!, /Witches.*available.*working/);
     assert.equal(doc().querySelector(".member"), null, "no list of machines");
-    const order = [...doc().querySelectorAll(".witch")].map((e) => e.className.replace("witch ", ""));
-    assert.deepEqual(order, [...order].sort((a, b) => ["working", "available", "full", "offline"].indexOf(a) - ["working", "available", "full", "offline"].indexOf(b)), "working first, unavailable last");
     const label = (col: string) => doc().querySelector(`button.tile[data-col="${col}"]`)?.getAttribute("aria-label");
     assert.equal(label("review"), "In review: 1 task", "an answered task waits in review, not in claimed");
     assert.equal(label("failed"), "Blocked: 1 task", "a failed task is blocked, not ready");
@@ -835,11 +842,14 @@ describe("session screen", () => {
 
   test("board: each witch shows what she is responsible for", async () => {
     await go("#/board/lab", 600);
+    const pick = async (slug: string) => { (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click(); await wait(50); };
+    await pick("elder-witch");
     const duty = doc().querySelector('[data-key="duty-elder-witch"]') as HTMLDetailsElement;
     assert.ok(duty && duty.tagName === "DETAILS" && !duty.open, "folded by default");
     const text = duty.textContent!.replace(/\s+/g, " ");
     assert.match(text, /Owns design and architecture; the plan of a change/);
     assert.match(text, /Never write code; approve your own plan; edit tasks\.md/);
+    await pick("elf");
     assert.match(doc().querySelector('[data-key="duty-elf"]')!.textContent!.replace(/\s+/g, " "), /Hands off to Elder Witch/);
     assert.equal(duty.querySelectorAll("dt").length, 4);
     await go("#/");
@@ -889,15 +899,14 @@ describe("session screen", () => {
   test("board: what waits for you first, then tasks with a column open, then the witches; idle witches fold away", async () => {
     await go("#/board/lab", 600);
     const heads = [...doc().querySelectorAll("#main h2")].map((h) => h.childNodes[0].textContent!.trim());
-    assert.ok(heads.indexOf("Tasks") < heads.indexOf("Witches") && heads.indexOf("Witches") < heads.indexOf("Whiteboard"), heads.join(","));
+    assert.ok(!heads.includes("Witches"), "the witches are on the stage, not listed a second time");
+    assert.ok(heads.indexOf("Tasks") < heads.indexOf("Whiteboard"), heads.join(","));
     assert.ok(doc().querySelector("section.column-detail"), "a column is open without a click");
     const open = doc().querySelector('button.tile[aria-expanded="true"]') as HTMLButtonElement;
     open.click(); await wait(50);
     assert.equal(doc().querySelector('button.tile[aria-expanded="true"]'), doc().querySelector(`button.tile[data-col="${open.dataset.col}"]`), "clicking the open tile keeps it open");
-    const more = doc().querySelector("details.more-witches")!;
-    assert.match(more.querySelector("summary")!.textContent!, /\d+ witch(es are| is) not on any host/);
-    assert.ok(more.querySelector('[data-key="witch-herald"]'), "an idle witch's card is folded, not gone");
-    assert.equal(doc().querySelector('#main > .witches [data-key="witch-herald"], #main .witches:not(details .witches) [data-key="witch-herald"]'), null);
+    assert.equal(doc().querySelector("details.more-witches"), null, "no folded second list");
+    assert.match(doc().querySelector(".stage-box > .hint")!.textContent!, /\d+ witch(es are| is) not on any host|not on any host/);
     await go("#/");
   });
 

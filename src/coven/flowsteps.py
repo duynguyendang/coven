@@ -131,6 +131,36 @@ def run_repro(root: Path, test: str) -> dict:
             "detail": f"the test did not run cleanly (exit {code})"}
 
 
+SEVERITIES = ("P0", "P1", "P2")
+FINDING_FIELDS = ("id", "severity", "category", "file", "line", "rule", "fix", "repro")
+MAX_FINDINGS = 10
+
+
+def severity_of(item: dict) -> str:
+    """A finding's severity; one that names none counts as P1 (it blocks), so a reviewer cannot hide a break by omission."""
+    value = str(item.get("severity") or "").upper()
+    return value if value in SEVERITIES else "P1"
+
+
+def clean_findings(items: object) -> list[dict]:
+    """The findings a claim file carries (LoopForge-style tiers): known fields only, short strings, at most ten."""
+    out = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        one = {k: (str(item[k])[:200] if k != "line" else item[k]) for k in FINDING_FIELDS if item.get(k) is not None}
+        if "line" in one and not isinstance(one["line"], int):
+            one.pop("line")
+        one["severity"] = severity_of(item)
+        out.append(one)
+    return out[:MAX_FINDINGS]
+
+
+def clean_rules_read(items: object) -> list[str]:
+    """The files a reviewer says she read (the audit of what her judgment rests on): short repo-relative paths, at most ten."""
+    return [str(i)[:120] for i in items if isinstance(i, str) and i.strip()][:MAX_FINDINGS] if isinstance(items, list) else []
+
+
 def _claims(root: Path, flow: dict, round_no: int, runs: dict[str, str]) -> tuple[dict, dict]:
     """Emit the role agents' claim files as council events. Returns (role -> event id, chair file)."""
     directory = flows.flow_dir(root, flow["flow_id"])
@@ -144,6 +174,10 @@ def _claims(root: Path, flow: dict, round_no: int, runs: dict[str, str]) -> tupl
             continue
         payload = {"round": round_no, "claim": str(data.get("claim") or "")[:400], "evidence": data.get("evidence") or []}
         kind = "claim_proposed"
+        if clean_rules_read(data.get("rules_read")):
+            payload["rules_read"] = clean_rules_read(data.get("rules_read"))
+        if clean_findings(data.get("findings")):
+            payload["findings"] = clean_findings(data.get("findings"))
         if role == "tester":
             kind = "test_result"
             payload["tests"] = data.get("tests") or []
@@ -152,7 +186,7 @@ def _claims(root: Path, flow: dict, round_no: int, runs: dict[str, str]) -> tupl
             if challenges:
                 kind = "claim_challenged"
                 payload["evidence"] = list(payload["evidence"]) + [{"kind": "repro", "test": c.get("repro")} for c in challenges if c.get("repro")]
-                payload["challenges"] = challenges
+                payload["challenges"] = clean_findings(challenges)
         elif data.get("alternative_cost"):
             payload["alternative_cost"] = data["alternative_cost"]
         event = flows.cli_event(root, flow, kind, payload, source="council", council_id=cid, role=role)
@@ -265,10 +299,15 @@ def run_guard(root: Path, flow: dict) -> dict:
     for r in repros:
         flows.cli_event(root, flow, "verify_result", {"target": "repro", "test": r["test"], "exit_code": r.get("exit_code"),
                         "status": r["result"], "duration_s": r.get("duration_s")}, council_id=cid)
-    if any(r["result"] == "fail" for r in repros):
+    severity = {c.get("repro"): severity_of(c) for c in redteam.get("challenges") or [] if isinstance(c, dict)}
+    confirmed = [r for r in repros if r["result"] == "fail"]
+    blocking = [r for r in confirmed if severity.get(r["test"], "P1") != "P2"]
+    if blocking:
         checks.append({"name": "challenge", "result": "fail", "detail": "a reproducing test fails: break confirmed"})
     elif any(r["result"] == "unknown" for r in repros):
         checks.append({"name": "challenge", "result": "unknown", "detail": "a reproducing test could not be run"})
+    elif confirmed:
+        checks.append({"name": "challenge", "result": "pass", "detail": f"{len(confirmed)} confirmed break(s), all P2: noted, not blocking"})
     else:
         checks.append({"name": "challenge", "result": "pass", "detail": f"{len(repros)} reproducing test(s), none reproduces" if repros else "no challenge"})
     checks.append(human_check(root, flow))
@@ -283,12 +322,34 @@ def run_guard(root: Path, flow: dict) -> dict:
     record = {"round": round_no, "verdict": verdict, "checks": checks, "chair_proposal": proposal,
               "disagreement": bool(proposal and proposal != verdict), "repros": repros}
     (directory / "guard.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    write_rework(directory, round_no, verdict, checks, redteam, repros)
     history["rounds"].append(record)
     (directory / "guard-history.json").write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
     flows.cli_event(root, flow, "guard_verdict", {k: record[k] for k in ("verdict", "checks", "chair_proposal", "disagreement", "round")},
                     council_id=cid)
     _step(root, flow, "guard", "flow_step_finished", outcome="done", verdict=verdict)
     return record
+
+
+def write_rework(directory: Path, round_no: int, verdict: str, checks: list[dict], redteam: dict, repros: list[dict]) -> None:
+    """On anything but accept, leave the Dev a numbered list of what to fix (`rework.json`), the worst first: the cause travels
+    with the rework, not only the word "reject". The next implement step reads it and names the ids it addressed."""
+    path = directory / "rework.json"
+    if verdict == "accept":
+        path.unlink(missing_ok=True)
+        return
+    items: list[dict] = []
+    for check in checks:
+        if check["result"] != "pass" and check["name"] in ("verify", "scope", "human"):
+            items.append({"source": check["name"], "severity": "P0" if check["name"] == "human" else "P1", "rule": str(check.get("detail") or "")[:200]})
+    confirmed = {r["test"] for r in repros if r["result"] == "fail"}
+    for c in clean_findings(redteam.get("challenges")):
+        if c.get("repro") in confirmed and c["severity"] != "P2":
+            items.append({"source": "red-team", **c})
+    items.sort(key=lambda i: SEVERITIES.index(i["severity"]))
+    for n, item in enumerate(items, 1):
+        item["id"] = f"R{n}"
+    path.write_text(json.dumps({"round": round_no, "verdict": verdict, "items": items}, indent=2) + "\n", encoding="utf-8")
 
 
 # ------------------------------------------------------------------------ close

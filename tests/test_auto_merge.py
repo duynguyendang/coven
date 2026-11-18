@@ -206,3 +206,36 @@ def test_an_accept_that_fails_the_project_check_holds_and_pushes_nothing(repo, o
     (result,) = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)._accepts(view)
     assert result["action"] != "merged" and git(origin, "rev-parse", "main") == before
     assert any("failed on the merged tree" in n["note"] for n in cloud.notes)
+
+
+def test_a_review_job_asks_for_severity_and_a_rework_numbers_what_to_fix():
+    job = {"task_id": "j1", "title": "Attack", "detail": "d", "review_of": "shop#1", "branch": "coven/shop-1"}
+    text = host.job_prompt(job, "black-hat", "h", None)
+    assert "VERDICT: changes — [P0|P1]" in text and "any P0 or P1 means `changes`" in text and "rules_read" in text
+    task = {"spec": "shop", "task_id": "1", "title": "t", "paths": ["src/"], "verify": "true"}
+    feedback = [{"from": "Black Hat", "kind": "review", "message": "[P0] x.py:3 leaks"}, {"from": "White Hat", "kind": "review", "message": "[P1] no test"}]
+    text = host.prompt_for(task, "green-witch", "h", feedback=feedback)
+    assert "R1. Black Hat" in text and "R2. White Hat" in text and "name the ids you addressed" in text
+
+
+def test_the_check_on_the_merged_tree_sees_the_installed_dependencies(repo, origin, monkeypatch):
+    """A fresh worktree has no node_modules: without the links `tsc` is missing and a good branch is held for nothing."""
+    cloud = FakeCloud().install(monkeypatch)
+    (repo / "server").mkdir()
+    (repo / "server" / "package.json").write_text("{}\n")
+    git(repo, "add", "server")
+    git(repo, "commit", "-m", "server")
+    (repo / "server" / "node_modules").mkdir()
+    monkeypatch.setenv("COVEN_MERGE_CHECK", "test -d server/node_modules")
+    record = submitted(repo, cloud)
+    result, _ = settle(repo, record, board_with(record, ["pass", "pass", "pass"]), Runner({"grey-witch": MERGE}))
+    assert result["action"] == "merged", result
+
+
+def test_the_chair_is_told_how_merging_works_here_and_what_waits(repo):
+    waiting = ["shop#1 on coven/shop-1: in review"]
+    ask = {"message_id": "m1", "message": "merge all branches when you are done", "kind": "ask", "author": "duy"}
+    on = host.triage_prompt(ask, "h", repo, None, {"merge": {"auto": True, "waiting": waiting}})
+    assert "auto-merge is ON" in on and "shop#1 on coven/shop-1: in review" in on and "Never say merging is not a council job" in on
+    off = host.triage_prompt(ask, "h", repo, None, {"merge": {"auto": False, "waiting": []}})
+    assert "auto-merge is OFF" in off and "Accept and merge" in off and "- none" in off

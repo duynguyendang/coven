@@ -269,7 +269,6 @@
   .stepper .pending { color: var(--muted); }
   @media (max-width: 640px) { .stepper li { grid-template-columns: 22px minmax(0, 1fr); } .stepper li > :nth-child(n+3) { grid-column: 2; } }
   /* the coven board: members, task columns, whiteboard */
-  .witches { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .witch { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 10px; align-items: center; align-content: start; }
   .witch .av { grid-row: 1 / span 4; align-self: start; width: 40px; height: 40px; margin: 2px 0 0; }
   .witch .where { grid-column: 2; }
@@ -298,24 +297,39 @@
   @media (max-width: 640px) { .plan-row > summary { grid-template-columns: auto minmax(0, 1fr); } .plan-row .sum { grid-column: 1 / -1; white-space: normal; } }
   .stage-box { margin: 0 0 14px; }
   .stage-box > summary { cursor: pointer; padding: 8px 12px; min-block-size: var(--target-size); color: var(--muted); font-size: 0.8125rem; border: 1px dashed var(--line-strong); border-radius: var(--radius-element); }
-  .stage { perspective: 700px; padding: 8px 0 0; overflow: hidden; }
-  .stage .floor { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 12px; transform: rotateX(45deg); transform-origin: 50% 100%;
-    background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-element); min-block-size: 150px; }
-  .stage .station { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-element); }
-  .stage .pad { font-size: 0.75rem; color: var(--muted); }
-  .stage .sprites { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; transform: rotateX(-45deg); transform-origin: 50% 100%; }
-  .stage .sprite .av { width: 32px; height: 36px; }
-  @media (max-width: 640px) { .stage .floor { gap: 4px; padding: 6px; } .stage .sprite .av { width: 22px; height: 26px; } }
-  .more-witches { margin: 0 0 14px; }
-  .more-witches > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; padding: 8px 12px; min-block-size: var(--target-size);
-    border: 1px dashed var(--line-strong); border-radius: var(--radius-element); color: var(--muted); font-size: 0.8125rem; }
-  .more-witches > summary::-webkit-details-marker { display: none; }
-  .more-witches > summary::after { content: "Show"; margin-left: auto; font-size: 0.75rem; color: var(--blue); }
-  .more-witches[open] > summary::after { content: "Hide"; }
-  .more-witches > summary:hover { background: var(--hover); color: var(--text); }
-  .more-witches .faces { display: inline-flex; }
-  .more-witches .faces .av { inline-size: 26px; block-size: 26px; margin: 0 -6px 0 0; filter: grayscale(0.7); opacity: 0.7; }
-  .more-witches[open] > .witches { margin-top: 10px; }
+  /* The Stage: a real 3D scene in CSS (no script, no WebGL). A tilted floor with a grid, five raised platforms, and witches standing upright
+     on it with a contact shadow. --tilt is the floor's angle; each witch undoes it so she stands, and her shadow redoes it so it lies flat. */
+  .stage { --tilt: 54deg; position: relative; perspective: 900px; perspective-origin: 50% 12%; padding: 0; overflow: hidden; min-block-size: 250px;
+    background: linear-gradient(var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius-element); }
+  .stage .floor { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.9fr); gap: 14px; padding: 18px 22px 26px; margin: -64px auto 0; inline-size: 92%;
+    transform-style: preserve-3d; transform: rotateX(var(--tilt)); transform-origin: 50% 100%; min-block-size: 220px;
+    background-color: var(--well); border: 1px solid var(--line-strong); border-radius: var(--radius-element);
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 32px 32px;
+    box-shadow: 0 8px 0 var(--line-strong), 0 16px 0 var(--line); }
+  .stage .station { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; padding: 8px 4px 10px;
+    transform-style: preserve-3d; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-element);
+    box-shadow: 0 5px 0 var(--line-strong), 0 10px 0 var(--line); }
+  .stage .station.has-work { background: var(--info-bg); border-color: var(--info-line); box-shadow: 0 5px 0 var(--info-line), 0 10px 0 var(--line); }
+  .stage .pad { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+    transform: rotateX(calc(var(--tilt) * -1)); transform-origin: 50% 100%; margin-block-end: auto; padding-block-end: 10px; }
+  .stage .station.has-work .pad { color: var(--info-ink); }
+  .stage .sprites { display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-end; gap: 2px 0; transform-style: preserve-3d; }
+  .stage .stage-witch { position: relative; display: block; appearance: none; background: none; border: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; padding-block-end: 8px; transform-style: preserve-3d; transform: rotateX(calc(var(--tilt) * -1)); transform-origin: 50% 100%; }
+  .stage .stage-witch .av { inline-size: 44px; block-size: 50px; display: block; }
+  .stage .stage-witch::before { content: ""; position: absolute; inset-inline: 12% ; inset-block-end: 2px; block-size: 12px; border-radius: 50%; background: var(--line-strong);
+    transform: rotateX(var(--tilt)); transform-origin: 50% 50%; }
+  .stage .stage-witch.working { animation: stage-bob 1.8s ease-in-out infinite; }
+  .stage .stage-witch.working:nth-child(2n) { animation-delay: -0.6s; }
+  @keyframes stage-bob { 50% { transform: rotateX(calc(var(--tilt) * -1)) translateY(-7px); } }
+  .stage .stage-witch.off .av { opacity: 0.45; filter: grayscale(0.7); }
+  .stage .stage-witch.picked .av { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 10px; }
+  .stage .stage-witch:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .stage-card { margin: 12px 0 4px; max-inline-size: 420px; }
+  .stage-box > .hint { margin: 10px 0 0; }
+  .stage .stage-witch:hover { transform: rotateX(calc(var(--tilt) * -1)) translateY(-4px); }
+  @media (prefers-reduced-motion: reduce) { .stage .stage-witch.working { animation: none; } .stage .stage-witch:hover { transform: rotateX(calc(var(--tilt) * -1)); } }
+  @media (max-width: 640px) { .stage { --tilt: 50deg; min-block-size: 200px; } .stage .floor { gap: 6px; padding: 10px 8px 18px; inline-size: 98%; min-block-size: 170px; margin-block-start: -70px; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.6fr); }
+    .stage .stage-witch .av { inline-size: 26px; block-size: 30px; } .stage .pad { font-size: 0.625rem; letter-spacing: 0; } }
   .witch.available { border-color: var(--ok-line); }
   .witch.full .av, .witch.offline .av { filter: grayscale(0.7); opacity: 0.55; }
   .witch.offline { background: transparent; border-style: dashed; }
@@ -556,15 +570,6 @@
   @keyframes fresh { from { background: var(--info-bg); } to { background: transparent; } }
   @media (prefers-reduced-motion: reduce) { .row.fresh { animation: none; } }
   @media (max-width: 640px) { .row { grid-template-columns: 56px 18px minmax(0, 1fr); } .row .side { grid-column: 3; } }
-
-  /* stage: a 3D scene; actors stand on the floor at a depth slot (static, no script) */
-  .stage { position: relative; perspective: 900px; perspective-origin: 50% 30%; min-block-size: 220px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-element); background: var(--panel); }
-  .stage-floor { position: absolute; inset: auto 0 0 0; block-size: 70%; transform-style: preserve-3d; transform-origin: 50% 100%; transform: rotateX(60deg); border-top: 1px solid var(--line); background: var(--well); }
-  .actor { position: absolute; transform-style: preserve-3d; transition: transform 300ms ease-out, opacity 300ms ease-out; color: var(--text); }
-  .actor.slot-front { transform: translateZ(0); inset-block-end: 8%; }
-  .actor.slot-mid { transform: translateZ(-120px); inset-block-end: 20%; opacity: 0.9; }
-  .actor.slot-back { transform: translateZ(-240px); inset-block-end: 32%; opacity: 0.8; }
-  @media (prefers-reduced-motion: reduce) { .stage, .stage-floor, .actor { transition: none; animation: none; } }
 
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
@@ -860,6 +865,7 @@
     evidence: [],          // evidence items behind council links
     expandDeviations: false,
     boardOpen: null,
+    stagePick: null,
     chatError: "",       // the chat form's message stays across a redraw
     chatStick: false,
     cloudReady: false,   // some online host can run tasks in Kiro Web (the board offers the button only then)
@@ -1718,7 +1724,7 @@
   /* Who can take work: the witches, not the machines. A host only shows as "where". */
   function witchRoster(b) {
     const hosts = (b.hosts || b.members || []).filter((h) => secondsSince(h.last_seen) !== null && secondsSince(h.last_seen) < ONLINE_SECONDS);
-    if (!hosts.length) return { html: "", available: 0, working: 0 };
+    if (!hosts.length) return { roster: null, card: null, idle: [], hosts: 0, available: 0, working: 0 };
     const roster = Object.keys(AGENT_NAME).map((slug) => {
       const jobs = [], offers = [];
       for (const h of hosts) {
@@ -1742,26 +1748,31 @@
       return `<div class="witch ${w.state}" data-key="witch-${w.slug}">${avatar(w.slug)}<div class="nm">${esc(agentName(w.slug))}</div><div class="rl">${esc(AGENT_ROLE[w.slug])}</div>
         <div class="st"><span class="dot ${w.state === "working" ? "live" : w.state === "available" ? "live" : ""}" aria-hidden="true"></span>${text[w.state]}</div><div class="where">${where}</div>${roleCard(w.slug)}</div>`;
     };
-    const active = roster.filter((w) => w.state !== "offline"), idle = roster.filter((w) => w.state === "offline");
-    // Who can work now gets a card; the witches no host runs fold behind one row of their ghosts (still a click away).
-    const folded = idle.length ? `<details class="more-witches" data-key="more-witches"${state.ui.allWitches ? " open" : ""}><summary><span class="faces" aria-hidden="true">${idle.map((w) => avatar(w.slug)).join("")}</span>
-      <span>${idle.length <= 3 ? `${idle.map((w) => esc(agentName(w.slug))).join(", ")} ${idle.length === 1 ? "is" : "are"} not on any host${idle.some((w) => w.slug === "green-witch") ? ": nothing gets built until a host runs her (<code>./run-host.sh --all</code>)" : ""}`
-        : `${idle.length} witches are not on any host`}</span></summary><div class="witches">${idle.map(card).join("")}</div></details>` : "";
-    const html = `${active.length ? `<div class="witches">${active.map(card).join("")}</div>` : ""}${folded}`;
-    return { html, roster, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
+    const idle = roster.filter((w) => w.state === "offline");
+    return { roster, card, idle, hosts: hosts.length, available: roster.filter((w) => w.state === "available").length, working: roster.filter((w) => w.state === "working").length };
   }
   /* The Stage: a tilted floor with five stations; every witch stands at the one her work belongs to (rest when idle). */
   const STAGE_STATIONS = [["board", "Board"], ["chat", "Chat"], ["review", "Review"], ["build", "Build"], ["rest", "Rest"]];
   const STAGE_WORK = { "green-witch": "build", "white-hat": "review", "black-hat": "review", "elder-witch": "review", "imp": "review" };
-  function stageHtml(roster) {
+  function stageHtml(members) {
+    const roster = members.roster;
     const stateOf = Object.fromEntries((roster || []).map((w) => [w.slug, w.state]));
     const at = (slug) => stateOf[slug] === "working" ? (STAGE_WORK[slug] || (slug === "grey-witch" ? "chat" : "board")) : "rest";
+    const picked = AGENT_NAME[state.stagePick] ? state.stagePick : null;
     const stations = STAGE_STATIONS.map(([id, label]) => {
       const here = Object.keys(AGENT_NAME).filter((slug) => at(slug) === id);
-      return `<div class="station" data-station="${id}"><div class="pad">${label}</div><div class="sprites">${here.map((slug) =>
-        `<span class="sprite" data-witch="${slug}" title="${esc(agentName(slug))}">${avatar(slug)}<span class="sr">${esc(agentName(slug))}</span></span>`).join("")}</div></div>`;
+      const busy = here.some((slug) => stateOf[slug] === "working");
+      return `<div class="station${busy ? " has-work" : ""}" data-station="${id}"><div class="pad">${label}</div><div class="sprites">${here.map((slug) =>
+        `<button type="button" class="stage-witch${stateOf[slug] === "working" ? " working" : ""}${stateOf[slug] === "offline" ? " off" : ""}${slug === picked ? " picked" : ""}" data-stage-pick="${slug}" data-witch="${slug}"
+          aria-pressed="${slug === picked}" title="${esc(agentName(slug))}">${avatar(slug)}<span class="sr">${esc(agentName(slug))}</span></button>`).join("")}</div></div>`;
     }).join("");
-    return `<details class="stage-box" data-key="stage"${state.ui.stage === false ? "" : " open"}><summary>Stage</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div></details>`;
+    // Her card (where she runs, what she never does, her duties) is one click on her; one card, not eleven.
+    const w = picked && roster ? roster.find((x) => x.slug === picked) : null;
+    const detail = w ? members.card(w) : `<p class="hint">${roster ? "Select a witch to see where she runs and what she owns." : "No witch is available yet: start a host with <code>./run-host.sh</code>."}</p>`;
+    const nudge = members.idle.length && roster ? `<p class="hint">${members.idle.length <= 3 ? `${members.idle.map((x) => esc(agentName(x.slug))).join(", ")} ${members.idle.length === 1 ? "is" : "are"} not on any host`
+      : `${members.idle.length} witches are not on any host`}${members.idle.some((x) => x.slug === "green-witch") ? ": nothing gets built until a host runs her (<code>./run-host.sh</code>)" : ""}.</p>` : "";
+    const counts = roster ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : "";
+    return `<details class="stage-box" data-key="stage"${state.ui.stage === false ? "" : " open"}><summary>Witches${counts}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
   }
   /** Each witch's line in her own voice: copy, not a rule (her rules are WITCH_ROLES). */
   const WITCH_MOTTO = { "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
@@ -1845,9 +1856,8 @@
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
       ${decidedList(decidedPlans, b)}
-      ${stageHtml(members.roster)}
+      ${stageHtml(members)}
       ${monitorHtml(b)}
-      <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? members.html : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
       <h2>Whiteboard</h2>${compose}
       <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">The whiteboard is blank. The Elf has ideas; so do you: post the first note.</p>'}</div>`;
   }
@@ -2457,10 +2467,10 @@
     }));
     root.querySelectorAll("[data-task-open]").forEach((el) => el.addEventListener("click", () => openTask(el.dataset.taskOpen)));
     root.querySelectorAll("[data-edit-name]").forEach((el) => el.addEventListener("click", () => { if (narrow() && !$("app").classList.contains("nav-open")) toggleNav(); $("me").focus(); }));
+    root.querySelectorAll("[data-stage-pick]").forEach((el) => el.addEventListener("click", () => { state.stagePick = state.stagePick === el.dataset.stagePick ? null : el.dataset.stagePick; render({ keepScroll: true }); }));
     root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { if (state.boardOpen !== el.dataset.col) state.colFilter = ""; state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
     root.querySelectorAll("details.decided-plans").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.decidedPlans)) { state.ui.decidedPlans = el.open; saveUi(); } }));
     root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage !== false)) { state.ui.stage = el.open; saveUi(); } }));
-    root.querySelectorAll("details.more-witches").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.allWitches)) { state.ui.allWitches = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try {
