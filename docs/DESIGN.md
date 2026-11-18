@@ -342,9 +342,13 @@ than the background, separated by 1 px hairlines. Shadows are only Astryx `--sha
 bubbles and popovers; nothing glows. A selected or working thing is shown by a tinted background
 and a coloured border, not by lifting it.
 
-The one exception is the board's Stage: a collapsible `details` with CSS `perspective` and a floor
-tilted by `rotateX`. Its five stations (board, chat, review, build, rest) are flat tokened panels,
-and the witch sprites are counter-rotated so they stand upright. Colours are Astryx tokens only.
+The one exception is the board's Stage: a collapsible `details` that is a real 3D scene in CSS (no script,
+no WebGL, no library). `.stage` sets `perspective`; the floor is tilted by `rotateX(var(--tilt))` and drawn with a
+grid of `--line` hairlines. The five stations (board, chat, review, build, rest) are raised platforms, made with
+stacked flat `box-shadow` steps (an extrusion, never a blur or a glow); a station with a working witch is tinted
+`--info-*`. Each witch undoes the tilt so she stands upright, and her contact shadow redoes it so it lies flat. A working
+witch bobs, a hovered one lifts; both stop under `prefers-reduced-motion`. Colours are Astryx tokens only. Never give
+a stage element the class `sprite`: that is the zero-size icon sheet, and a witch with it is invisible.
 
 ## Shapes
 
