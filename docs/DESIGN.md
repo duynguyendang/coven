@@ -380,7 +380,7 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
 - **Notes:** neutral cards (surface, hairline); only the kind tag carries colour (idea amber, question purple, answer green, review red, review wanted purple).
 - **Your name:** one field in the sidebar signs notes, chat messages and decisions; the composers show *as <name>*, which focuses that field.
 - **Session title:** what the session works on (its task title, else its last tool call); the id stays in the crumbs and the facts.
-- **Witch stage:** the Witches section of the board is the stage: one card per witch, drawn from the board's hosts, not from a new event. A host counts only if its last heartbeat is recent (`ONLINE_SECONDS`). Each witch is in one state, first match wins:
+- **Witch stage:** the board shows the witches once, as the Stage (a collapsible section titled *Witches · N available, M working*): every witch stands on it, drawn from the board's hosts, not from a new event. A click on a witch opens her one card under the stage; there is no second list. A host counts only if its last heartbeat is recent (`ONLINE_SECONDS`). Each witch is in one state, first match wins:
 
   | Station (state) | Event-to-station map |
   | :--- | :--- |
@@ -389,7 +389,7 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
   | Waiting for a slot | hosts offer the witch but every slot is taken |
   | Not available | no online host offers the witch |
 
-  Cards are drawn for working, available and waiting witches. The rest fold behind one row of their ghosts. No event type was added for the stage; the harness checks that the witches in `web/index.html` match `src/coven/agents.py`.
+  A witch no host offers is dimmed on the stage, and one line under it says who is not on any host. The card is drawn only for the witch picked. No event type was added for the stage; the harness checks that the witches in `web/index.html` match `src/coven/agents.py`.
 - **Witch card:** 40 px ghost, name, role, state (Working · Available · Waiting for a slot · Not
   available) and where. Working: info border and tint; available: success border; not available:
   dashed border, greyed icon.
