@@ -17,7 +17,7 @@
  */
 
 import { taskKey } from "./taskkey.ts";
-import { HOST_ID, DISPATCH_STATES, DISPATCH_VIA, MAX_PLAN_TASKS, PEOPLE_STATES, PLAN_STATES, type Json } from "./events.ts";
+import { HOST_ID, PROCESS_ID, DISPATCH_STATES, DISPATCH_VIA, MAX_PLAN_TASKS, PEOPLE_STATES, PLAN_STATES, type Json } from "./events.ts";
 
 export const DEFAULT_LEASE_SECONDS = 15 * 60;
 export const MAX_LEASE_SECONDS = 60 * 60;
@@ -29,6 +29,8 @@ const MAX_TASKS_PER_SPEC = 200;
 const MAX_CHAT = 300;
 /** A listener is online while it reports at least this often (it reports every minute). */
 export const LISTENER_ONLINE_SECONDS = 150;
+/** How often a host announces itself (host_online); the monitor's STALE and DISCONNECTED count missed announcements. */
+export const MONITOR_EVERY = 60;
 
 export const boardRunId = (projectId: string): string => `board_${projectId}`;
 /** Coordination runs: the board's own, and a member's notes and chat answers. Not sessions. */
@@ -97,6 +99,7 @@ export class Board {
   pushes = new Map<string, Map<string, Json>>(); // project -> task ref -> the latest push request and its outcome
   accepts = new Map<string, Map<string, Json>>(); // project -> task ref -> a person's latest final evaluation of its branch
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
+  processes = new Map<string, Map<string, Json>>(); // project -> "<host_id or name>/<process>" -> its runs (the witch monitor)
 
   /** The key an event carries; else the key of the task it names, as the board knows it; else the derived key. */
   private keyFor(project: string, p: Json, ref?: unknown): string | null {
@@ -280,6 +283,18 @@ export class Board {
         });
       }
       this.hosts.set(project, all);
+      // The monitor counts processes, not names or ids: two `coven host run` sharing one id are two entries.
+      if (typeof p.process === "string" && PROCESS_ID.test(p.process)) {
+        const procs = this.processes.get(project) ?? new Map<string, Json>();
+        const key = `${slot}/${p.process}`;
+        if (!procs.get(key) || (event.ts || "") >= procs.get(key)!.last_seen) {
+          procs.set(key, { host: event.member, host_id: id, process: p.process, last_seen: event.ts,
+            runs: Array.isArray(p.runs) ? p.runs.slice(0, 16).filter((r: Json) => r && typeof r.ref === "string").map((r: Json) => ({
+              ref: String(r.ref).slice(0, 121), started_at: String(r.started_at), agent: typeof r.agent === "string" ? r.agent : null,
+              attempt_id: typeof r.attempt_id === "string" ? r.attempt_id : null })) : [] });
+        }
+        this.processes.set(project, procs);
+      }
     } else if (event.type === "council_listening" && typeof event.member === "string" && event.member) {
       const all = this.listeners.get(project) ?? new Map<string, Json>();
       const known = all.get(event.member);
@@ -373,11 +388,52 @@ export class Board {
       }),
     }));
     return {
-      project_id: projectId, at, members, hosts: members, specs,
+      project_id: projectId, at, members, hosts: members, specs, monitor: this.monitor(projectId, specs, at),
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
       plans: [...(this.plans.get(projectId)?.values() ?? [])].sort((a, b) => ((a.proposed_at || "") < (b.proposed_at || "") ? 1 : -1)).slice(0, 20),
     };
+  }
+
+  /**
+   * The witch monitor: one row per active run of every host process (two processes on one task are two rows), with
+   * when it started, its stage from the task's latest status (never a guessed progress) and the process's heartbeat.
+   * Processes are announced every minute: STALE after 3 missed (3 min), DISCONNECTED after 12 (12 min). Rows of a
+   * process silent for longer than an hour are dropped. Also: when each witch was last offered by any host.
+   */
+  monitor(projectId: string, specs: Json[], at = new Date().toISOString()): Json {
+    const now = Date.parse(at);
+    const tasks = new Map<string, Json>(specs.flatMap((s: Json) => s.tasks.map((t: Json) => [`${s.spec}#${t.task_id}`, t] as [string, Json])));
+    const chat = new Map((this.chat.get(projectId) ?? []).map((m) => [m.message_id, m]));
+    const runs: Json[] = [];
+    for (const proc of this.processes.get(projectId)?.values() ?? []) {
+      const silent = (now - Date.parse(proc.last_seen || "")) / 1000;
+      if (!(silent <= 3600)) continue;
+      const heartbeat = silent >= MONITOR_EVERY * 12 ? "DISCONNECTED" : silent >= MONITOR_EVERY * 3 ? "STALE" : "fresh";
+      for (const r of proc.runs) {
+        const t = tasks.get(r.ref);
+        const status = this.statuses.get(projectId)?.get(r.ref);
+        const asked = r.ref.startsWith("chat#") ? chat.get(r.ref.slice(5)) : null;
+        const ownStatus = status && (status.ts || "") >= r.started_at ? status : null; // a status from before this run is not its own
+        const stage = !ownStatus ? "claimed" : ({ working: "running", submitted: "waiting for review", answered: "done", done: "done",
+          failed: "failed", queued: "failed" } as Json)[ownStatus.state] ?? "running";
+        runs.push({
+          ref: r.ref, title: t?.title ?? (asked ? String(asked.message).slice(0, 80) : null), agent: r.agent ?? t?.claimed_agent ?? t?.agent ?? null,
+          host: proc.host, host_id: proc.host_id, process: proc.process, run_id: r.attempt_id, started_at: r.started_at, stage,
+          last_activity: ownStatus ? { what: ownStatus.detail ? `${ownStatus.state}: ${ownStatus.detail}`.slice(0, 120) : ownStatus.state, at: ownStatus.ts }
+            : { what: "started", at: r.started_at },
+          heartbeat, last_seen: proc.last_seen,
+        });
+      }
+    }
+    runs.sort((a, b) => (a.started_at < b.started_at ? -1 : a.started_at > b.started_at ? 1 : 0));
+    const twice = new Set(runs.map((r) => r.ref).filter((ref, i, all) => all.indexOf(ref) !== i));
+    for (const r of runs) r.duplicate = twice.has(r.ref);
+    const lastSeen: Json = {};
+    for (const h of this.hosts.get(projectId)?.values() ?? []) {
+      for (const agent of h.agents || []) if (!lastSeen[agent] || (h.last_seen || "") > lastSeen[agent]) lastSeen[agent] = h.last_seen;
+    }
+    return { runs, witch_last_seen: lastSeen, every_seconds: MONITOR_EVERY };
   }
 
   /** The branch and host of a submitted task, for a push request; null when none is waiting on a host. */

@@ -271,6 +271,11 @@ and backs off (up to 15 minutes between tries). A waiting chat message gets one 
 paused and the message is kept, and it is answered when Kiro is back; a build goes back to the queue.
 Nothing else is posted in the meantime.
 
+**Witch monitor.** The board's Monitor section lists every run that is going: which witch, on which
+host and process, on what task, since when (the elapsed time ticks), at what stage, what it did last and
+whether its host still announces itself (STALE after 3 missed minutes, DISCONNECTED after 12). Two runs on
+the same work show as two rows, marked *runs twice*. It only watches; actions stay in the task dialog.
+
 **Host self-check.** `coven host run` first checks git, make, Node 22.18+ and installed dependencies,
 runs `npm ci` itself when `node_modules` is missing, and says once on the board what it cannot fix.
 CI runs `make verify` on every push and pull request (`.github/workflows/ci.yml`; it also type-checks the Worker).

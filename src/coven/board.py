@@ -365,7 +365,7 @@ def plan_propose(root: Path, plan: str, tasks: list[dict], summary: str, source:
 
 
 def host_online(root: Path, agents: list[str], slots: int, running: list[str] | None = None, cloud: list[str] | None = None,
-                free_slots: int | None = None) -> dict:
+                free_slots: int | None = None, process: str | None = None, runs: list[dict] | None = None) -> dict:
     """Tell the coven this host is up: the agents it can run and how many at once (sent every minute).
 
     `cloud` names the repositories it may run Kiro Web sessions on; the dashboard offers "Run in Kiro Web" only when a host has one."""
@@ -373,6 +373,9 @@ def host_online(root: Path, agents: list[str], slots: int, running: list[str] | 
                "free_slots": max(0, int(slots) - len(running or [])) if free_slots is None else max(0, int(free_slots))}
     if cloud:
         payload["cloud"] = [str(x)[:80] for x in cloud][:4]
+    if process:  # the witch monitor: which process this is, and the runs it has going (ref, witch, start, run id)
+        payload["process"] = process
+        payload["runs"] = list(runs or [])[:16]
     return _member_event(root, "host_online", payload)
 
 

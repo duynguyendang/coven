@@ -473,6 +473,42 @@ describe("several hosts (spec multi-host)", () => {
     } finally { await s.close(); }
   });
 
+  test("the witch monitor: one row per run of every process, its stage, its heartbeat, never merged", async () => {
+    const s = await startServer();
+    try {
+      const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
+      const online = (process: string, runs: Json[], secondsAgo = 0, member = "wsl", agents = ["grey-witch", "elf"]) =>
+        ({ ...ev("host_online", { agents, slots: 2, running: runs.map((r) => r.ref), host_id: "h_0000000a", process, runs }, member), ts: at(secondsAgo) });
+      const ask = await postJson(s.base, "/v1/chat", { project_id: "shop", kind: "ask", message: "can we start?", author: "duy" }, auth());
+      const chatRef = `chat#${ask.body.message_id}`;
+      // two processes with ONE host id both run the same request (the duplicate-reply bug): two rows, flagged
+      await send(s.base, [online("p_0000aaaa", [{ ref: chatRef, agent: "grey-witch", started_at: at(90) }], 0)], "wsl");
+      await send(s.base, [online("p_0000bbbb", [{ ref: chatRef, agent: "grey-witch", started_at: at(80) }, { ref: "s#1", agent: "elf", started_at: at(70), attempt_id: "0123456789abcdef.2" }], 0)], "wsl");
+      await send(s.base, [ev("task_status", { task: "s#1", state: "working", agent: "elf", detail: "thinking" })]);
+      let m = (await board(s.base)).monitor;
+      assert.equal(m.runs.length, 3, "every run of every process");
+      const chats = m.runs.filter((r: Json) => r.ref === chatRef);
+      assert.deepEqual(chats.map((r: Json) => [r.process, r.duplicate, r.title, r.stage]), [["p_0000aaaa", true, "can we start?", "claimed"], ["p_0000bbbb", true, "can we start?", "claimed"]]);
+      const elf = m.runs.find((r: Json) => r.ref === "s#1");
+      assert.deepEqual([elf.agent, elf.run_id, elf.stage, elf.heartbeat, elf.duplicate], ["elf", "0123456789abcdef.2", "running", "fresh", false]);
+      assert.match(elf.last_activity.what, /working: thinking/);
+      // a process that stopped announcing: STALE after 3 missed minutes, DISCONNECTED after 12, gone after an hour
+      await send(s.base, [online("p_0000cccc", [{ ref: "s#2", agent: "elf", started_at: at(400) }], 200, "far")], "far");
+      await send(s.base, [online("p_0000dddd", [{ ref: "s#3", agent: "elf", started_at: at(900) }], 800, "farther")], "farther");
+      await send(s.base, [online("p_0000eeee", [{ ref: "s#4", agent: "elf", started_at: at(9000) }], 4000, "gone")], "gone");
+      m = (await board(s.base)).monitor;
+      assert.deepEqual(Object.fromEntries(m.runs.map((r: Json) => [r.ref, r.heartbeat])), { [chatRef]: "fresh", "s#1": "fresh", "s#2": "STALE", "s#3": "DISCONNECTED" });
+      assert.ok(m.witch_last_seen["grey-witch"] && m.witch_last_seen.elf, "when each witch was last on a host");
+      // the run ends: the next announcement drops it
+      await send(s.base, [online("p_0000bbbb", [], 0)], "wsl");
+      m = (await board(s.base)).monitor;
+      assert.ok(!m.runs.some((r: Json) => r.process === "p_0000bbbb"));
+      assert.ok(!m.runs.find((r: Json) => r.ref === chatRef).duplicate, "one run left on it: no longer a duplicate");
+      const bad = await send(s.base, [ev("host_online", { agents: [], slots: 1, process: "nope", runs: [{ ref: "x" }] })]);
+      assert.equal(bad.body.accepted, 0, "a bad process id or run is refused");
+    } finally { await s.close(); }
+  });
+
   test("decisions need the admin password when one is set; a reader gets 403, not a sign-out", async () => {
     const s = await startServer({ env: { COVEN_TOKENS: "reader", COVEN_ADMIN_TOKEN: "boss" } });
     try {

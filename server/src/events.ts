@@ -67,6 +67,10 @@ export const EVENT_TYPES = new Set([
   "host_online",
 ]);
 
+/** One `coven host run` process: two processes that share a host id are still two (the monitor shows both). */
+export const PROCESS_ID = /^p_[0-9a-f]{8}$/;
+/** What a host runs: a task, a council job or a chat request (`chat#<message id>`). */
+const RUN_REF = /^[^#\s]{1,80}#[^#\s]{1,40}$/;
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
 export const HOST_ID = /^h_[0-9a-f]{8}$/;
 export const EXPECTS = new Set(["answer", "plan", "review", "test_result"]);
@@ -185,6 +189,19 @@ export function validateEvent(event: Json): string[] {
       if (payload[field] !== undefined && !HOST_ID.test(String(payload[field]))) errors.push(`${field} must be h_ and 8 hex characters`);
     }
     if (payload.free_slots !== undefined && !(Number.isInteger(payload.free_slots) && payload.free_slots >= 0 && payload.free_slots <= 16)) errors.push("free_slots must be 0 to 16");
+  }
+  // The witch monitor (§6.2): which process announces, and the runs it has going, each with its start.
+  if (event.type === "host_online" && isObject(payload)) {
+    if (payload.process !== undefined && !PROCESS_ID.test(String(payload.process))) errors.push("process must be p_ and 8 hex characters");
+    if (payload.runs !== undefined) {
+      if (!Array.isArray(payload.runs) || payload.runs.length > 16) errors.push("runs is a list of at most 16");
+      else for (const r of payload.runs) {
+        if (!isObject(r) || typeof r.ref !== "string" || !RUN_REF.test(r.ref)) { errors.push("a run names its ref as <spec>#<task>"); continue; }
+        if (typeof r.started_at !== "string" || Number.isNaN(Date.parse(r.started_at))) errors.push("a run has started_at (ISO time)");
+        if (r.agent !== undefined && !AGENT_SLUGS.has(r.agent)) errors.push("a run's agent must be a witch");
+        if (r.attempt_id !== undefined && !/^[0-9a-f]{16}\.[0-9]+$/.test(String(r.attempt_id))) errors.push("a run's attempt_id must be <task_key>.<n>");
+      }
+    }
   }
   if (event.type === "board_note") {
     // The field is `note`, not `text`: redaction drops `text` (where prompts and contents live).

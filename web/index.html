@@ -665,6 +665,25 @@
   .accept-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .witch .never { grid-column: 2; margin: 2px 0 0; font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
   .witch .never b { color: var(--bad-ink); font-weight: 600; margin-right: 4px; }
+  /* witch monitor: dense rows, like the rest of the board; on a phone each row stacks */
+  .monitor { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+  .mon-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(180px, 1.6fr) minmax(140px, 1fr) minmax(150px, 1fr) auto minmax(150px, 1.2fr) minmax(120px, 0.8fr);
+    gap: 4px 12px; align-items: center; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); font-size: 0.8125rem; }
+  .mon-row.twice { border-color: var(--bad-line); background: var(--bad-soft); }
+  .mon-stage .badge.working { color: var(--info-ink); border-color: var(--info-line); background: var(--info-bg); }
+  .mon-row.stale { border-color: var(--warn-line); }
+  .mon-row.disconnected { border-style: dashed; border-color: var(--bad-line); }
+  .mon-row > span { min-inline-size: 0; overflow-wrap: anywhere; }
+  .mon-who { display: flex; align-items: center; gap: 6px; }
+  .mon-who .av { inline-size: 24px; block-size: 24px; margin: 0; }
+  .mon-who > span { display: grid; line-height: 1.25; }
+  .mon-task { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+  .mon-task .tt { color: var(--muted); }
+  .mon-host, .mon-last, .mon-beat, .mon-time { font-size: 0.75rem; }
+  .mon-host .mono { margin-left: 6px; }
+  .mon-empty { margin: 0 0 14px; }
+  @media (max-width: 980px) { .mon-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  @media (max-width: 560px) { .mon-row { grid-template-columns: minmax(0, 1fr); } }
   .witch .motto { grid-column: 2; margin: 2px 0 0; font-family: var(--font-display); font-style: italic; font-size: 0.8125rem; color: var(--muted); }
 
   /* the ghost as a character: it peeks, thinks, shrugs and ducks. Motion is gentle and off with reduced motion. */
@@ -1718,7 +1737,8 @@
       const job = (j) => (j.task.startsWith("chat#") ? `on <a href="#/chat/${encodeURIComponent(b.project_id || "")}" data-key="witch-job-${esc(w.slug)}-${esc(j.task)}">a chat request</a>`
         : `on <button class="link" type="button" data-task-open="${esc(j.task)}" data-key="witch-job-${esc(w.slug)}-${esc(j.task)}">${esc(j.task)}</button>`);
       const where = w.state === "working" ? w.jobs.map((j) => `${job(j)} · ${esc(j.host)}`).join("; ")
-        : w.offers.length ? `on ${w.offers.map((o) => esc(o.host)).join(", ")}` : "no host runs it";
+        : w.offers.length ? `on ${w.offers.map((o) => esc(o.host)).join(", ")}`
+        : `not on any host${((b.monitor || {}).witch_last_seen || {})[w.slug] ? ` · last seen ${ago(secondsSince(b.monitor.witch_last_seen[w.slug]))}` : " · never seen"}`;
       return `<div class="witch ${w.state}" data-key="witch-${w.slug}">${avatar(w.slug)}<div class="nm">${esc(agentName(w.slug))}</div><div class="rl">${esc(AGENT_ROLE[w.slug])}</div>
         <div class="st"><span class="dot ${w.state === "working" ? "live" : w.state === "available" ? "live" : ""}" aria-hidden="true"></span>${text[w.state]}</div><div class="where">${where}</div>${roleCard(w.slug)}</div>`;
     };
@@ -1747,6 +1767,33 @@
   const WITCH_MOTTO = { "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
     "white-hat": "Show me the test.", "elder-witch": "Read the spec first.", "green-witch": "Inside the paths, or not at all.", "imp": "Two eyes are good; four are better.",
     "raven": "I watch. I do not touch.", "scribe": "No task leaves without paths and a verify.", "herald": "Only what the guard said.", "weaver": "You decide at the gate." };
+  /* --------------------------------------------------------------- witch monitor */
+  /** One row per active run of every host process (never merged: two runs on one task are two rows). Observe only. */
+  const STAGE_TONE = { claimed: "grey", running: "working", "waiting for review": "warn", done: "accept", failed: "reject", held: "warn" };
+  const HEARTBEAT_TONE = { fresh: "live", STALE: "stale", DISCONNECTED: "disconnected" };
+  function monitorHtml(b) {
+    const m = b.monitor;
+    if (!m) return "";
+    const rows = m.runs || [];
+    const row = (r) => {
+      const task = r.ref.startsWith("chat#")
+        ? `<a href="#/chat/${encodeURIComponent(b.project_id)}" data-key="mon-task-${esc(r.ref)}-${esc(r.process)}">chat request</a>`
+        : `<button class="link mono" type="button" data-task-open="${esc(r.ref)}" data-key="mon-task-${esc(r.ref)}-${esc(r.process)}">${esc(r.ref)}</button>`;
+      return `<li class="mon-row ${r.duplicate ? "twice" : ""} ${esc(cls(r.heartbeat))}" data-key="mon-${esc(r.ref)}-${esc(r.process)}">
+        <span class="mon-who">${r.agent ? avatar(r.agent) : ""}<span><b>${esc(r.agent ? agentName(r.agent) : "a witch")}</b><span class="hint">${esc(r.agent ? AGENT_ROLE[r.agent] || "" : "")}</span></span></span>
+        <span class="mon-task">${task}${r.title ? `<span class="tt">${esc(short(r.title, 70))}</span>` : ""}${r.duplicate ? '<span class="chip red" title="Another run works on the same task or message right now">runs twice</span>' : ""}</span>
+        <span class="mon-host"><span class="hint">host</span> ${esc(r.host)} <span class="mono hint" title="this coven host run process">${esc(r.process)}</span>${r.run_id ? `<span class="mono hint" title="run id (attempt)">run ${esc(r.run_id.slice(-6))}</span>` : ""}</span>
+        <span class="mon-time"><span class="hint">started</span> ${esc(clock(r.started_at))} · <b class="mono" data-elapsed="${esc(r.started_at)}">${esc(span(secondsSince(r.started_at)))}</b></span>
+        <span class="mon-stage"><span class="badge ${esc(STAGE_TONE[r.stage] || "grey")}">${esc(r.stage)}</span></span>
+        <span class="mon-last"><span class="hint">last:</span> ${esc(short(r.last_activity && r.last_activity.what || "", 60))}${r.last_activity ? ` · ${agoTag(r.last_activity.at)}` : ""}</span>
+        <span class="mon-beat"><span class="health"><span class="dot ${esc(HEARTBEAT_TONE[r.heartbeat] || "")}" aria-hidden="true"></span>${r.heartbeat === "fresh" ? "heartbeat" : esc(r.heartbeat)}</span> ${agoTag(r.last_seen)}</span>
+      </li>`;
+    };
+    const twice = rows.filter((r) => r.duplicate).length;
+    return `<h2>Monitor <span class="hint">· ${rows.length ? `${plural(rows.length, "run")} going${twice ? `, <b class="bad">${twice} on the same work</b>` : ""}` : "observe only"}</span></h2>
+      ${rows.length ? `<ol class="monitor" aria-label="Runs going now">${rows.map(row).join("")}</ol>`
+        : '<p class="hint mon-empty">No witch is working right now.</p>'}`;
+  }
   /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
   function roleCard(slug) {
     const r = WITCH_ROLES[slug];
@@ -1799,6 +1846,7 @@
         : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
       ${decidedList(decidedPlans, b)}
       ${stageHtml(members.roster)}
+      ${monitorHtml(b)}
       <h2>Witches${members.html ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : ""}</h2>${members.html ? members.html : '<p class="hint">No witch is available: no host is online. On a machine: <code>coven host join &lt;name&gt;</code>, then <code>coven host run</code>.</p>'}
       <h2>Whiteboard</h2>${compose}
       <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">The whiteboard is blank. The Elf has ideas; so do you: post the first note.</p>'}</div>`;
@@ -2687,6 +2735,7 @@
   // Age labels tick every second, without a request.
   setInterval(() => {
     document.querySelectorAll("time[data-ago]").forEach((el) => { el.textContent = ago(secondsSince(el.dataset.ago)); });
+    document.querySelectorAll("[data-elapsed]").forEach((el) => { el.textContent = span(secondsSince(el.dataset.elapsed)); });
   }, 1000);
 
   $("login-form").addEventListener("submit", (ev) => {

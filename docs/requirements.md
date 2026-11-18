@@ -175,6 +175,17 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-HC1 | On `coven host run` the host checks what builds need (git, make, Node ≥ 22.18, installed `node_modules`), runs `npm ci` itself when the dependencies are missing, and says what it cannot fix once, on the board. | Should | Built |
 | FR-CI1 | Every push and pull request runs `make verify` on GitHub Actions (`.github/workflows/ci.yml`; it also type-checks the Worker). | Should | Built (not yet run on GitHub) |
 
+### 4.9.3 Witch monitor
+
+| ID | Requirement | Priority | Status |
+| :--- | :--- | :--- | :--- |
+| FR-MON1 | The board's **Monitor** lists every active run as one row: witch, host and process, task (id and title, or the chat request), run id, start time, elapsed time ticking every second, stage, last activity and heartbeat. | Must | Built |
+| FR-MON2 | Two runs on the same task or message are two rows, flagged *runs twice*, even when their processes share one host name and id. | Must | Built |
+| FR-MON3 | A process that misses 3 announcements (one a minute) reads STALE; 12, DISCONNECTED; after an hour its rows are dropped. | Must | Built |
+| FR-MON4 | A witch no host runs says "not on any host" and when a host last offered her. | Should | Built |
+| FR-MON5 | The stage comes from the task's latest status since the run started (claimed, running, waiting for review, done, failed); there is no progress percentage. | Must | Built |
+| FR-MON6 | With nothing running it says "No witch is working right now". The monitor only observes: it never stops, pauses or re-dispatches a run. | Must | Built |
+
 ### 4.10 Witches working together
 
 | Id | Requirement | Pri | Status |

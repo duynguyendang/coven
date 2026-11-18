@@ -65,7 +65,7 @@ class FakeCloud:
             tasks = specmap.load(root)
             return [t for r, t in tasks.items() if r not in held and not t["done"]]
 
-        c.answers, c.statuses, c.created, c.stamps, c.branches, c.verdicts = [], [], [], [], [], []
+        c.answers, c.statuses, c.created, c.stamps, c.branches, c.verdicts, c.monitor = [], [], [], [], [], [], []
         c.lease_ok = True
         monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None, sender=None, expects=None, reply_to=None, depth=None: c.created.append(
             {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key, "from": sender, "expects": expects, "reply_to": reply_to}) or {})
@@ -79,7 +79,7 @@ class FakeCloud:
             "held": lambda root: list(c.claims), "holds": lambda root, claim_id: c.lease_ok, "chat": lambda root: {"messages": c.chat, "waiting": []},
             "read": lambda root: {"notes": c.notes, "claims": [], "specs": c.specs}, "member": lambda root: name,
             "post": lambda root, note, **k: c.notes.append({"note": note, **k}) or {},
-            "host_online": lambda root, agents_, slots, running=None, cloud=None: c.online.append((list(agents_), slots)) or {},
+            "host_online": lambda root, agents_, slots, running=None, cloud=None, process=None, runs=None: (c.online.append((list(agents_), slots)), c.monitor.append((process, runs))) and {},
         }.items():
             monkeypatch.setattr(board, attr, fn)
         return self
@@ -1285,3 +1285,21 @@ def test_one_host_per_working_copy(repo):
     again = host.hold_host_lock(repo)
     assert again is not None, "free again once the first host stops"
     again.close()
+
+
+def test_the_host_tells_the_monitor_each_run_with_its_start_at_once(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    gate = threading.Event()
+    h = host.Host(repo, slots=1, runner=Runner({"elf": lambda cwd, prompt: (gate.wait(5), ("an idea", None))[1]}), only=["elf"], out=lambda *a: None)
+    h.tick()
+    process, runs = cloud.monitor[-1]
+    assert process == h.process and process.startswith("p_") and len(process) == 10
+    assert [(r["ref"], r.get("agent")) for r in runs] == [("shop#2", "elf")], "announced in the tick that started it, not a minute later"
+    assert runs[0]["started_at"].endswith("Z")
+    assert host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None).process != process, "every process has its own id"
+    gate.set()
+    for future in list(h.running.values()):
+        future.result()
+    h._reap()
+    h.presence()
+    assert cloud.monitor[-1][1] == [], "a finished run leaves the monitor at once"

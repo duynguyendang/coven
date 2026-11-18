@@ -792,7 +792,7 @@ describe("session screen", () => {
     assert.ok(by("elf").classList.contains("working"));
     assert.match(text("raven"), /Available.*on wsl-7/);
     assert.ok(by("raven").classList.contains("available"));
-    assert.match(text("herald"), /Not available.*no host runs it/);
+    assert.match(text("herald"), /Not available.*not on any host · (never seen|last seen)/);
     assert.ok(by("herald").classList.contains("offline"));
     assert.match(doc().querySelector("#main h2")!.parentElement!.textContent!, /Witches/);
     assert.equal(doc().querySelector(".member"), null, "no list of machines");
@@ -1085,6 +1085,26 @@ describe("keyboard, safety and states", () => {
     assert.ok(!doc().querySelector("#main img"));
     assert.ok(!(dom.window as any).__xss);
     assert.ok(text().includes(hostile), "rendered as text");
+  });
+
+  test("board: the monitor shows each run of each process, with its elapsed time, and two on the same work as two rows", async () => {
+    const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
+    const online = (member: string, process: string, runs: unknown[]) => ({ ...ev(`member_${member}`, "shop", "host_online",
+      { agents: ["elf"], slots: 2, running: [], host_id: "h_0000beef", process, runs }, 1), member, ts: at(0) });
+    await go("#/board/shop", 400);
+    assert.match(text(), /No witch is working right now\./, "nothing runs: said plainly, no fake rows");
+    await send("shop", "member_mon", [online("mon", "p_00000001", [{ ref: "shop#1", agent: "elf", started_at: at(125) }])]);
+    await send("shop", "member_mon", [online("mon", "p_00000002", [{ ref: "shop#1", agent: "elf", started_at: at(65) }])]);
+    await go("#/");
+    await go("#/board/shop", 600);
+    const rows = [...doc().querySelectorAll(".monitor .mon-row")];
+    assert.equal(rows.length, 2, "two processes on one task: two rows");
+    assert.ok(rows.every((r) => r.classList.contains("twice")) && /runs twice/.test(rows[0].textContent!));
+    const first = rows[0].textContent!.replace(/\s+/g, " ");
+    assert.match(first, /Elf.*shop#1.*p_00000001.*started.*2 min \d+ s/);
+    assert.match(first, /claimed/);
+    assert.match(text(), /2 runs going, 2 on the same work/);
+    await go("#/");
   });
 
   test("board: the final evaluation of a submitted branch: Request changes asks why, Accept asks the host to merge", async () => {

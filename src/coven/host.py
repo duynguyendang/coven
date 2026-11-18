@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import threading
@@ -1695,6 +1696,25 @@ def execute_job(root: Path, task: dict, agent: str, runner: Runner = run_agent, 
 # ---------------------------------------------------------------------- the host
 
 
+class Runs(dict):
+    """The host's running futures, by ref, remembering when each one started (and, when known, for which witch)."""
+
+    def __init__(self):
+        super().__init__()
+        self.started: dict[str, str] = {}
+        self.agents: dict[str, str] = {}
+
+    def __setitem__(self, ref, future):
+        if ref not in self:
+            self.started[ref] = events.now_iso()
+        super().__setitem__(ref, future)
+
+    def __delitem__(self, ref):
+        super().__delitem__(ref)
+        self.started.pop(ref, None)
+        self.agents.pop(ref, None)
+
+
 class Host:
     """The dispatcher: a pool of `slots` agent runs, fed from the board."""
 
@@ -1714,7 +1734,9 @@ class Host:
         have = agents.installed(root)
         self.can_run = [a for a in have if not only or a in only]
         self.pool = ThreadPoolExecutor(max_workers=self.slots, thread_name_prefix="coven-agent")
-        self.running: dict[str, Future] = {}
+        self.running: dict[str, Future] = Runs()  # stamps when each run started, for the witch monitor
+        self.process = f"p_{secrets.token_hex(4)}"  # this process: two hosts that share an id still tell apart
+        self._announced: tuple = ()
         self.host_id = config.host_id(root)
         self.attempts: dict[str, int] = {}  # ref -> runs of it the board has seen (`doer_attempts`), refreshed each tick
         self._presence_at: float | None = None
@@ -1858,6 +1880,7 @@ class Host:
                 continue
             self.out(f"host: {agents.label(agent)} takes a request from {message.get('author')}: {message.get('message', '')[:60]}")
             self.running[ref] = self.pool.submit(execute_request, self.root, message, agent, self.runner, notes, self._context(chat))
+            self.running.agents[ref] = agent
             started.append(ref)
         return started
 
@@ -1928,6 +1951,7 @@ class Host:
                     continue
                 self.out(f"host: {agents.label(agent)} takes job {ref} {task.get('title') or ''}")
                 self.running[ref] = self.pool.submit(execute_job, self.root, task, agent, self.runner, messages.get(task.get("source")), notes)
+                self.running.agents[ref] = agent
                 started.append(ref)
         return started
 
@@ -2055,10 +2079,29 @@ class Host:
                 done.append(result)
         return done
 
+    def monitor_runs(self) -> list[dict]:
+        """This process's runs as the witch monitor shows them: ref, witch, start, run id. Never anything they say."""
+        records = load(self.root)
+        out = []
+        for ref in sorted(self.running):
+            run = {"ref": ref, "started_at": self.running.started.get(ref) or events.now_iso()}
+            agent = (records.get(ref) or {}).get("agent") or self.running.agents.get(ref)
+            if agent in agents.AGENTS:
+                run["agent"] = agent
+            key, attempt = _RUNS.get(ref) or (None, None)
+            if key and attempt:
+                run["attempt_id"] = taskkey.attempt_id(key, attempt)
+            out.append(run)
+        return out
+
     def presence(self, force: bool = False) -> None:
-        if force or self._presence_at is None or self.clock() - self._presence_at >= PRESENCE_EVERY:
+        # Announce on schedule, and at once when a run starts or ends, so the monitor follows within one tick.
+        changed = tuple(sorted(self.running)) != self._announced
+        if force or changed or self._presence_at is None or self.clock() - self._presence_at >= PRESENCE_EVERY:
+            self._announced = tuple(sorted(self.running))
             try:
-                board.host_online(self.root, self.can_run, self.slots, sorted(self.running), cloud=[self.kiro_web] if self.kiro_web else None)
+                board.host_online(self.root, self.can_run, self.slots, sorted(self.running), cloud=[self.kiro_web] if self.kiro_web else None,
+                                  process=self.process, runs=self.monitor_runs())
             except Exception:  # noqa: BLE001
                 pass
             self._presence_at = self.clock()
@@ -2096,6 +2139,7 @@ class Host:
         reworked = self._rework(chat, notes, tasks)
         waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
         taken = self._take(view, notes, waiting)
+        self.presence()  # runs started in this tick: the monitor hears it now, not in a minute
         return {"finished": finished, "requests": asked, "reworked": reworked, "taken": taken, "running": sorted(self.running),
                 **({"pushed": pushed} if pushed else {}), **({"settled": settled} if settled else {}), **({"accepted": accepted} if accepted else {})}
 
