@@ -840,6 +840,15 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("the sidebar lists a project that has a board but no session", async () => {
+    await go("#/board/lab", 600);
+    const link = doc().querySelector('[data-key="nav-p-lab"]') as HTMLAnchorElement;
+    assert.ok(link, "lab has only board events and is still a project");
+    assert.match(link.getAttribute("href")!, /^#\/board\/lab$/, "no sessions: it opens the board");
+    assert.equal(link.querySelector(".count")!.textContent, "0");
+    await go("#/");
+  });
+
   test("board: each witch shows what she is responsible for", async () => {
     await go("#/board/lab", 600);
     const pick = async (slug: string) => { (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click(); await wait(50); };

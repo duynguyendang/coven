@@ -1308,7 +1308,8 @@
         state.flows.some((f) => f.waiting_for) ? "warn" : "", r.view === "flows" || r.view === "flow") : "",
     ].join("");
 
-    const ids = [...new Set(runs.map((x) => x.project_id))].sort();
+    // A project with a board but no session yet is still a project: list those too (its link opens its board).
+    const ids = [...new Set([...runs.map((x) => x.project_id), ...state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked")])].sort();
     const open = new Set(state.ui.open);
     const projects = ids.map((id) => {
       const stats = projectStats(id), specs = specsOf(id);
@@ -1319,7 +1320,7 @@
         <span class="label">${esc(sp.spec)}</span> <span class="count">${Number(sp.done) || 0}/${Number(sp.total) || 0}</span></a></li>`).join("")}</ul>` : "";
       return `<li><div class="nav-row">
         <button class="caret-btn ${specs.length ? "" : "none"}" type="button" data-caret="${esc(id)}" aria-expanded="${expanded}" aria-label="Specs of ${esc(id)}" ${specs.length ? "" : 'tabindex="-1" aria-hidden="true"'}>${expanded ? "▾" : "▸"}</button>
-        <a class="nav-item" href="${listHash({ project: id })}" data-key="nav-p-${esc(id)}"${here && !r.spec ? ' aria-current="page"' : ""}>
+        <a class="nav-item" href="${stats.sessions ? listHash({ project: id }) : `#/board/${encodeURIComponent(id)}`}" data-key="nav-p-${esc(id)}"${here && !r.spec ? ' aria-current="page"' : ""}>
           <span class="dot mini ${stats.live ? "live" : ""}" aria-hidden="true"></span>
           <span class="label">${esc(projectName(id))}</span>
           <span class="count ${stats.attention ? "warn" : ""}" ${stats.attention ? `title="${plural(stats.attention, "session")} needing attention"` : ""}>${stats.sessions}</span></a>
