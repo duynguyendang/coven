@@ -114,6 +114,28 @@ describe("durability", () => {
   });
 });
 
+describe("expiry", () => {
+  for (const days of [1, 30]) {
+    test(`ttlDays=${days} stamps a numeric ttl on events and the run summary`, async () => {
+      const table = new FakeTable();
+      const store = new DynamoStore(table, days);
+      const before = Math.floor(Date.now() / 1000);
+      await store.ingest("coven", "run_1", [event("e1"), event("e2")]);
+      const after = Math.floor(Date.now() / 1000);
+      const items = [...table.items.values()];
+      const evts = items.filter((i) => String(i.sk).includes("#EVT#"));
+      const metas = items.filter((i) => String(i.sk).endsWith("#META"));
+      assert.equal(evts.length, 2);
+      assert.equal(metas.length, 1);
+      for (const item of [...evts, ...metas]) {
+        assert.equal(typeof item.ttl, "number");
+        const ttl = item.ttl as number;
+        assert.ok(ttl >= before + days * 86400 - 5 && ttl <= after + days * 86400 + 5, `ttl ${ttl} for ${item.sk}`);
+      }
+    });
+  }
+});
+
 describe("rehydration", () => {
   test("rebuilds runs, credits, dismissed-independent timelines and the seeded council", async () => {
     const table = new FakeTable();
