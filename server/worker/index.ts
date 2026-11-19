@@ -29,7 +29,14 @@ interface Env {
   COVEN_READ_TOKEN?: string;
   /** People's decisions (accept and merge, plan, done, retry, dispatch, push) need this one when it is set. */
   COVEN_ADMIN_TOKEN?: string;
+  /** Days to keep events; unset or invalid gives 30, 0 or less keeps them forever. */
+  COVEN_TTL_DAYS?: string;
 }
+
+const ttlDays = (value: string | undefined): number => {
+  const days = value?.trim() ? Number(value) : NaN;
+  return Number.isFinite(days) ? days : 30;
+};
 
 const tokenEnv = (env: Env): TokenEnv => ({
   COVEN_TOKENS: env.COVEN_TOKENS, COVEN_INGEST_TOKEN: env.COVEN_INGEST_TOKEN, COVEN_READ_TOKEN: env.COVEN_READ_TOKEN,
@@ -47,7 +54,7 @@ export class CovenCloud extends DurableObject<Env> {
     this.version = env.CF_VERSION_METADATA?.id ?? null;
     // No request is served until the read model is rebuilt from storage.
     ctx.blockConcurrencyWhile(async () => {
-      const store = new SqlStore(ctx.storage.sql as any);
+      const store = new SqlStore(ctx.storage.sql as any, ttlDays(env.COVEN_TTL_DAYS));
       const replayed = await store.hydrate();
       console.log(`coven cloud: rehydrated ${replayed} events`);
       this.handle = createHandler({ store, env: tokenEnv(env), storeName: "durable-object" });

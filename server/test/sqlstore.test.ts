@@ -56,6 +56,24 @@ describe("SqlStore", () => {
     assert.equal(await new SqlStore(sql, 1).hydrate(), 1, "a one-day rule drops the 29-day-old event");
   });
 
+  test("a failing expiry delete is logged and hydrate still replays events", async () => {
+    const sql = sqlite();
+    await new SqlStore(sql, 0).ingest("shop", "sess_a", [ev("e1", "run_started"), ev("e2", "tool_call")]);
+    const failing = { ...sql, exec: (query: string, ...b: unknown[]) => {
+      if (/^\s*delete from events where ts/i.test(query)) throw new Error("boom");
+      return sql.exec(query, ...b);
+    } };
+    const logged: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args); };
+    try {
+      assert.equal(await new SqlStore(failing as any, 30).hydrate(), 2);
+    } finally {
+      console.error = original;
+    }
+    assert.equal(logged.length, 1);
+  });
+
   test("events survive a restart, and a replay after it is a duplicate", async () => {
     const sql = sqlite();
     const first = new SqlStore(sql);
