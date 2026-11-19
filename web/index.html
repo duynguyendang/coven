@@ -703,6 +703,7 @@
   .empty.voice .then { color: var(--muted); font-size: 0.875rem; }
   .peek { display: block; inline-size: 44px; block-size: 26px; margin: 0 auto 14px; overflow: hidden; }
   .peek .av { width: 44px; height: 44px; margin: 0; animation: peek 2.8s ease-in-out 0.4s both; }
+  .empty.voice.still .peek .av { animation: none; translate: 0 8%; } /* ops screens: the ghost sits there, no motion */
   @keyframes peek { 0% { translate: 0 100%; } 30%, 80% { translate: 0 8%; } 100% { translate: 0 30%; } }
 
   /* the front door: a flat dark stage, one flat lilac panel the ghost peeks over, a big serif headline typed once */
@@ -923,7 +924,7 @@
   /* ---------------------------------------------------------------- helpers */
   const $ = (id) => document.getElementById(id);
   /** An empty state with a voice: one sentence that sounds like the coven, what to do next, and a ghost peeking over the edge. */
-  const voice = (say, then, who = "coven") => `<div class="empty voice"><span class="peek" aria-hidden="true">${avatar(who)}</span><span class="say">${say}</span><span class="then">${then}</span></div>`;
+  const voice = (say, then, who = "coven", still = false) => `<div class="empty voice${still ? " still" : ""}"><span class="peek" aria-hidden="true">${avatar(who)}</span><span class="say">${say}</span><span class="then">${then}</span></div>`;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   /** Voice lines for empty states: plain text (and an optional plain command); empty() escapes both and wraps cmd in <code>. */
   const EMPTY = {
@@ -1860,7 +1861,7 @@
   function boardView() {
     const project = defaultBoardProject();
     const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Coven board" }];
-    if (!project) return `${pageHeader({ crumbs, title: "Coven board" })}<div class="card"><div class="empty">No project yet. Link a repo with <code>coven project link &lt;name&gt;</code>.</div></div>`;
+    if (!project) return `${pageHeader({ crumbs, title: "Coven board" })}<div class="card">${voice("No project yet.", "Link a repo with <code>coven project link &lt;name&gt;</code>.", "grey-witch", true)}</div>`;
     const b = state.board;
     if (!b) return `${pageHeader({ crumbs, title: `Coven board · ${project}` })}<div class="card"><div class="empty">Loading the board…</div></div>`;
     const names = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
@@ -1986,7 +1987,7 @@
   function chatView() {
     const project = defaultBoardProject();
     const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Council chat" }];
-    if (!project) return `${pageHeader({ crumbs, title: "Council chat" })}<div class="card"><div class="empty">No project yet. Link a repo with <code>coven project link &lt;name&gt;</code>.</div></div>`;
+    if (!project) return `${pageHeader({ crumbs, title: "Council chat" })}<div class="card">${voice("No project yet.", "Link a repo with <code>coven project link &lt;name&gt;</code>.", "grey-witch", true)}</div>`;
     const c = state.chat;
     if (!c) return `${pageHeader({ crumbs, title: `Council chat · ${project}` })}<div class="card"><div class="empty">Loading the chat…</div></div>`;
     const names = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
@@ -1997,7 +1998,7 @@
       ? `<span class="who-on" role="status" title="What you say to the council, the Chair understands and dispatches to the witches as tasks on the board.">${avatar("grey-witch")}The Chair is on <b>${chairs.map((h) => esc(h.host)).join(", ")}</b></span>${online.length ? `<span>· one witch's questions: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} listening</span>` : ""}`
       : online.length
       ? `<span class="who-on" role="status">${avatar("grey-witch")}Answering: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} · listening, seen ${agoTag(online[0].last_seen)}</span><span>An answer takes a Kiro run: about a minute.</span>`
-      : `<span class="who-on off" role="status"><b>No member is listening:</b> messages wait. <span class="how">Run <code>coven council listen</code> or <code>./run-host.sh</code>.</span></span>`;
+      : `<span class="who-on off" role="status">${avatar("grey-witch")}<b>No member is listening:</b> messages wait. <span class="how">Run <code>coven council listen</code> or <code>./run-host.sh</code>.</span></span>`;
     const byId = new Map((c.messages || []).map((m) => [m.message_id, m]));
     const waiting = new Set(c.waiting || []);
     const replies = (kinds) => new Set((c.messages || []).filter((m) => m.role === "council" && kinds.includes(m.kind)).map((m) => m.reply_to));
@@ -2009,7 +2010,7 @@
       + `${c.earlier || state.chatEarlier ? `<button class="act quiet" type="button" data-chat-earlier data-key="chat-earlier" aria-pressed="${state.chatEarlier}">${state.chatEarlier ? "Hide earlier chats" : `Earlier chats (${plural(c.earlier, "message")})`}</button>` : ""}`;
     const thread = (more ? `<div class="chat-more">${more}</div>` : "") + (real.length
       ? `<ol class="chat" aria-label="Conversation" aria-live="polite">${groups.slice(-state.chatShown).map((m) => chatMessage(m, byId, waiting, ctx)).join("")}</ol>`
-      : voice("The council is gathered and quiet.", "Say what you want: a question, an idea, or work to do. The Chair answers and hands the work to the witches.", "grey-witch"));
+      : voice("The council is gathered and quiet.", "Say what you want: a question, an idea, or work to do. The Chair answers and hands the work to the witches.", "grey-witch", true));
     if (state.chatSeen) state.chatSeen.primed = true; // from now on, a new message slides in
     const tasks = ((state.board && state.board.project_id === project && state.board.specs) || [])
       .flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => [`${s.spec}#${t.task_id}`, t.title || ""]));
@@ -2354,7 +2355,7 @@
   }
 
   function filesTab(files) {
-    if (!files.length) return '<div class="card"><div class="empty">No files written in this session.</div></div>';
+    if (!files.length) return `<div class="card">${voice("No files written.", "This session has not written a file yet.", "green-witch", true)}</div>`;
     return `<div class="card"><table><thead><tr><th>File</th><th class="num">Writes</th><th>Last</th><th>Tool</th></tr></thead><tbody>
       ${files.map((f) => `<tr><td class="mono">${esc(f.path)}${f.deviation ? ' <span class="chip">possible deviation</span>' : ""}</td>
         <td class="num">${f.writes}</td><td>${agoTag(f.last)}</td><td class="mono">${esc(f.tool)}</td></tr>`).join("")}
@@ -2397,7 +2398,7 @@
     const status = council.status === "closed" ? (council.verdict === "no-consensus" ? "closed by no consensus" : "closed by guard verdict") : "in progress";
     return `${council.mode === "seeded" ? '<div class="banner replay">SEEDED REPLAY — recorded events, not a live council</div>' : ""}
       <section class="card"><div class="head"><div><span class="round">Round ${council.round} / 3 — ${esc(council.task_id || "")}</span> <span class="badge grey">${esc(status)}</span></div>${picker}</div>
-        ${claims.map(claimRow).join("") || '<div class="empty">No claims yet.</div>'}</section>
+        ${claims.map(claimRow).join("") || voice("No claims yet.", "A claim appears when a session takes a task or a file.", "grey-witch", true)}</section>
       ${chairCard(summaries, proposal)}${guardCard(guard, proposal)}
       ${closed ? `<div class="banner">Council closed — verdict <b>${esc(council.verdict || "—")}</b>, ${esc((closed.payload || {}).rounds || council.round)} round(s), ${num(council.credits)} credits. Recorded only — nothing was changed in the repo.</div>` : ""}`;
   }
