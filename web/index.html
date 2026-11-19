@@ -88,10 +88,13 @@
   main:focus, main:focus-visible { outline: none; }
   .mono { font-family: var(--mono); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .hint { color: var(--muted); font-size: 0.7812rem; }
+  .hint { color: var(--muted); font-size: 0.75rem; }
+
+  /* one look for every text field and select; each rule below only sets its size and padding */
+  :where(.toolbar input[type="search"], .toolbar select, .me input, .compose textarea, .compose select, .compose input, .column-detail .col-filter, .plan .decide .why, .changes-form input, [data-board-project]) { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-inner); }
 
   /* app shell: sidebar + workspace (UX v3) */
-  .skip { position: absolute; left: 8px; top: -40px; background: var(--panel); color: var(--text); border: 1px solid var(--blue); border-radius: 6px; padding: 6px 12px; z-index: 100; }
+  .skip { position: absolute; left: 8px; top: -40px; background: var(--panel); color: var(--text); border: 1px solid var(--blue); border-radius: var(--radius-inner); padding: 6px 12px; z-index: 100; }
   .skip:focus { top: 8px; text-decoration: none; }
   .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100dvh; }
   .app.nav-closed { grid-template-columns: minmax(0, 1fr); }
@@ -123,7 +126,7 @@
 
   .nav-h { margin: 16px 8px 6px; font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
   .nav-list { list-style: none; margin: 0; padding: 0; }
-  .nav-item { display: flex; align-items: center; gap: 8px; color: var(--muted); border-radius: 6px; padding: 6px 8px; font-size: 0.8438rem; border-left: 2px solid transparent; }
+  .nav-item { display: flex; align-items: center; gap: 8px; color: var(--muted); border-radius: var(--radius-inner); padding: 6px 8px; font-size: 0.875rem; border-left: 2px solid transparent; }
   .nav-item:hover { background: var(--hover); color: var(--text); text-decoration: none; }
   .nav-item[aria-current="page"] { background: var(--hover); color: var(--text); border-left-color: var(--blue); font-weight: 500; }
   .nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -135,15 +138,14 @@
   .caret-btn:hover { color: var(--text); background: var(--hover); }
   .caret-btn[hidden], .caret-btn.none { visibility: hidden; }
   .nav-sub { margin: 0 0 4px 22px; padding: 0 0 0 6px; list-style: none; border-left: 1px solid var(--line); }
-  .nav-sub .nav-item { font-size: 0.7812rem; padding: 4px 8px; }
+  .nav-sub .nav-item { font-size: 0.75rem; padding: 4px 8px; }
   .nav-sub .nav-item .label { font-family: var(--mono); font-size: 0.75rem; }
   .dot.mini { width: 7px; height: 7px; }
   .me { display: grid; gap: 3px; margin-top: auto; padding: 10px 2px 8px; border-top: 1px solid var(--line); }
   .me label { font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
-  .me input { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; min-inline-size: 0; }
+  .me input { padding: 5px 8px; min-inline-size: 0; }
   .me input::placeholder { color: var(--faint); }
-  .side-foot { padding-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-  .side-foot { display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); }
+  .side-foot { padding-top: 8px; gap: 8px; display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); }
   .act.icon-only { padding-inline: 9px; }
   .act.icon-only .ico { inline-size: 1.15em; block-size: 1.15em; }
   .side-foot .act { min-inline-size: 0; padding-inline: 4px; font-size: 0.75rem; gap: 0.3em; }
@@ -173,22 +175,22 @@
 
   /* page header */
   .page-h { margin-bottom: 14px; }
-  .crumbs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 0.7812rem; color: var(--muted); margin-bottom: 4px; }
+  .crumbs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
   .crumbs .sep { color: var(--faint); }
   .page-h h1 { margin: 0; font-size: 1.375rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
-  .page-h .lede { margin: 3px 0 0; color: var(--muted); font-size: 0.8438rem; }
+  .page-h .lede { margin: 3px 0 0; color: var(--muted); font-size: 0.875rem; }
 
   /* toolbar */
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 12px; }
-  .toolbar input[type="search"], .toolbar select { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  .toolbar input[type="search"], .toolbar select { padding: 6px 10px; }
   .toolbar input[type="search"] { flex: 1 1 100%; min-width: 0; max-width: none; padding: 8px 12px; font-size: 0.875rem; }
   .toolbar input::placeholder { color: var(--faint); }
   .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 0.8125rem; cursor: pointer; min-block-size: var(--target-size); padding-inline: 4px; }
   .toolbar .result-n { margin-left: auto; }
-  .seg { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: var(--radius-inner); overflow: hidden; }
   .seg .filter { border: 0; border-radius: 0; border-right: 1px solid var(--line); padding: 5px 12px; }
   .seg .filter:last-child { border-right: 0; }
-  .result-n { color: var(--muted); font-size: 0.7812rem; margin-left: auto; }
+  .result-n { color: var(--muted); font-size: 0.75rem; margin-left: auto; }
 
   h2 { margin: 18px 0 8px; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   h3 { margin: 0; font-size: 0.875rem; font-weight: 600; }
@@ -198,7 +200,7 @@
   .banner.demo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 5px 12px; font-size: 0.75rem; margin-bottom: 10px; }
   .banner.demo b { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.08em; }
   .banner.replay { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.04em; }
-  .note { color: var(--muted); font-size: 0.7812rem; margin: 8px 0 12px; }
+  .note { color: var(--muted); font-size: 0.75rem; margin: 8px 0 12px; }
 
   .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -209,14 +211,14 @@
   .stat .f { font-size: 0.75rem; color: var(--muted); }
 
   .filters { display: flex; gap: 6px; margin: 4px 0 10px; flex-wrap: wrap; }
-  .filter { font: inherit; font-size: 0.7812rem; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--radius-full); padding: 3px 12px; cursor: pointer; }
+  .filter { font: inherit; font-size: 0.75rem; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: var(--radius-full); padding: 3px 12px; cursor: pointer; }
   .filter[aria-pressed="true"] { color: var(--text); border-color: var(--blue); background: var(--selected); }
 
   /* project and spec cards */
   .proj { padding: 12px 16px; margin-bottom: 14px; }
   .proj .top { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
   .specs { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  .specs li { display: grid; grid-template-columns: minmax(110px, 200px) minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 0.7812rem; }
+  .specs li { display: grid; grid-template-columns: minmax(110px, 200px) minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 0.75rem; }
   @media (max-width: 640px) { .specs li { grid-template-columns: 1fr; gap: 4px; } }
   progress { width: 100%; height: 8px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 4px; background: var(--track); overflow: hidden; }
   progress::-webkit-progress-bar { background: var(--track); border-radius: 4px; }
@@ -231,8 +233,8 @@
   .scard.attn { border-left: 3px solid var(--yellow); }
   .scard.attn.red { border-left-color: var(--red); }
   .scard .l1 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .scard .l2 { margin-top: 6px; font-size: 0.9062rem; }
-  .scard .l3, .scard .l4 { margin-top: 4px; font-size: 0.7812rem; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .scard .l2 { margin-top: 6px; font-size: 0.875rem; }
+  .scard .l3, .scard .l4 { margin-top: 4px; font-size: 0.75rem; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .health { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.06em; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--grey); flex: none; }
   .dot.live { background: var(--green); } .dot.stale { background: var(--yellow); } .dot.disconnected, .dot.failed { background: var(--red); }
@@ -250,17 +252,14 @@
   .deviation .dev-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .deviation .label { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--warn-ink); font-weight: 600; }
   .deviation ul { margin: 10px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--warn-line); }
-  .deviation li { padding: 6px 0; border-bottom: 1px solid var(--warn-line); font-size: 0.7812rem; display: flex; gap: 10px; flex-wrap: wrap; }
+  .deviation li { padding: 6px 0; border-bottom: 1px solid var(--warn-line); font-size: 0.75rem; display: flex; gap: 10px; flex-wrap: wrap; }
 
   .devlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .devlist > .card { margin: 0; }
   .dev-card { border-left: 3px solid var(--red); }
-  .council-card { border-left: 3px solid var(--blue); }
   .devlist .row1 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .devlist .actions { display: flex; gap: 14px; align-items: center; margin-top: 10px; }
-  .flow-card { border-left: 3px solid var(--grey); }
-  .flow-card.waiting { border-left-color: var(--yellow); }
-  .flow-card.done { border-left-color: var(--green); }
+  .flow-card.waiting { border-left: 3px solid var(--yellow); }
   .stepper { list-style: none; margin: 0; padding: 0; }
   .stepper li { display: grid; grid-template-columns: 26px minmax(130px, 200px) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 16px; border-bottom: 1px solid var(--line); }
   .stepper li:last-child { border-bottom: 0; }
@@ -274,10 +273,10 @@
   .witch .where { grid-column: 2; }
   .witch .nm { font-weight: 600; line-height: 1.2; }
   .witch .rl { font-size: 0.75rem; color: var(--muted); }
-  .witch .st { font-size: 0.7812rem; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+  .witch .st { font-size: 0.75rem; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
   .witch.working { border-color: var(--blue); background: var(--selected); }
   .decided-plans { margin: 0 0 14px; }
-  .decided-plans > summary { cursor: pointer; font-size: 0.8125rem; color: var(--muted); padding: 6px 8px; min-block-size: var(--target-size); display: flex; align-items: center; gap: 6px; border-radius: 6px; }
+  .decided-plans > summary { cursor: pointer; font-size: 0.8125rem; color: var(--muted); padding: 6px 8px; min-block-size: var(--target-size); display: flex; align-items: center; gap: 6px; border-radius: var(--radius-inner); }
   .decided-plans > summary:hover { background: var(--hover); color: var(--text); }
   .plan-rows { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
   .plan-row > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center;
@@ -300,16 +299,15 @@
   /* The Stage: a real 3D scene in CSS (no script, no WebGL). A tilted floor with a grid, five raised platforms, and witches standing upright
      on it with a contact shadow. --tilt is the floor's angle; each witch undoes it so she stands, and her shadow redoes it so it lies flat. */
   .stage { --tilt: 54deg; position: relative; perspective: 900px; perspective-origin: 50% 12%; padding: 0; overflow: hidden; min-block-size: 250px;
-    background: linear-gradient(var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius-element); }
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); }
   .stage .floor { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.9fr); gap: 14px; padding: 18px 22px 26px; margin: -64px auto 0; inline-size: 92%;
     transform-style: preserve-3d; transform: rotateX(var(--tilt)); transform-origin: 50% 100%; min-block-size: 220px;
     background-color: var(--well); border: 1px solid var(--line-strong); border-radius: var(--radius-element);
-    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 32px 32px;
-    box-shadow: 0 8px 0 var(--line-strong), 0 16px 0 var(--line); }
+    box-shadow: 0 8px 0 var(--line); }
   .stage .station { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; padding: 8px 4px 10px;
     transform-style: preserve-3d; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-element);
-    box-shadow: 0 5px 0 var(--line-strong), 0 10px 0 var(--line); }
-  .stage .station.has-work { background: var(--info-bg); border-color: var(--info-line); box-shadow: 0 5px 0 var(--info-line), 0 10px 0 var(--line); }
+    box-shadow: 0 5px 0 var(--line); }
+  .stage .station.has-work { background: var(--info-bg); border-color: var(--info-line); box-shadow: 0 5px 0 var(--info-line); }
   .stage .pad { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
     transform: rotateX(calc(var(--tilt) * -1)); transform-origin: 50% 100%; margin-block-end: auto; padding-block-end: 10px; }
   .stage .station.has-work .pad { color: var(--info-ink); }
@@ -318,7 +316,7 @@
   .stage .stage-witch .av { inline-size: 44px; block-size: 50px; display: block; }
   .stage .stage-witch::before { content: ""; position: absolute; inset-inline: 12% ; inset-block-end: 2px; block-size: 12px; border-radius: 50%; background: var(--line-strong);
     transform: rotateX(var(--tilt)); transform-origin: 50% 50%; }
-  .stage .stage-witch.working { animation: stage-bob 1.8s ease-in-out infinite; }
+  .stage .stage-witch.working { animation: stage-bob 1.8s ease-in-out 3; }
   .stage .stage-witch.working:nth-child(2n) { animation-delay: -0.6s; }
   @keyframes stage-bob { 50% { transform: rotateX(calc(var(--tilt) * -1)) translateY(-7px); } }
   .stage .stage-witch.off .av { opacity: 0.45; filter: grayscale(0.7); }
@@ -329,7 +327,7 @@
   .stage .stage-witch:hover { transform: rotateX(calc(var(--tilt) * -1)) translateY(-4px); }
   @media (prefers-reduced-motion: reduce) { .stage .stage-witch.working { animation: none; } .stage .stage-witch:hover { transform: rotateX(calc(var(--tilt) * -1)); } }
   @media (max-width: 640px) { .stage { --tilt: 50deg; min-block-size: 200px; } .stage .floor { gap: 6px; padding: 10px 8px 18px; inline-size: 98%; min-block-size: 170px; margin-block-start: -70px; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.6fr); }
-    .stage .stage-witch .av { inline-size: 26px; block-size: 30px; } .stage .pad { font-size: 0.625rem; letter-spacing: 0; } }
+    .stage .stage-witch .av { inline-size: 26px; block-size: 30px; } .stage .pad { font-size: 0.6875rem; letter-spacing: 0; } }
   .witch.available { border-color: var(--ok-line); }
   .witch.full .av, .witch.offline .av { filter: grayscale(0.7); opacity: 0.55; }
   .witch.offline { background: transparent; border-style: dashed; }
@@ -365,12 +363,12 @@
   .tile .go { font-size: 0.75rem; color: var(--muted); }
   .column-detail { background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px; margin-bottom: 18px; }
   .column-detail h3 { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 2px 4px 8px; }
-  .column-detail .tlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .column-detail .tlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
   .column-detail .col-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
   .column-detail .col-head h3 { margin: 2px 4px; }
-  .column-detail .col-filter { flex: 1 1 14rem; min-inline-size: 0; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  .column-detail .col-filter { flex: 1 1 14rem; min-inline-size: 0; padding: 5px 10px; }
   .column-detail .tgroups { display: grid; gap: 6px; }
-  .tgroup > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 8px; min-block-size: var(--target-size); border-radius: 6px; font-size: 0.8125rem; color: var(--text); }
+  .tgroup > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 8px; min-block-size: var(--target-size); border-radius: var(--radius-inner); font-size: 0.8125rem; color: var(--text); }
   .tgroup > summary:hover { background: var(--hover); }
   .tgroup > summary { list-style: none; }
   .tgroup > summary::-webkit-details-marker { display: none; }
@@ -380,15 +378,15 @@
   .tgroup > summary .n { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-full); padding: 0 7px; }
   .tgroup[open] > summary { margin-bottom: 6px; }
   .tgroup > .tlist { padding-left: 4px; }
-  .trow { inline-size: 100%; font: inherit; font-size: 0.8125rem; color: var(--text); text-align: start; cursor: pointer; background: var(--panel); border: 1px solid var(--line);
-    border-radius: var(--radius-element); padding: 8px 10px; display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
-  .trow:hover { border-color: var(--line-strong); background: var(--panel-2); }
+  .trow { inline-size: 100%; font: inherit; font-size: 0.8125rem; color: var(--text); text-align: start; cursor: pointer; background: transparent; border: 0; border-bottom: 1px solid var(--line);
+    border-radius: 0; padding: 8px 10px; display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+  .trow:hover { background: var(--hover); }
   .trow .id { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
   .trow .tt { overflow-wrap: anywhere; }
   .trow .who-row { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); flex-wrap: wrap; justify-content: end; }
   .trow .who-row .av { inline-size: 18px; block-size: 18px; margin: 0; }
-  .trow.waiting { opacity: 0.6; border-style: dashed; }
-  .trow.stuck { border-color: var(--warn-line); background: var(--warn-soft); }
+  .trow.waiting { opacity: 0.6; }
+  .trow.stuck { background: var(--warn-soft); }
   @media (max-width: 640px) { .trow { grid-template-columns: max-content minmax(0, 1fr); padding: 6px 10px; } .trow .who-row { grid-column: 1 / -1; justify-content: start; } }
   /* the selected task: a native modal dialog in the top layer */
   .task-dialog { inline-size: min(40rem, calc(100vw - 2rem)); max-block-size: calc(100dvh - 2rem); padding: 0; color: var(--text); background: var(--panel);
@@ -396,7 +394,7 @@
   .task-dialog:modal { overscroll-behavior: contain; }
   .task-dialog::backdrop { background: var(--color-overlay); overflow: hidden; overscroll-behavior: contain; }
   .task-dialog .td-head { position: sticky; inset-block-start: 0; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--chrome); border-bottom: 1px solid var(--line); }
-  .task-dialog .td-head h2 { flex: 1; margin: 0; font-size: 0.9375rem; font-weight: 600; overflow-wrap: anywhere; text-transform: none; letter-spacing: 0; color: var(--text); }
+  .task-dialog .td-head h2 { flex: 1; margin: 0; font-size: 0.875rem; font-weight: 600; overflow-wrap: anywhere; text-transform: none; letter-spacing: 0; color: var(--text); }
   .task-dialog .td-head form { margin: 0; }
   .task-dialog .td-body { padding: 12px 14px 16px; }
   .task-dialog .tcard > .id, .task-dialog .tcard > .tt { display: none; } /* the dialog title already names the task */
@@ -410,11 +408,12 @@
   .tcard.stuck { border-color: var(--warn-line); background: var(--warn-soft); }
   .tcard .stuck-why { font-size: 0.75rem; margin-top: 4px; color: var(--warn-ink); }
   .tcard .stuck-why code { white-space: nowrap; font-size: 0.75rem; }
+  .tile .go:empty { display: none; }
   .tile .go.warn { color: var(--warn-ink); font-weight: 600; }
-  [data-board-project] { font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
+  [data-board-project] { padding: 3px 8px; }
   .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   /* Notes are neutral cards; only the kind tag carries colour (colour means kind, never failure). */
-  .sticky { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; font-size: 0.8438rem; line-height: 1.45;
+  .sticky { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; font-size: 0.875rem; line-height: 1.45;
     overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 6px; }
   .sticky .meta { font-size: 0.75rem; color: var(--muted); margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; }
   .sticky .kind { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 0.6875rem; text-transform: uppercase;
@@ -430,7 +429,7 @@
   @media (max-width: 760px) { .compose { grid-template-columns: repeat(2, minmax(0, 1fr)); } .compose textarea { grid-column: 1 / -1; } }
   @media (max-width: 420px) { .compose { grid-template-columns: minmax(0, 1fr); } }
   .compose > * { min-inline-size: 0; }
-  .compose textarea, .compose select, .compose input { inline-size: 100%; max-inline-size: 100%; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
+  .compose textarea, .compose select, .compose input { inline-size: 100%; max-inline-size: 100%; padding: 7px 10px; }
   .compose textarea { min-height: 40px; resize: vertical; }
   .gate { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: var(--radius-element); padding: 12px 16px; margin-bottom: 14px; }
   /* council chat: the page fills the window; only the conversation scrolls; people right, the council left */
@@ -439,14 +438,14 @@
   body.chat-mode footer { display: none; }
   .chat-page { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
   .chat-page .page-h { margin-bottom: 0; }
-  .chat-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.7812rem; color: var(--muted); }
+  .chat-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.75rem; color: var(--muted); }
   .chat-head .who-on { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--panel); }
   .chat-head .who-on .av { width: 22px; height: 22px; margin: 0; }
   .chat-head .who-on.off { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn-ink); flex-wrap: wrap; row-gap: 2px; padding: 5px 12px;
     border-radius: var(--radius-element); max-inline-size: 100%; }
   .chat-head .who-on.off .how { color: var(--text); }
   .chat-head .who-on.off code { white-space: nowrap; }
-  .chat-head select { font: inherit; font-size: 0.7812rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+  .chat-head select { font: inherit; font-size: 0.75rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-inner); padding: 2px 6px; }
   .thread { flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: var(--line-strong) transparent; border: 1px solid var(--line); border-radius: var(--radius-element); background: var(--well); }
   .chat { list-style: none; margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   .thread .empty { text-align: center; }
@@ -457,7 +456,7 @@
   .msg.council { align-self: flex-start; border-bottom-left-radius: 4px; display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 10px; }
   .msg.council > .av { grid-row: 1 / span 9; width: 34px; height: 34px; margin: 2px 0 0; }
   .msg.council.error { border-style: dashed; color: var(--muted); }
-  .msg.working { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; font-size: 0.7812rem; color: var(--muted); background: transparent; border: 0; box-shadow: none; padding: 0 4px; }
+  .msg.working { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--muted); background: transparent; border: 0; box-shadow: none; padding: 0 4px; }
   .msg.working .av { width: 22px; height: 22px; margin: 0; }
   .msg.working .dots::after { content: "…"; animation: dots 1.2s steps(3, end) infinite; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; }
   @keyframes dots { from { width: 0; } to { width: 1.2em; } }
@@ -479,7 +478,7 @@
   .chat-compose:has(#chat-task option:checked:not([value=""])) #chat-reject { display: inline-flex; }
   .chat-more { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
   .chat-compose .pick { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; color: var(--muted); }
-  .chat-compose .pick select, .chat-compose .pick input { field-sizing: content; font: inherit; font-size: 0.7812rem; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 2px 4px; max-width: 260px; }
+  .chat-compose .pick select, .chat-compose .pick input { field-sizing: content; font: inherit; font-size: 0.75rem; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: var(--radius-inner); padding: 2px 4px; max-width: 260px; }
   .chat-compose .pick select:hover, .chat-compose .pick input:hover, .chat-compose .pick select:focus, .chat-compose .pick input:focus { border-color: var(--line); background: var(--bg); }
   .chat-compose .pick input { width: auto; min-inline-size: 11ch; max-inline-size: 20ch; } /* field-sizing grows it; an explicit width would cut the placeholder */
   .chat-compose .write { display: flex; align-items: flex-end; gap: 8px; }
@@ -499,11 +498,11 @@
   .plan li { margin-bottom: 8px; overflow-wrap: anywhere; }
   .plan li code { font-size: 0.75rem; }
   .plan .decide { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .plan .decide .why { flex: 1 1 14rem; min-inline-size: 0; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  .plan .decide .why { flex: 1 1 14rem; min-inline-size: 0; padding: 4px 8px; }
   .card > .head { padding: 11px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .empty { padding: 26px 16px; color: var(--muted); font-size: 0.8125rem; }
   .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
-  .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 0.7812rem; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 0.75rem; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 
   /* Buttons (docs/DESIGN.md, Components): quiet by default; primary (ink) for a view's one main action; good and bad only
      where the action itself is a state (Mark done, Reject). An icon leads the label; the label names the button. */
@@ -511,7 +510,7 @@
   .ico { inline-size: 1.05em; block-size: 1.05em; flex: none; }
   a.act:hover { text-decoration: none; }
   .act { display: inline-flex; align-items: center; justify-content: center; gap: 0.4em; font: inherit; font-size: 0.8125rem; font-weight: 500; line-height: 1.2;
-    color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap;
+    color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-inner); padding: 5px 11px; cursor: pointer; white-space: nowrap;
     transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, scale 120ms ease-out; }
   .act .ico { color: var(--muted); transition: color 120ms ease-out; }
   .act:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 5%, var(--panel)); }
@@ -535,7 +534,7 @@
 
   /* session view */
   .summary { font-size: 1rem; margin: 0 0 6px; }
-  .facts { display: flex; gap: 8px 22px; flex-wrap: wrap; color: var(--muted); font-size: 0.7812rem; margin-bottom: 14px; }
+  .facts { display: flex; gap: 8px 22px; flex-wrap: wrap; color: var(--muted); font-size: 0.75rem; margin-bottom: 14px; }
   .facts b { color: var(--text); font-weight: 500; }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
   .tab { font: inherit; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 9px 14px; cursor: pointer; }
@@ -547,8 +546,8 @@
   .turn-head { width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; border: 0; padding: 10px 16px; cursor: pointer; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
   .turn-head:hover { background: var(--panel-2); }
   .turn-head .t { font-weight: 600; }
-  .turn-head .meta { color: var(--muted); font-size: 0.7812rem; }
-  .turn-head .title { color: var(--muted); font-size: 0.7812rem; flex-basis: 100%; }
+  .turn-head .meta { color: var(--muted); font-size: 0.75rem; }
+  .turn-head .title { color: var(--muted); font-size: 0.75rem; flex-basis: 100%; }
   .turn-head .caret { margin-left: auto; color: var(--muted); }
   .rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
   .row { display: grid; grid-template-columns: 66px 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 7px 16px; border-bottom: 1px solid var(--line); width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; border-left: 0; border-right: 0; border-top: 0; cursor: pointer; }
@@ -616,15 +615,15 @@
   .login h2 b { font-size: 1rem; letter-spacing: 0.22em; }
   .login h2 span { font-size: 0.8125rem; font-weight: 400; color: var(--muted); letter-spacing: 0; text-transform: none; }
   body.signed-out .app { display: none; }
-  .login p { margin: 0; color: var(--muted); font-size: 0.7812rem; }
-  .login input { background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 9px 10px; border-radius: 6px; font-family: var(--mono); font-size: 0.8125rem; }
-  .login button { background: var(--color-accent); color: var(--color-on-accent); border: 0; padding: 9px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-  .login .error { color: var(--red); font-size: 0.7812rem; }
+  .login p { margin: 0; color: var(--muted); font-size: 0.75rem; }
+  .login input { background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 9px 10px; border-radius: var(--radius-inner); font-family: var(--mono); font-size: 0.8125rem; }
+  .login button { background: var(--color-accent); color: var(--color-on-accent); border: 0; padding: 9px 12px; border-radius: var(--radius-inner); font-weight: 600; cursor: pointer; }
+  .login .error { color: var(--red); font-size: 0.75rem; }
   .toasts { position: fixed; bottom: max(1rem, env(safe-area-inset-bottom, 0px)); right: max(1rem, env(safe-area-inset-right, 0px)); left: max(1rem, env(safe-area-inset-left, 0px)); display: flex; justify-content: flex-end; pointer-events: none; z-index: 70; }
-  .toast { display: none; align-items: flex-start; gap: 0.5rem; max-inline-size: min(28rem, 100%); background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--bad-ink); padding: 0.5rem 0.5rem 0.5rem 0.75rem; border-radius: 6px; font-size: 0.78125rem; pointer-events: auto; overflow-wrap: anywhere; }
+  .toast { display: none; align-items: flex-start; gap: 0.5rem; max-inline-size: min(28rem, 100%); background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--bad-ink); padding: 0.5rem 0.5rem 0.5rem 0.75rem; border-radius: var(--radius-inner); font-size: 0.75rem; pointer-events: auto; overflow-wrap: anywhere; }
   .toast.show { display: flex; }
   .toast button { flex: none; display: inline-grid; place-items: center; inline-size: var(--target-size); block-size: var(--target-size); padding: 0; font: inherit; color: inherit;
-    background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius-inner); cursor: pointer; }
   .toast button:hover { border-color: var(--bad-line); }
   .toast button .ico { inline-size: 14px; block-size: 14px; }
   /* ===== Coven look (docs/DESIGN.md "Look"): flat, one brand colour, character on the front door =====
@@ -663,7 +662,7 @@
 
   /* a witch's "never" is on her card */
   .changes-form { display: flex; gap: 8px; margin-top: 6px; }
-  .changes-form input { flex: 1; min-inline-size: 0; font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-inner); padding: 5px 9px; }
+  .changes-form input { flex: 1; min-inline-size: 0; padding: 5px 9px; }
   .needs { margin: 0 0 16px; }
   .need-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .need-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 12px;
@@ -676,13 +675,13 @@
   .witch .never { grid-column: 2; margin: 2px 0 0; font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
   .witch .never b { color: var(--bad-ink); font-weight: 600; margin-right: 4px; }
   /* witch monitor: dense rows, like the rest of the board; on a phone each row stacks */
-  .monitor { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+  .monitor { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
   .mon-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(180px, 1.6fr) minmax(140px, 1fr) minmax(150px, 1fr) auto minmax(150px, 1.2fr) minmax(120px, 0.8fr);
-    gap: 4px 12px; align-items: center; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); font-size: 0.8125rem; }
-  .mon-row.twice { border-color: var(--bad-line); background: var(--bad-soft); }
+    gap: 4px 12px; align-items: center; padding: 8px 12px; background: transparent; border: 0; border-bottom: 1px solid var(--line); font-size: 0.8125rem; }
+  .mon-row.twice { background: var(--bad-soft); }
   .mon-stage .badge.working { color: var(--info-ink); border-color: var(--info-line); background: var(--info-bg); }
-  .mon-row.stale { border-color: var(--warn-line); }
-  .mon-row.disconnected { border-style: dashed; border-color: var(--bad-line); }
+  .mon-row.stale { background: var(--warn-soft); }
+  .mon-row.disconnected { background: var(--bad-soft); }
   .mon-row > span { min-inline-size: 0; overflow-wrap: anywhere; }
   .mon-who { display: flex; align-items: center; gap: 6px; }
   .mon-who .av { inline-size: 24px; block-size: 24px; margin: 0; }
@@ -714,8 +713,7 @@
   /* chat: a roomier head; a visible label on the kind group */
   .chat-page .page-h { padding-block: 10px 6px; }
   .chat-page .page-h h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.01em; }
-  .chat-page .page-h .lede { font-size: 0.9375rem; max-inline-size: 62ch; }
-  .chat-compose .kinds-label { font-size: 0.75rem; color: var(--muted); margin-right: 2px; }
+  .chat-page .page-h .lede { font-size: 0.875rem; max-inline-size: 62ch; }
   .live-pause { margin-left: 8px; }
 
   /* empty states: a sentence with a voice and a ghost peeking over the edge */
@@ -750,7 +748,7 @@
   .login input { background: var(--coven-stage); color: var(--coven-stage-ink); border: 1px solid transparent; border-radius: var(--radius-element); padding: 11px 12px; }
   .login input::placeholder { color: var(--coven-stage-muted); }
   .login input:focus { border-color: var(--coven-caret); box-shadow: none; }
-  .login button[type="submit"] { border-radius: var(--radius-element); padding: 11px 14px; font-size: 0.9375rem; }
+  .login button[type="submit"] { border-radius: var(--radius-element); padding: 11px 14px; font-size: 0.875rem; }
   .login .error { color: var(--coven-on-lilac); font-weight: 600; }
   .login .install { display: flex; align-items: center; gap: 8px; margin-top: 4px; background: color-mix(in srgb, var(--coven-stage-ink) 6%, var(--coven-stage)); border: 1px solid color-mix(in srgb, var(--coven-stage-ink) 16%, transparent); border-radius: var(--radius-element); padding: 6px 6px 6px 12px; }
   .login .install code { flex: 1; min-inline-size: 0; overflow-x: auto; white-space: nowrap; font-family: var(--mono); font-size: 0.75rem; color: var(--coven-stage-ink); background: none; border: 0; padding: 0; }
@@ -761,6 +759,15 @@
     .login-panel .ghost-peek .av { transition: none; }
     .login .hero .caret { animation: none; }
   }
+
+  /* spacing helpers (replace inline style attributes) */
+  .m-0 { margin: 0; } .mt-1 { margin-top: 6px; } .mt-2 { margin-top: 8px; } .mb-2 { margin-bottom: 8px; } .mx-2 { margin: 0 8px; } .p-1 { padding: 4px; }
+  .mt-2.top, .top.mt-2 { margin-top: 8px; }
+  .picker-row { margin: -6px 0 12px; }
+  .empty.tight { padding: 12px 16px; }
+  .reasons { margin: 4px 0 6px 18px; padding: 0; }
+  footer summary { cursor: pointer; min-block-size: var(--target-size); display: flex; align-items: center; }
+  footer details p { margin: 0 0 6px; }
 </style>
 </head>
 <body>
@@ -791,8 +798,10 @@
     </header>
     <main id="main" tabindex="-1"><div class="empty">Loading…</div></main>
     <footer>
-      Coven records tool calls after they happen: intent, programs, exit codes, file paths and sizes; never output, file contents or command arguments.
-      This page and the cloud change nothing in your repository. Your hosts do: they build each task on a <code>coven/</code> branch, tick <code>tasks.md</code>, and with <code>--auto-merge</code> merge and push what every reviewer passed.
+      <details><summary>What Coven records and what it changes</summary>
+        <p>Coven records tool calls after they happen: intent, programs, exit codes, file paths and sizes; never output, file contents or command arguments.</p>
+        <p>This page and the cloud change nothing in your repository. Your hosts do: they build each task on a <code>coven/</code> branch, tick <code>tasks.md</code>, and with <code>--auto-merge</code> merge and push what every reviewer passed.</p>
+      </details>
     </footer>
   </div>
 </div>
@@ -1282,18 +1291,18 @@
     return `<section class="card proj" aria-label="Specs of ${esc(projectName(projectId))}">
       <div class="top"><h3>Specs</h3><span class="hint">read from <span class="mono">tasks.md</span> when Kiro starts or finishes a task</span></div>
       ${specs.length ? specList(specs, projectId)
-        : '<p class="hint" style="margin:8px 0 0">No spec progress yet. It appears when Kiro starts or finishes a task of a spec in this project.</p>'}
+        : '<p class="hint mt-2">No spec progress yet. It appears when Kiro starts or finishes a task of a spec in this project.</p>'}
     </section>`;
   }
   function specCard(projectId, name) {
     const s = specsOf(projectId).find((x) => x.spec === name);
     if (!s) {
-      return `<section class="card proj"><p class="hint" style="margin:0">No progress reported for <span class="mono">${esc(name)}</span> yet. It appears when Kiro starts or finishes one of its tasks.</p></section>`;
+      return `<section class="card proj"><p class="hint m-0">No progress reported for <span class="mono">${esc(name)}</span> yet. It appears when Kiro starts or finishes one of its tasks.</p></section>`;
     }
     return `<section class="card proj" aria-label="Spec ${esc(name)}">
       <progress class="big" max="${Math.max(1, Number(s.total) || 0)}" value="${Math.max(0, Number(s.done) || 0)}" aria-label="${esc(name)}: ${esc(specSummary(s))}"></progress>
-      <div class="top" style="margin-top:8px"><b>${esc(specSummary(s))}</b><span class="hint">updated ${agoTag(s.updated_at)}</span></div>
-      <p class="hint" style="margin:6px 0 0">Required leaf tasks only; optional tasks are counted apart. The sessions below are the ones whose latest task belongs to this spec.</p>
+      <div class="top mt-2"><b>${esc(specSummary(s))}</b><span class="hint">updated ${agoTag(s.updated_at)}</span></div>
+      <p class="hint mt-1">Required leaf tasks only; optional tasks are counted apart. The sessions below are the ones whose latest task belongs to this spec.</p>
     </section>`;
   }
 
@@ -1341,7 +1350,7 @@
     }).join("");
 
     return `<h2 class="nav-h">Views</h2><ul class="nav-list">${views}</ul>
-      <h2 class="nav-h">Projects</h2>${ids.length ? `<ul class="nav-list">${projects}</ul>` : '<p class="hint" style="margin:0 8px">None yet. Link a repo with <code>coven project link</code>.</p>'}`;
+      <h2 class="nav-h">Projects</h2>${ids.length ? `<ul class="nav-list">${projects}</ul>` : '<p class="hint mx-2">None yet. Link a repo with <code>coven project link</code>.</p>'}`;
   }
 
   /* ------------------------------------------------------------- page header */
@@ -1489,7 +1498,7 @@
     const expected = Array.isArray(p.expected) ? p.expected.join(", ") : (p.expected || "—");
     return `<li class="card dev-card"><div class="body">
       <div class="row1"><span class="chip">possible deviation</span><span class="mono">${esc(p.observed || "—")}</span><span class="spacer"></span><span class="hint">${agoTag(d.ts)}</span></div>
-      <div class="hint" style="margin-top:6px">${esc(d.project_id)} · task ${esc(taskLabel(p.spec, d.task_id) || "—")} declares <span class="mono">${esc(expected)}</span></div>
+      <div class="hint mt-1">${esc(d.project_id)} · task ${esc(taskLabel(p.spec, d.task_id) || "—")} declares <span class="mono">${esc(expected)}</span></div>
       <div class="actions"><a class="act primary" href="#/run/${encodeURIComponent(d.run_id)}" data-key="dev-open-${esc(d.event_id)}">${icon("open")}<span>Open session</span></a>
         <button class="act quiet" type="button" data-dismiss="${esc(d.event_id)}">${icon("eyeoff")}<span>Dismiss</span></button></div>
     </div></li>`;
@@ -1614,7 +1623,7 @@
       <label class="sr" for="why-${esc(p.plan)}">Why (optional)</label><input class="why" id="why-${esc(p.plan)}" data-why="${esc(p.plan)}" data-key="why-${esc(p.plan)}" maxlength="300" placeholder="why (optional; the next plan reads it)" />
       <span class="hint">On approval the Dev builds each task on its own branch; White Hat and Black Hat review it; you merge.</span></div>`;
     return `<section class="card plan" data-key="plan-${esc(p.plan)}" aria-label="Plan ${esc(p.plan)}"><div class="head"><h3>${avatar(p.agent || "elder-witch")}${esc(agentName(p.agent || "elder-witch"))} · plan ${esc(p.plan)}</h3>${status}</div>
-      <div class="body">${p.summary ? `<p style="margin:0 0 8px">${esc(p.summary)}</p>` : ""}${decided ? "" : `<ol>${items}</ol>`}${buttons}</div></section>`;
+      <div class="body">${p.summary ? `<p class="mb-2">${esc(p.summary)}</p>` : ""}${decided ? "" : `<ol>${items}</ol>`}${buttons}</div></section>`;
   }
   /** Some online host is set up to run tasks in Kiro Web (it names the repository it may use). */
   function cloudHostOnline(b) {
@@ -1686,7 +1695,7 @@
     const head = `<h3>${esc(label)} · ${plural(list.length, "task")}</h3>`;
     const quiet = { ready: "Nothing is ready: the witches are waiting for a plan or a task in tasks.md.", claimed: "Nothing claimed yet: no witch has picked up a task.",
       review: "Nothing waits for review: every branch has been judged.", failed: "Nothing is blocked.", done: "Nothing is done yet: the first merge lands here." };
-    if (!list.length) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<div class="hint" style="padding:4px">${esc(quiet[key] || "No tasks here.")}</div></section>`;
+    if (!list.length) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<div class="hint p-1">${esc(quiet[key] || "No tasks here.")}</div></section>`;
     if (list.length <= LONG_COLUMN) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<ul class="tlist">${list.map(taskRow).join("")}</ul></section>`;
     const groups = new Map();
     for (const t of list) groups.set(t.spec, [...(groups.get(t.spec) || []), t]);
@@ -1819,7 +1828,7 @@
     const nudge = members.idle.length && roster ? `<p class="hint">${members.idle.length <= 3 ? `${members.idle.map((x) => esc(agentName(x.slug))).join(", ")} ${members.idle.length === 1 ? "is" : "are"} not on any host`
       : `${members.idle.length} witches are not on any host`}${members.idle.some((x) => x.slug === "green-witch") ? ": nothing gets built until a host runs her (<code>./run-host.sh</code>)" : ""}.</p>` : "";
     const counts = roster ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : "";
-    return `<details class="stage-box" data-key="stage"${state.ui.stage === false ? "" : " open"}><summary>Witches${counts}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
+    return `<details class="stage-box" data-key="stage"${state.ui.stage === true ? " open" : ""}><summary>Witches${counts}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
   }
   /** Each witch's line in her own voice: copy, not a rule (her rules are WITCH_ROLES). */
   const WITCH_MOTTO = { "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
@@ -1886,7 +1895,7 @@
     // A column is always open: the person's choice, else the most urgent one with tasks (review, then blocked, then ready).
     const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => (cols[k] || []).length) || "ready";
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : firstFull;
-    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host · ` : ""}${open === key ? "Showing below" : cols[key].length ? "Show tasks" : "Nothing here"}</span></button>`;
+    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host` : ""}</span></button>`;
     const detail = open ? columnDetail(open, COLUMNS.find(([k]) => k === open)[1], cols[open]) : "";
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
@@ -1898,7 +1907,7 @@
         <button class="act primary" type="submit">${icon("pen")}<span>Post</span></button></form>`;
     return `${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Coven board · ${project}`,
         lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
-      ${picker ? `<div style="margin:-6px 0 12px">${picker}</div>` : ""}
+      ${picker ? `<div class="picker-row">${picker}</div>` : ""}
       ${waitingForYou(cols)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
@@ -2049,7 +2058,7 @@
       <div class="row1"><a href="#/flow/${encodeURIComponent(f.flow_id)}" data-key="flow-${esc(f.flow_id)}"><b>${esc(taskLabel(f.spec, f.task_id, f.title))}</b></a>
         ${f.waiting_for ? '<span class="chip">waiting for you</span>' : ""}
         <span class="spacer"></span><span class="hint">${agoTag(f.last_event_at || f.started_at)}</span></div>
-      <div class="hint" style="margin-top:6px">${esc(f.project_id)} · ${esc(flowState(f))} · round ${esc(f.rounds)} · guard ${esc(f.verdict || "—")}</div>
+      <div class="hint mt-1">${esc(f.project_id)} · ${esc(flowState(f))} · round ${esc(f.rounds)} · guard ${esc(f.verdict || "—")}</div>
     </div></li>`;
   }
   function flowsView() {
@@ -2090,7 +2099,7 @@
         ${c.mode === "seeded" ? '<span class="badge warn">seeded replay</span>' : ""}
         <span class="badge ${c.status === "closed" ? "grey" : "live"}">${esc(c.status)}</span>
         <span class="spacer"></span><span class="hint">${agoTag(c.opened_at)}</span></div>
-      <div class="hint" style="margin-top:6px">${esc(c.project_id)} · task ${esc(c.task_id || "—")} · round ${esc(c.round)} · ${num(c.credits)} credits</div>
+      <div class="hint mt-1">${esc(c.project_id)} · task ${esc(c.task_id || "—")} · round ${esc(c.round)} · ${num(c.credits)} credits</div>
       <div class="decision"><span class="hint">Chair</span> <span class="badge ${cls(c.chair_proposal)}">${esc(c.chair_proposal || "—")}</span>
         <span class="hint">Guard</span> <span class="badge ${cls(c.verdict)}">${esc(c.verdict || "pending")}</span>
         ${c.disagreement ? '<span class="chip red">disagreement</span>' : ""}</div>
@@ -2166,7 +2175,7 @@
         ${more > 0 ? `<button class="act" data-toggle-dev data-key="toggle-dev" type="button" aria-expanded="${state.expandDeviations}">${icon("plus")}<span>${more} more</span></button>` : ""}
         <span class="spacer"></span><a class="act primary" href="#/run/${encodeURIComponent(top.run_id)}">${icon("open")}<span>Open session</span></a>
         <button class="act quiet" data-dismiss="${esc(top.event_id)}" type="button">${icon("eyeoff")}<span>Dismiss</span></button></div>
-      <div style="margin-top:6px">Expected <span class="mono">${esc(expected)}</span> · Observed <span class="mono">${esc(p.observed || "—")}</span></div>
+      <div class="mt-1">Expected <span class="mono">${esc(expected)}</span> · Observed <span class="mono">${esc(p.observed || "—")}</span></div>
       <div class="hint mono">task ${esc(taskLabel(p.spec, top.task_id) || "—")} · ${esc(short(top.run_id, 22))} · severity ${esc(p.severity || "possible")}</div>
       ${rows}
     </section>`;
@@ -2330,7 +2339,7 @@
       const title = turn.items.map((e) => (e.payload || {}).description).find(Boolean);
       const body = turn.items.length
         ? `<ul class="rows">${turn.items.slice().reverse().map(row).join("")}</ul>`
-        : '<div class="empty" style="padding:12px 16px">Waiting for the first tool call.</div>';
+        : '<div class="empty tight">Waiting for the first tool call.</div>';
       return `<li class="turn ${failed ? "failed" : ""}">
         <button class="turn-head" type="button" aria-expanded="${open}" data-turn="${esc(key)}" data-key="turn-${esc(key)}">
           <span class="t">${name}</span><span class="meta">${meta}</span><span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
@@ -2440,7 +2449,7 @@
       const pp = proposal.payload || {};
       const invalid = proposal.valid === false;
       html += `<div class="decision"><span class="hint">Proposal</span> <span class="badge ${invalid ? "grey" : cls(pp.proposal)}">${esc(pp.proposal || "—")}</span>${invalid ? '<span class="note-uncounted">invalid — relies on a claim with no evidence link</span>' : ""}</div>`;
-      if (Array.isArray(pp.reasons)) html += `<ul style="margin:4px 0 6px 18px;padding:0">${pp.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
+      if (Array.isArray(pp.reasons)) html += `<ul class="reasons">${pp.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
       const relies = (Array.isArray(pp.relies_on) ? pp.relies_on : []).map((id) => ({ kind: "event", event_id: id }));
       if (relies.length) html += `<div class="hint">Relies on</div>${evidenceLinks(relies)}`;
       for (const d of Array.isArray(pp.dissent) ? pp.dissent : []) {
@@ -2460,7 +2469,7 @@
     if (pp && gp.verdict && pp !== gp.verdict) {
       html += `<div class="disagree">Guard ${esc(gp.verdict === "reject" ? "rejected" : gp.verdict === "accept" ? "accepted" : "found no consensus on")} this. Chair proposed ${esc(pp)}. ${gp.verdict === "reject" ? "Reject wins. " : ""}Dissent recorded.</div>`;
     }
-    return html + '<div class="hint" style="margin-top:8px">Recorded only — nothing was changed in the repo.</div></div></section>';
+    return html + '<div class="hint mt-2">Recorded only — nothing was changed in the repo.</div></div></section>';
   }
 
   /* ------------------------------------------------------------------ drawer */
@@ -2517,7 +2526,7 @@
     root.querySelectorAll("[data-stage-pick]").forEach((el) => el.addEventListener("click", () => { state.stagePick = state.stagePick === el.dataset.stagePick ? null : el.dataset.stagePick; render({ keepScroll: true }); }));
     root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { if (state.boardOpen !== el.dataset.col) state.colFilter = ""; state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
     root.querySelectorAll("details.decided-plans").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.decidedPlans)) { state.ui.decidedPlans = el.open; saveUi(); } }));
-    root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage !== false)) { state.ui.stage = el.open; saveUi(); } }));
+    root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage === true)) { state.ui.stage = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try {
