@@ -669,6 +669,13 @@ export interface TableClient {
  * durable write succeeds. A failed write throws, the API answers 5xx, and the
  * relay retries; nothing is swallowed.
  */
+/** Retention in days: missing, NaN or negative gives 30; 0 keeps forever; capped at 36500 (100 years) so dates stay valid. */
+export function parseTtlDays(value: unknown): number {
+  const n = typeof value === "string" ? (value.trim() === "" ? NaN : Number(value)) : typeof value === "number" ? value : NaN;
+  if (!Number.isFinite(n) || n < 0) return n === Infinity ? 36500 : 30;
+  return Math.min(n, 36500);
+}
+
 export class DynamoStore extends MemoryStore {
   private table: TableClient;
   private ttlDays: number;
@@ -676,7 +683,7 @@ export class DynamoStore extends MemoryStore {
   constructor(table: TableClient, ttlDays = 30) {
     super();
     this.table = table;
-    this.ttlDays = ttlDays;
+    this.ttlDays = parseTtlDays(ttlDays);
   }
 
   private ttl(): number {
@@ -748,8 +755,11 @@ export class DynamoStore extends MemoryStore {
   /** Rebuild projects, runs, timelines and councils from the table at start-up. */
   async hydrate(): Promise<number> {
     const events: Json[] = [];
+    const now = Math.floor(Date.now() / 1000);
     for (const item of await this.table.scanAll()) {
       if (!String(item.sk ?? "").includes("#EVT#")) continue;
+      // DynamoDB deletes expired items up to 48h late: skip them so a restart cannot replay them.
+      if (typeof item.ttl === "number" && item.ttl < now) continue;
       try { events.push(JSON.parse(item.body)); } catch { /* skip an unreadable item */ }
     }
     // Global time order, so council proposals are seen after the claims they rely on.

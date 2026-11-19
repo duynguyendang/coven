@@ -9,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 
 import type { Json } from "../src/events.ts";
+import { parseTtlDays } from "../src/store.ts";
 import { type Sql, SqlStore } from "../src/sqlstore.ts";
 import { MemoryStore } from "../src/store.ts";
 import { getJson, postJson, startServer } from "./helpers.ts";
@@ -195,5 +196,18 @@ describe("COVEN_STORE=sqlite: SqlStore on a database file", () => {
       assert.deepEqual(await reopened.ingest("shop", "sess_a", [ev("e2", "tool_call")]), [0, 1]);
       second.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("parseTtlDays", () => {
+  test("clamps bad values so hydrate cannot throw", async () => {
+    assert.equal(parseTtlDays(1e9), 36500);
+    assert.equal(parseTtlDays(Number.NaN), 30);
+    assert.equal(parseTtlDays(-1), 30);
+    assert.equal(parseTtlDays(0), 0);
+    assert.equal(parseTtlDays(undefined), 30);
+    assert.equal(parseTtlDays("7"), 7);
+    assert.equal(parseTtlDays("abc"), 30);
+    assert.equal(await new SqlStore(sqlite(), 1e9).hydrate(), 0, "1e9 days does not throw");
   });
 });

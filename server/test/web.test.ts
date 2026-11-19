@@ -1196,7 +1196,7 @@ describe("first run", () => {
     try {
       await wait(500);
       const t = page.window.document.getElementById("main")!.textContent!;
-      for (const step of ["No sessions yet", "coven project link", "coven relay up --machine", "coven hooks check", "kiro-cli chat"]) assert.ok(t.includes(step), step);
+      for (const step of ["No sessions yet — they appear with your first Kiro run.", "coven relay up", "coven project link", "coven relay up --machine", "coven hooks check", "kiro-cli chat"]) assert.ok(t.includes(step), step);
     } finally { page.window.close(); await empty.close(); }
   });
 });

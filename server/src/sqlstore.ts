@@ -19,7 +19,7 @@
 
 import type { Json } from "./events.ts";
 import type { IdemEntry } from "./idempotency.ts";
-import { MemoryStore } from "./store.ts";
+import { MemoryStore, parseTtlDays } from "./store.ts";
 
 /** The subset of the Durable Object `SqlStorage` API this store uses. */
 export interface SqlCursor {
@@ -42,7 +42,7 @@ export class SqlStore extends MemoryStore {
   constructor(sql: Sql, ttlDays = 30) {
     super();
     this.sql = sql;
-    this.ttlDays = Number.isFinite(ttlDays) ? ttlDays : 30;
+    this.ttlDays = parseTtlDays(ttlDays);
     for (const statement of SCHEMA) this.sql.exec(statement);
     // Replayed responses survive an eviction of the object: they are kept in `state`, beside dismissals.
     this.idem.onPut = (id: string, entry: IdemEntry) => this.putState(`idem:${id}`, JSON.stringify(entry));

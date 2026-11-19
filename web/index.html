@@ -932,6 +932,12 @@
   /** An empty state with a voice: one sentence that sounds like the coven, what to do next, and a ghost peeking over the edge. */
   const voice = (say, then, who = "coven") => `<div class="empty voice"><span class="peek" aria-hidden="true">${avatar(who)}</span><span class="say">${say}</span><span class="then">${then}</span></div>`;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  /** Voice lines for empty states: plain text (and an optional plain command); empty() escapes both and wraps cmd in <code>. */
+  const EMPTY = {
+    chat: { say: "The council is listening — say something.", then: "Ask it something, or choose Do it and say what you want done. The Chair answers and hands the work to the witches.", who: "grey-witch" },
+    firstRun: { say: "No sessions yet — they appear with your first Kiro run.", then: "Start the relay on this machine:", cmd: "coven relay up" },
+  };
+  const empty = (key) => { const e = EMPTY[key]; return voice(esc(e.say), esc(e.then) + (e.cmd ? ` <code>${esc(e.cmd)}</code>` : ""), e.who); };
   const cls = (v) => String(v || "unknown").toLowerCase().replace(/[^a-z-]/g, "");
   const short = (id, n = 14) => (String(id || "").length > n ? String(id).slice(0, n) + "…" : String(id || ""));
   const num = (v, d = 2) => Number(v || 0).toFixed(d);
@@ -2099,8 +2105,7 @@
   }
 
   function firstRun() {
-    return `<div class="card"><div class="empty">
-      <h3>No sessions yet</h3>
+    return `<div class="card">${empty("firstRun")}<div class="empty">
       <ol>
         <li>Name the project: <code>coven project link &lt;name&gt;</code></li>
         <li>Start the relay, once per machine: <code>coven relay up --machine</code></li>
