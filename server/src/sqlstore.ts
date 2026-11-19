@@ -104,7 +104,12 @@ export class SqlStore extends MemoryStore {
   async hydrate(): Promise<number> {
     if (this.ttlDays > 0) {
       const cutoff = new Date(Date.now() - this.ttlDays * 86400_000).toISOString();
-      this.sql.exec("DELETE FROM events WHERE ts < ?", cutoff);
+      try {
+        this.sql.exec("DELETE FROM events WHERE ts < ?", cutoff);
+      } catch (error) {
+        // Expiry is housekeeping: a failure must not stop the object from starting.
+        console.error(`coven cloud: event expiry failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
     const events: Json[] = [];
     for (const row of this.sql.exec("SELECT body FROM events").toArray()) {
