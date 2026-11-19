@@ -253,8 +253,8 @@ palette. The Kiroween character comes from the witches' ghost icons, not from th
   nothing decorates them.
 - **The front door** (sign-in, empty states, the head of the council chat) gets the character, after
   kiro.dev's hero: a flat dark stage, one flat lilac panel (`--coven-lilac`), one flat brand block (the
-  pumpkin Connect button), a large serif headline ("Kiro, meet your Coven.", typed once on load with a
-  violet caret), and the ghost peeking over the panel's edge. The stage is dark in both schemes.
+  pumpkin Connect button), a large serif headline ("Kiro, meet your Coven.", typed once on load in CSS alone: a `steps()` animation on a `ch` width, with a
+  violet caret; under `prefers-reduced-motion` the full text shows and the caret does not blink), and the ghost peeking over the panel's edge. The stage is dark in both schemes.
 - **The ghost reacts:** it peeks up on the sign-in and over empty states, ducks behind the panel on
   a wrong password, bobs while connecting and while a message waits for the council, and shrugs on a
   council error. A new chat message slides in once. All of it stops under `prefers-reduced-motion`.

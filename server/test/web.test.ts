@@ -1518,9 +1518,21 @@ describe("signing out", () => {
     assert.equal(doc().querySelectorAll("#login h1").length, 0, "the sign-in adds no second page heading");
     assert.match(doc().getElementById("login-title")!.textContent!, /COVEN.*Sign in/s);
     assert.ok(doc().querySelector("#login-ghost svg.av"), "the ghost, as everywhere else");
-    assert.equal(doc().getElementById("login-hero")!.getAttribute("aria-label"), "Kiro, meet your Coven.", "the typed headline reads whole");
+    assert.equal(doc().getElementById("login-hero")!.textContent, "Kiro, meet your Coven.", "the typed headline is real text, whole");
     assert.ok(doc().getElementById("login-ghost")!.classList.contains("peeking"), "after a sign-out the ghost peeks up again");
     assert.match(doc().getElementById("install-cmd")!.textContent!, /^coven login --cloud-url http:\/\/127\.0\.0\.1:\d+ --token <password>$/, "the command to connect a machine, for this cloud");
+  });
+
+  test("the headline types in CSS only: steps() on a ch width, a violet caret, still under reduced motion", () => {
+    const css = doc().querySelector("style")!.textContent!;
+    assert.match(css, /\.login \.hero \.type \{[^}]*animation: type-in [\d.]+s steps\(22, end\) 1 both/);
+    assert.match(css, /@keyframes type-in \{ from \{ inline-size: 0; \} to \{ inline-size: 22ch; \} \}/);
+    assert.match(css, /\.login \.hero::after \{[^}]*background: var\(--coven-caret\)/);
+    const rm = css.match(/@media \(prefers-reduced-motion: reduce\) \{[^@]*?\.login \.hero \.type, \.login \.hero::after \{ animation: none; \}/);
+    assert.ok(rm, "reduced motion shows the whole text with no caret animation");
+    assert.equal("Kiro, meet your Coven.".length, 22, "the ch width and step count match the text");
+    assert.ok(!/setInterval\(|clearInterval\(typing/.test(doc().documentElement.innerHTML.replace(/<style[\s\S]*?<\/style>/, "").match(/function greet[\s\S]*?\n  \}/)![0]), "no script types it");
+    assert.ok(!/#[0-9a-f]{3,8}\b/i.test(css.match(/\.login \.hero \.type[^\n]*\n[^\n]*\n/)![0]), "tokens only");
   });
 
   test("the sign-in and the footer say what Coven does, including what changes the repo", () => {
