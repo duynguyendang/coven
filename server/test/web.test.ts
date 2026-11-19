@@ -1196,7 +1196,7 @@ describe("first run", () => {
     try {
       await wait(500);
       const t = page.window.document.getElementById("main")!.textContent!;
-      for (const step of ["No sessions yet", "coven project link", "coven relay up --machine", "coven hooks check", "kiro-cli chat"]) assert.ok(t.includes(step), step);
+      for (const step of ["No sessions yet — they appear with your first Kiro run.", "coven relay up", "coven project link", "coven relay up --machine", "coven hooks check", "kiro-cli chat"]) assert.ok(t.includes(step), step);
     } finally { page.window.close(); await empty.close(); }
   });
 });
@@ -1213,7 +1213,7 @@ describe("council chat", () => {
     assert.ok(doc().querySelector('[data-key="nav-chat"]'), "a Council chat place in the sidebar");
     assert.equal(doc().querySelector("#main h1")!.textContent, "Council chat · shop");
     assert.ok(text().includes("No member is listening") && text().includes("coven council listen"));
-    assert.ok(text().includes("The council is gathered and quiet"), "an empty chat has a voice");
+    assert.ok(text().includes("The council is listening — say something."), "an empty chat has a voice");
     assert.equal(doc().getElementById("chat-kinds-label")!.textContent, "Send as", "the kind group has a visible label");
     assert.equal(doc().querySelector("fieldset.kinds")!.getAttribute("aria-labelledby"), "chat-kinds-label");
   });
