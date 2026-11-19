@@ -748,8 +748,11 @@ export class DynamoStore extends MemoryStore {
   /** Rebuild projects, runs, timelines and councils from the table at start-up. */
   async hydrate(): Promise<number> {
     const events: Json[] = [];
+    const now = Math.floor(Date.now() / 1000);
     for (const item of await this.table.scanAll()) {
       if (!String(item.sk ?? "").includes("#EVT#")) continue;
+      // DynamoDB deletes expired items up to 48h late: skip them so a restart cannot replay them.
+      if (typeof item.ttl === "number" && item.ttl < now) continue;
       try { events.push(JSON.parse(item.body)); } catch { /* skip an unreadable item */ }
     }
     // Global time order, so council proposals are seen after the claims they rely on.

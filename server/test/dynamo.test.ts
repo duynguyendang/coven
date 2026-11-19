@@ -136,6 +136,27 @@ describe("expiry", () => {
   }
 });
 
+describe("hydrate and ttl", () => {
+  test("skips an expired item, keeps a live one and one with no ttl", async () => {
+    const table = new FakeTable();
+    const now = Math.floor(Date.now() / 1000);
+    const put = (id: string, ttl?: number) => {
+      const e = event(id, "tool_call", { seq: 1, payload: { tool: "fs_write", path: "a.py" } });
+      const item: Json = { pk: "PROJECT#coven", sk: `RUN#run_${id}#EVT#00000001#${id}`, event_id: id, body: JSON.stringify(e) };
+      if (ttl !== undefined) item.ttl = ttl;
+      table.items.set(`${item.pk}|${item.sk}`, item);
+    };
+    put("expired", now - 3600);
+    put("live", now + 3600);
+    put("nottl");
+    const store = new DynamoStore(table);
+    assert.equal(await store.hydrate(), 2);
+    assert.ok(!store.events.has("expired"));
+    assert.ok(store.events.has("live"));
+    assert.ok(store.events.has("nottl"));
+  });
+});
+
 describe("rehydration", () => {
   test("rebuilds runs, credits, dismissed-independent timelines and the seeded council", async () => {
     const table = new FakeTable();
