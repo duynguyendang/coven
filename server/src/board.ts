@@ -461,8 +461,12 @@ export class Board {
   }
 
   /** The council chat of a project, oldest first, with who is listening and which messages wait. */
-  chatView(projectId: string, at = new Date().toISOString()): Json {
-    const messages = this.chat.get(projectId) ?? [];
+  chatView(projectId: string, at = new Date().toISOString(), afterNew = false): Json {
+    const all = this.chat.get(projectId) ?? [];
+    // `afterNew`: only the current chat, from its "New chat" marker on (what the dashboard shows); `earlier` counts what came before.
+    let start = 0;
+    if (afterNew) for (let i = all.length - 1; i >= 0; i--) if (all[i].role === "human" && all[i].kind === "new") { start = i; break; }
+    const messages = all.slice(start);
     const answered = new Set(messages.filter((m) => m.role === "council" && m.reply_to).map((m) => m.reply_to));
     const cutoff = new Date(Date.parse(at) - LISTENER_ONLINE_SECONDS * 1000).toISOString();
     const listeners = [...(this.listeners.get(projectId)?.values() ?? [])]
@@ -473,7 +477,8 @@ export class Board {
       .sort((a, b) => ((a.last_seen || "") < (b.last_seen || "") ? 1 : -1));
     return {
       project_id: projectId, at, listeners, hosts,
-      waiting: messages.filter((m) => m.role === "human" && !answered.has(m.message_id)).map((m) => m.message_id),
+      waiting: messages.filter((m) => m.role === "human" && m.kind !== "new" && !answered.has(m.message_id)).map((m) => m.message_id),
+      earlier: start,
       messages,
     };
   }

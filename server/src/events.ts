@@ -104,7 +104,8 @@ export const PEOPLE_STATES = new Set([...TASK_STATES, "done"]);
  * is made by the cloud from POST /v1/chat, never accepted from a relay, so no agent can speak as a
  * human or forge a rejection. The council answers through a member's `coven council listen`.
  */
-export const HUMAN_CHAT_KINDS = new Set(["ask", "idea", "suggestion", "reject", "do"]);
+// `new` is a boundary, not a request: "New chat". Nothing answers it; the dashboard and the Chair read from the last one.
+export const HUMAN_CHAT_KINDS = new Set(["ask", "idea", "suggestion", "reject", "do", "new"]);
 /** `working` says a host's witch took a `do` request; `answer` / `error` close it. */
 export const COUNCIL_CHAT_KINDS = new Set(["answer", "error", "working"]);
 /** The witches a host can run (agents.py). */

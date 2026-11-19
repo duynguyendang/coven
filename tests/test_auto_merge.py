@@ -239,3 +239,12 @@ def test_the_chair_is_told_how_merging_works_here_and_what_waits(repo):
     assert "auto-merge is ON" in on and "shop#1 on coven/shop-1: in review" in on and "Never say merging is not a council job" in on
     off = host.triage_prompt(ask, "h", repo, None, {"merge": {"auto": False, "waiting": []}})
     assert "auto-merge is OFF" in off and "Accept and merge" in off and "- none" in off
+
+
+def test_a_new_chat_starts_the_chairs_conversation_from_the_last_marker():
+    from coven import council
+
+    said = lambda i, kind="ask", role="human": {"message_id": f"m{i}", "role": role, "kind": kind, "message": f"text {i}"}  # noqa: E731
+    messages = [said(1), said(2, "answer", "council"), {**said(3, "new"), "message": "New chat"}, said(4), said(5, "answer", "council"), said(6)]
+    assert [m["message_id"] for m in council.current_chat(messages)] == ["m4", "m5", "m6"]
+    assert [m["message_id"] for m in council.current_chat(messages[:2])] == ["m1", "m2"], "no marker: the whole chat"

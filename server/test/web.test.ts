@@ -1204,7 +1204,6 @@ describe("first run", () => {
 describe("council chat", () => {
   const form = () => doc().getElementById("chat-form")!;
   const submit = async () => { form().dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true })); await wait(500); };
-  const pick = (kind: string) => { (doc().querySelector(`input[name="chat-kind"][value="${kind}"]`) as HTMLInputElement).checked = true; };
   const type = (id: string, value: string) => { (doc().getElementById(id) as HTMLInputElement).value = value; };
   const bubbles = () => [...doc().querySelectorAll(".chat .msg")].map((el) => el.textContent!.replace(/\s+/g, " ").trim());
 
@@ -1214,19 +1213,19 @@ describe("council chat", () => {
     assert.equal(doc().querySelector("#main h1")!.textContent, "Council chat · shop");
     assert.ok(text().includes("No member is listening") && text().includes("coven council listen"));
     assert.ok(text().includes("The council is gathered and quiet"), "an empty chat has a voice");
-    assert.equal(doc().getElementById("chat-kinds-label")!.textContent, "Send as", "the kind group has a visible label");
-    assert.equal(doc().querySelector("fieldset.kinds")!.getAttribute("aria-labelledby"), "chat-kinds-label");
+    assert.equal(doc().querySelector('input[name="chat-kind"]'), null, "no kind to pick: the message says what it is");
+    assert.ok(!text().includes("Send as"));
+    assert.ok((doc().querySelector('[data-new-chat]') as HTMLButtonElement).disabled, "nothing to start over from yet");
   });
 
   test("a person asks a role a question; it waits for the council", async () => {
     await go("#/chat/shop");
     type("chat-text", "Is the cart total cached?");
-    (doc().getElementById("chat-to") as HTMLSelectElement).value = "red-team";
     { const me = doc().getElementById("me") as HTMLInputElement; me.value = "duy"; me.dispatchEvent(new dom.window.Event("change")); }
     await submit();
     assert.equal((doc().getElementById("chat-text") as HTMLTextAreaElement).value, "", "the box is cleared after sending");
     const [first] = bubbles();
-    assert.ok(first.includes("Ask") && first.includes("duy") && first.includes("to Black Hat Witch — Red Team"), first);
+    assert.ok(first.includes("Ask") && first.includes("duy") && first.includes("to the council"), first);
     assert.ok(first.includes("waiting for the council: nobody is listening yet"), "no one listens here: the ghost does not pretend to think");
     assert.equal(doc().querySelector(".status.thinking"), null);
     assert.equal(doc().querySelector('[data-key="nav-chat"] .count')!.textContent, String(bubbles().length), "the sidebar counts the messages in the chat");
@@ -1234,13 +1233,13 @@ describe("council chat", () => {
 
   test("a rejection must name its task, and is shown as binding", async () => {
     await go("#/chat/shop");
-    pick("reject");
     type("chat-text", "Not like this: an empty cart crashes.");
-    await submit();
+    const reject = async () => { (doc().getElementById("chat-reject") as HTMLButtonElement).click(); await wait(500); };
+    await reject();
     assert.match(doc().getElementById("chat-error")!.textContent!, /needs the task/);
     assert.equal(bubbles().length, 1, "nothing was sent");
     (doc().getElementById("chat-task") as HTMLSelectElement).value = "shop#1";
-    await submit();
+    await reject();
     const last = bubbles().at(-1)!;
     assert.ok(last.includes("Reject") && last.includes("on shop#1") && last.includes("Binding"), last);
   });
@@ -1261,10 +1260,9 @@ describe("council chat", () => {
     assert.ok(!all[0].includes("waiting for the council"), "answered");
     // a member listens now: a waiting message to a role shows that witch thinking (a real state, not a timer)
     type("chat-text", "And is the total rounded?");
-    (doc().getElementById("chat-to") as HTMLSelectElement).value = "red-team";
     await submit();
     const thinking = doc().querySelector(".status.thinking");
-    assert.ok(thinking && /Black Hat Witch is thinking/.test(thinking.textContent!), thinking?.textContent ?? "no thinking line");
+    assert.ok(thinking && /Grey Witch is thinking/.test(thinking.textContent!), thinking?.textContent ?? "no thinking line");
     assert.ok(text().includes("Answering: ana"), "the listener is shown online");
   });
 
@@ -1291,23 +1289,20 @@ describe("council chat", () => {
 
   test("Do it sends work to a witch: it says when no host runs her, then who takes it, then the answer in steps", async () => {
     await go("#/chat/shop");
-    pick("do");
-    type("chat-text", "review the relay and plan the fixes");
+    // the Dev builds only from a task, so a message to her is a question (`ask`), never work
+    type("chat-text", "where is the retry decided?");
     (doc().getElementById("chat-to") as HTMLSelectElement).value = "dev";
     await submit();
-    assert.match(doc().getElementById("chat-error")!.textContent!, /Dev builds from a task/);
-    // no witch named: the Chair decides who does it
-    type("chat-text", "who will review the code?");
-    (doc().getElementById("chat-to") as HTMLSelectElement).value = "";
-    await submit();
-    const chairs = bubbles().find((b) => b.includes("who will review the code?"))!;
-    assert.ok(chairs.includes("Do it") && chairs.includes("to the council"), chairs);
-    assert.match(chairs, /No online host runs Grey Witch — Senior Kiro · Chair/);
+    assert.equal(doc().getElementById("chat-error")!.textContent, "");
+    const toDev = bubbles().find((b) => b.includes("where is the retry decided?"))!;
+    assert.ok(toDev.includes("Ask") && !toDev.includes("Do it"), toDev);
+    // a witch is named: it is work for her (`do`), taken by a host that runs her
     type("chat-text", "review the relay and plan the fixes");
     (doc().getElementById("chat-to") as HTMLSelectElement).value = "sa";
     await submit();
     const mine = () => bubbles().find((b) => b.includes("review the relay"))!;
     assert.ok(mine().includes("Do it") && mine().includes("to Elder Witch — SA"), mine());
+    assert.equal(doc().querySelector('input[name="chat-kind"]'), null);
     assert.match(mine(), /No online host runs Elder Witch — SA/);
 
     const askedId = (await getJson(s.base, "/v1/chat?project_id=shop")).body.messages.find((m: any) => m.kind === "do" && m.message.includes("review the relay")).message_id;
@@ -1346,7 +1341,6 @@ describe("council chat", () => {
 
   test("Enter sends, Shift+Enter is a new line, and the conversation sticks to its newest message", async () => {
     await go("#/chat/shop");
-    pick("ask");
     (doc().getElementById("chat-to") as HTMLSelectElement).value = "tester";
     const box = doc().getElementById("chat-text") as HTMLTextAreaElement;
     const press = (init: KeyboardEventInit) => {
@@ -1393,15 +1387,55 @@ describe("council chat", () => {
     delete (dom.window.HTMLElement.prototype as any).clientHeight;
   });
 
+  test("New chat starts clean: the old messages fold behind one button, and the Chair reads only the new chat", async () => {
+    await go("#/chat/shop");
+    const before = bubbles().length;
+    assert.ok(before > 3, "a long chat to start over from");
+    const button = () => doc().querySelector("[data-new-chat]") as HTMLButtonElement;
+    assert.ok(!button().disabled);
+    button().click();
+    await wait(900);
+    assert.equal(bubbles().length, 0, "nothing of the old chat is drawn");
+    assert.ok(text().includes("The council is gathered and quiet"));
+    assert.ok(button().disabled, "nothing to start over from");
+    const server = (await getJson(s.base, "/v1/chat?project_id=shop")).body;
+    assert.equal(server.messages.at(-1).kind, "new");
+    assert.equal(server.waiting.includes(server.messages.at(-1).message_id), false, "a marker is not a request: nobody has to answer it");
+    const current = (await getJson(s.base, "/v1/chat?project_id=shop&after_new=1")).body;
+    assert.equal(current.messages.length, 1);
+    assert.equal(current.earlier, server.messages.length - 1);
+    const earlier = doc().querySelector("[data-chat-earlier]") as HTMLButtonElement;
+    assert.match(earlier.textContent!, /Earlier chats \(\d+ messages\)/);
+    earlier.click();
+    await wait(900);
+    assert.equal(bubbles().length, before + 1, "the earlier chat is one click away, with the divider");
+    assert.ok(doc().querySelector(".msg.divider"));
+    (doc().querySelector("[data-chat-earlier]") as HTMLButtonElement).click();
+    await wait(900);
+    assert.equal(bubbles().length, 0);
+  });
+
+  test("a long chat draws only its newest messages and offers the rest", async () => {
+    await go("#/chat/shop");
+    for (let i = 0; i < 65; i++) await postJson(s.base, "/v1/chat", { project_id: "shop", kind: "ask", message: `filler ${i}`, author: "duy" });
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    assert.equal(bubbles().length, 60, "no more than sixty at a time");
+    const more = doc().querySelector("[data-chat-more]") as HTMLButtonElement;
+    assert.match(more.textContent!, /earlier of 5 messages/);
+    more.click();
+    await wait(300);
+    assert.equal(bubbles().length, 66, "all sixty-five, and the New chat divider above them");
+    assert.equal(doc().querySelector("[data-chat-more]"), null);
+  });
+
   test("what you are typing survives a live update", async () => {
     await go("#/chat/shop");
     type("chat-text", "half a thought");
-    pick("idea");
     (doc().getElementById("chat-text") as HTMLTextAreaElement).focus();
     streams[0].emit("heartbeat", { kind: "heartbeat", run: {} });
     await wait(900);
     assert.equal((doc().getElementById("chat-text") as HTMLTextAreaElement).value, "half a thought");
-    assert.equal((doc().querySelector('input[name="chat-kind"]:checked') as HTMLInputElement).value, "idea");
     assert.equal(doc().activeElement!.id, "chat-text");
     type("chat-text", "");
   });

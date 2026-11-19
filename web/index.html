@@ -473,14 +473,11 @@
   .chat-compose { flex: none; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 8px 10px 8px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-low); }
   .chat-compose:focus-within { border-color: var(--blue); }
   .chat-compose .crow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .chat-compose .kinds { border: 0; margin: 0; padding: 2px; display: inline-flex; gap: 2px; background: var(--well); border-radius: 8px; }
-  .chat-compose .kind { display: inline-flex; align-items: center; font-size: 0.7812rem; padding: 3px 10px; border-radius: 6px; cursor: pointer; color: var(--muted); user-select: none; }
-  .chat-compose .kind input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
-  .chat-compose .kind:hover { color: var(--text); }
-  .chat-compose .kind:has(input:checked) { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: var(--shadow-low); }
-  .chat-compose .kind:has(input[value="reject"]:checked) { color: var(--bad-ink); }
-  .chat-compose .kind:has(input[value="do"]:checked) { color: var(--color-text-purple); }
-  .chat-compose .kind:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .msg.divider { background: none; border: 0; box-shadow: none; max-inline-size: none; align-self: stretch; display: flex; align-items: center; gap: 10px; list-style: none; color: var(--muted); font-size: 0.75rem; padding: 6px 0; }
+  .msg.divider::before, .msg.divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+  .chat-compose #chat-reject { display: none; }
+  .chat-compose:has(#chat-task option:checked:not([value=""])) #chat-reject { display: inline-flex; }
+  .chat-more { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
   .chat-compose .pick { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; color: var(--muted); }
   .chat-compose .pick select, .chat-compose .pick input { field-sizing: content; font: inherit; font-size: 0.7812rem; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 2px 4px; max-width: 260px; }
   .chat-compose .pick select:hover, .chat-compose .pick input:hover, .chat-compose .pick select:focus, .chat-compose .pick input:focus { border-color: var(--line); background: var(--bg); }
@@ -874,6 +871,8 @@
     expandDeviations: false,
     boardOpen: null,
     stagePick: null,
+    chatEarlier: false,
+    chatShown: 60,
     chatError: "",       // the chat form's message stays across a redraw
     chatStick: false,
     cloudReady: false,   // some online host can run tasks in Kiro Web (the board offers the button only then)
@@ -1141,7 +1140,7 @@
     try {
       // the chat and the task list for "About" in parallel, not one after the other
       const needBoard = !state.board || state.board.project_id !== project;
-      const [chat] = await Promise.all([api(`/v1/chat?project_id=${encodeURIComponent(project)}`), needBoard ? loadBoard() : null]);
+      const [chat] = await Promise.all([api(`/v1/chat?project_id=${encodeURIComponent(project)}&after_new=${state.chatEarlier ? 0 : 1}`), needBoard ? loadBoard() : null]);
       state.chat = chat;
       state.boardProject = project;
     } catch (error) { quiet(error); }
@@ -1906,13 +1905,8 @@
   }
 
   /* ------------------------------------------------------------- council chat */
-  const CHAT_KIND_LABEL = { ask: "Ask", idea: "Idea", suggestion: "Suggestion", reject: "Reject", do: "Do it", answer: "Answer", working: "Working", error: "Could not answer" };
+  const CHAT_KIND_LABEL = { new: "New chat", ask: "Ask", idea: "Idea", suggestion: "Suggestion", reject: "Reject", do: "Do it", answer: "Answer", working: "Working", error: "Could not answer" };
   const personaTitle = (key) => CHAT_ROLE_NAME[key] || PERSONA_OF[key] || null;
-  const KIND_HELP = { ask: "A question: answered from the code, read-only", idea: "An idea: the council says whether and how, and what it costs",
-    suggestion: "A suggestion on how something is done", reject: "Reject a task: binding, pick the task under About",
-    do: "Work to be done: the Chair (or the witch you name) takes it and answers here" };
-  const KIND_PLACEHOLDER = { ask: "Ask the council…", idea: "Share an idea…", suggestion: "Suggest a change…",
-    reject: "Say why you reject this task…", do: "Say what you want done, e.g. review host.py and plan the fixes…" };
   function requestStatus(m, ctx) {
     const triage = !m.to || m.to === "chair" || m.to === "grey-witch";
     const witch = triage ? "Grey Witch — Senior Kiro · Chair" : (personaTitle(m.to) || m.to);
@@ -1965,6 +1959,7 @@
   }
   function chatMessage(m, byId, waiting, ctx = { final: new Set(), working: new Set(), hosts: [] }) {
     const when = agoTag(m.ts);
+    if (m.role === "human" && m.kind === "new") return `<li class="msg divider" data-key="msg-${esc(m.message_id)}"><span>New chat · ${esc(m.author)} · ${when}</span></li>`;
     if (m.role === "council" && m.kind === "working") {
       // Only while the work is going on: once the answer is in, the answer says it all.
       if (ctx.final.has(m.reply_to)) return "";
@@ -2008,30 +2003,34 @@
     const waiting = new Set(c.waiting || []);
     const replies = (kinds) => new Set((c.messages || []).filter((m) => m.role === "council" && kinds.includes(m.kind)).map((m) => m.reply_to));
     const ctx = { final: replies(["answer", "error"]), working: replies(["working"]), hosts: c.hosts || [], listening: online.length > 0 };
-    const thread = (c.messages || []).length
-      ? `<ol class="chat" aria-label="Conversation" aria-live="polite">${chatGroups(c.messages).map((m) => chatMessage(m, byId, waiting, ctx)).join("")}</ol>`
-      : voice("The council is gathered and quiet.", "Ask it something, or choose Do it and say what you want done. The Chair answers and hands the work to the witches.", "grey-witch");
+    const real = (c.messages || []).filter((m) => !(m.role === "human" && m.kind === "new"));
+    const groups = chatGroups(c.messages || []);
+    const hidden = groups.slice(0, Math.max(0, groups.length - state.chatShown)).filter((m) => !(m.role === "human" && m.kind === "new")).length;
+    const more = `${hidden ? `<button class="act quiet" type="button" data-chat-more data-key="chat-more">Show ${Math.min(hidden, 60)} earlier of ${plural(hidden, "message")}</button>` : ""}`
+      + `${c.earlier || state.chatEarlier ? `<button class="act quiet" type="button" data-chat-earlier data-key="chat-earlier" aria-pressed="${state.chatEarlier}">${state.chatEarlier ? "Hide earlier chats" : `Earlier chats (${plural(c.earlier, "message")})`}</button>` : ""}`;
+    const thread = (more ? `<div class="chat-more">${more}</div>` : "") + (real.length
+      ? `<ol class="chat" aria-label="Conversation" aria-live="polite">${groups.slice(-state.chatShown).map((m) => chatMessage(m, byId, waiting, ctx)).join("")}</ol>`
+      : voice("The council is gathered and quiet.", "Say what you want: a question, an idea, or work to do. The Chair answers and hands the work to the witches.", "grey-witch"));
     if (state.chatSeen) state.chatSeen.primed = true; // from now on, a new message slides in
     const tasks = ((state.board && state.board.project_id === project && state.board.specs) || [])
       .flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => [`${s.spec}#${t.task_id}`, t.title || ""]));
-    const kinds = ["ask", "idea", "suggestion", "reject", "do"].map((k, i) => `<label class="kind" title="${esc(KIND_HELP[k])}"><input type="radio" name="chat-kind" value="${k}" data-key="chat-kind-${k}" ${i === 0 ? "checked" : ""} />${CHAT_KIND_LABEL[k]}</label>`).join("");
     const compose = `<form class="chat-compose" id="chat-form" aria-label="Message the council">
         <div class="crow">
-          <span class="kinds-label" id="chat-kinds-label">Send as</span><fieldset class="kinds" aria-labelledby="chat-kinds-label">${kinds}</fieldset>
-          <span class="spacer"></span>
           <label class="pick">To <select id="chat-to" data-key="chat-to"><option value="">the council (Chair)</option>${Object.entries(CHAT_ROLE_NAME).filter(([r]) => r !== "chair").map(([r, n]) => `<option value="${r}">${esc(n)}</option>`).join("")}<optgroup label="Other witches">${OTHER_WITCHES.map((r) => `<option value="${r}">${esc(PERSONA_OF[r])}</option>`).join("")}</optgroup></select></label>
           <label class="pick">About <select id="chat-task" data-key="chat-task"><option value="">the whole project</option>${tasks.map(([ref, title]) => `<option value="${esc(ref)}">${esc(ref)} ${esc(short(title, 40))}</option>`).join("")}</select></label>
           <span class="pick">as <button class="link" type="button" data-edit-name>${esc(localStorage.getItem("coven_author") || "someone")}</button></span>
         </div>
         <div class="write">
-          <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="400" required aria-describedby="chat-keys" rows="1" placeholder="${esc(KIND_PLACEHOLDER.ask)}"></textarea>
+          <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="400" required aria-describedby="chat-keys" rows="1" placeholder="Ask, or say what you want done…"></textarea>
           <button class="send" type="submit" aria-label="Send" title="Send (Enter)">${icon("send")}</button>
         </div>
-        <div class="foot"><span id="chat-error" role="alert">${esc(state.chatError)}</span><span class="keys" id="chat-keys">Enter to send · Shift+Enter for a new line</span><span class="spacer"></span><span id="chat-count" aria-hidden="true"></span></div>
+        <div class="foot"><span id="chat-error" role="alert">${esc(state.chatError)}</span>
+          <button class="act quiet bad" type="button" id="chat-reject" data-key="chat-reject" title="A binding decision: the guard of this task's flow rejects until new work comes after it">${icon("undo")}<span>Reject this task</span></button><span class="keys" id="chat-keys">Enter to send · Shift+Enter for a new line</span><span class="spacer"></span><span id="chat-count" aria-hidden="true"></span></div>
       </form>`;
     return `<div class="chat-page">${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Council chat · ${project}`,
         lede: "You decide; the council advises and dispatches. Everyone signed in speaks as Human; a rejection is the one message that binds." })}
-      <div class="chat-head">${status}${picker ? `<span class="spacer"></span>${picker}` : ""}</div>
+      <div class="chat-head">${status}<span class="spacer"></span>${picker}
+        <button class="act quiet" type="button" data-new-chat data-key="new-chat"${real.length ? "" : " disabled"} title="Start a fresh conversation: the Chair forgets this one">${icon("plus")}<span>New chat</span></button></div>
       <div class="thread" id="chat-thread">${thread}</div>${compose}</div>`;
   }
 
@@ -2647,13 +2646,20 @@
         if (send) send.disabled = !box.value.trim();
       };
       box.addEventListener("input", grow);
-      const kind = (box.form && box.form.querySelector('input[name="chat-kind"]:checked') || {}).value;
-      box.placeholder = KIND_PLACEHOLDER[kind] || KIND_PLACEHOLDER.ask; // a redraw keeps the chosen kind: keep its hint too
       grow();
     });
-    root.querySelectorAll('input[name="chat-kind"]').forEach((el) => el.addEventListener("change", () => {
-      const box = $("chat-text");
-      if (box) { box.placeholder = KIND_PLACEHOLDER[el.value] || KIND_PLACEHOLDER.ask; box.focus(); }
+    // Reject is the one decision that binds: a button that exists only while a task is chosen under "About".
+    root.querySelectorAll("#chat-reject").forEach((el) => el.addEventListener("click", () => { const form = $("chat-form"); if (form) sendChat(form, "reject"); }));
+    root.querySelectorAll("[data-chat-more]").forEach((el) => el.addEventListener("click", () => { state.chatShown += 60; render({ keepScroll: true }); }));
+    root.querySelectorAll("[data-chat-earlier]").forEach((el) => el.addEventListener("click", async () => { state.chatEarlier = !state.chatEarlier; await loadChat(); render({ keepScroll: true }); }));
+    root.querySelectorAll("[data-new-chat]").forEach((el) => el.addEventListener("click", async () => {
+      el.disabled = true;
+      try {
+        await api("/v1/chat", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), kind: "new", message: "New chat", author: localStorage.getItem("coven_author") || undefined }) });
+        state.chatEarlier = false; state.chatShown = 60; state.chatError = "";
+        await loadChat();
+        render({ keepScroll: true });
+      } catch (error) { el.disabled = false; state.chatError = "Could not start a new chat: " + error.message; quiet(error); }
     }));
     root.querySelectorAll("#chat-text").forEach((box) => box.addEventListener("keydown", (ev) => {
       // Enter sends; Shift+Enter is a new line; Enter while an input method is composing a character is left to it.
@@ -2664,18 +2670,19 @@
       if (typeof form.requestSubmit === "function") form.requestSubmit();
       else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     }));
-    root.querySelectorAll("#chat-form").forEach((form) => form.addEventListener("submit", async (ev) => {
-      ev.preventDefault();
+    /** One send. The kind is not asked of the person: said to the council it is a message the Chair understands and dispatches (`ask`);
+        addressed to a witch it is work for her (`do`), except the Dev, who builds only from a task and is only asked questions. */
+    async function sendChat(form, wanted) {
       const message = $("chat-text").value.trim();
-      const kind = (form.querySelector('input[name="chat-kind"]:checked') || {}).value || "ask";
-      const task = $("chat-task").value || undefined;
-      const problem = !message ? "Write a message first." : kind === "reject" && !task ? "A rejection needs the task it rejects: pick it under “About”."
-        : kind === "do" && ["dev", "green-witch"].includes($("chat-to").value) ? "The Dev builds from a task in tasks.md: choose another witch, or add the task." : "";
+      const task = $("chat-task").value || undefined, to = $("chat-to").value || undefined;
+      const kind = wanted || (to && !["dev", "green-witch"].includes(to) ? "do" : "ask");
+      const problem = !message ? (kind === "reject" ? "Say why you reject it." : "Write a message first.")
+        : kind === "reject" && !task ? "A rejection needs the task it rejects: pick it under “About”." : "";
       state.chatError = problem;
       $("chat-error").textContent = problem;
       if (problem) return;
       const author = localStorage.getItem("coven_author") || "";
-      const body = { project_id: defaultBoardProject(), kind, message, task, to: $("chat-to").value || undefined, author: author || undefined };
+      const body = { project_id: defaultBoardProject(), kind, message, task, to, author: author || undefined };
       if (form.dataset.sending) return; // a second Enter while the first is on its way sends nothing twice
       form.dataset.sending = "1";
       try {
@@ -2687,7 +2694,8 @@
         render({ keepScroll: true });
       } catch (error) { state.chatError = "Not sent: " + error.message; $("chat-error").textContent = state.chatError; }
       finally { delete form.dataset.sending; }
-    }));
+    }
+    root.querySelectorAll("#chat-form").forEach((form) => form.addEventListener("submit", (ev) => { ev.preventDefault(); sendChat(form, null); }));
     root.querySelectorAll("#note-form").forEach((form) => form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const text = $("note-text").value.trim();

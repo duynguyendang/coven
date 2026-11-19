@@ -1896,7 +1896,7 @@ class Host:
             ready_builds = []
         waiting = [f"{ref} on {r.get('branch')}: {r.get('review_hold') or ('in review' if r.get('review_jobs') else 'submitted')}"
                    for ref, r in sorted(load(self.root).items()) if r.get("state") == "submitted" and r.get("branch")]
-        return {"messages": chat.get("messages") or [], "online": sorted(online), "tasks": tasks, "capacity": capacity,
+        return {"messages": council.current_chat(chat.get("messages") or []), "online": sorted(online), "tasks": tasks, "capacity": capacity,
                 "parallel": specmap.parallel_groups(ready_builds), "merge": {"auto": bool(self.auto_merge), "waiting": waiting[:10]}}
 
     def _claim(self, ref: str, task: dict, agent: str) -> dict:

@@ -522,7 +522,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const projectId = url.searchParams.get("project_id");
       if (!projectId || projectId.length > 128) throw validation("project_id", "required");
-      return json(200, store.chatView(projectId));
+      return json(200, store.chatView(projectId, url.searchParams.get("after_new") === "1"));
     }
 
     if (method === "GET" && path === "/v1/flows") {

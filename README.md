@@ -346,20 +346,19 @@ You review the branch, merge it, and tick the task. Keep `coven relay up --machi
 
 ## Talking to the council
 
-Open **Council chat** on the dashboard (`#/chat/<project>`). Pick what you are sending,
-type, press **Enter** (Shift+Enter for a new line):
+Open **Council chat** on the dashboard (`#/chat/<project>`). Type what you want, press
+**Enter** (Shift+Enter for a new line). There is nothing to pick: a question, an idea or work
+to do are all just a message. Two things are separate:
 
-| Kind | Means |
-| :--- | :--- |
-| Ask · Idea · Suggestion | a question or a proposal |
-| **Do it** | work to be done |
-| Reject (pick the task) | a binding decision on a task |
+- **Reject this task** appears when you choose a task under *About*: a binding decision on it.
+- **New chat** starts a fresh conversation. The old messages fold behind *Earlier chats* and
+  the Chair stops reading them. A chat draws its newest 60 messages; the rest are one click away.
 
 Leave *To* on **the council**, and the **Chair** (Grey Witch, on a host that runs her)
 answers. She sees the recent conversation, the witches online and the open tasks. When you
 want something done she makes a **job for each witch it needs**: the jobs appear on the board
 (spec `council`), hosts that run those witches take them, and the answers come back into the
-chat. Name a witch under *To* with **Do it** to send her the work directly (not the Dev).
+chat. Name a witch under *To* to send her the work directly (a message to the Dev is a question: she builds only from a task).
 
 To get code changed, ask for it ("add …", "fix …"). The Chair gives the Elder Witch a
 **planning job**; her plan (at most five tasks, each with its paths and verify command) appears

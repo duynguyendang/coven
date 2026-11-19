@@ -605,8 +605,8 @@ export class MemoryStore {
     return event;
   }
 
-  chatView(projectId: string): Json {
-    return this.board.chatView(projectId);
+  chatView(projectId: string, afterNew = false): Json {
+    return this.board.chatView(projectId, undefined, afterNew);
   }
 
   /** Flows, derived from their events (contract §5.5 / §9.5), newest first. */
