@@ -117,6 +117,10 @@ before(async () => {
 
   await send("lab", "member_wsl-7", [{ ...ev("member_wsl-7", "lab", "task_created", { task: "council#rq9-1", title: "Run the relay tests", agent: "white-hat", detail: "read tests/test_relay.py", source: "evt_x" }, 4), member: "wsl-7" }]);
 
+  // 5c. a project with a task list and no notes: the whiteboard is blank
+  await send("quiet", "member_wsl-7", [{ ...ev("member_wsl-7", "quiet", "spec_artifact_updated", { artifact: "tasks", spec: "quiet", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [
+    { task_id: "Q1", title: "Sit still", status: "not_started", paths: ["quiet/"] }] }, 21), member: "wsl-7" }]);
+
   // 6. the seeded demo fleet, including the council
   for (const b of batches(build())) await send(b.projectId, b.runId, b.events);
   await beat("coven-demo", RUN_IDS["coven-live"]);
@@ -1006,6 +1010,19 @@ describe("session screen", () => {
     const first = doc().querySelector(".wall .sticky")!;
     assert.ok(first.classList.contains("question"));
     assert.match(first.textContent!.replace(/\s+/g, " "), /question\s*What if the cart is empty\?\s*cy · on shop#1 · \d+ (?:s|min) ago/);
+  });
+
+  test("board: a project with no notes shows the whiteboard empty state in the shared voice", async () => {
+    await go("#/board/quiet", 400);
+    const wall = doc().querySelector(".wall")!;
+    assert.equal(wall.querySelector(".sticky"), null);
+    const empty = wall.querySelector(".empty.voice")!;
+    assert.ok(empty, "the shared empty state");
+    assert.equal(empty.querySelector(".say")!.textContent, "The whiteboard is blank.");
+    assert.equal(empty.querySelector(".then")!.textContent, "The Elf has ideas.");
+    assert.ok(empty.querySelector(".peek .av"), "the ghost peeks");
+    assert.ok(doc().getElementById("note-form"), "the compose form stays outside the line");
+    await go("#/");
   });
 
   test("board: a person posts a note from the web and it lands on the board", async () => {
