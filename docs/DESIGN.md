@@ -449,4 +449,5 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
 - **Left bars** mean attention, failure or waiting (session needing attention, deviation, failed turn, waiting flow, *Waiting for you*). Council and finished-flow cards have none.
 - **Rows are lines:** task rows in a column and monitor rows are separated by hairlines, not boxed one by one. A state (stuck, runs twice, stale, disconnected) is a tint on the row.
 - **Say it once:** a number tile shows its count and label; its helper line appears only when something needs a person (*N need a host*). The page footer folds behind one line.
+- **Final polish guard:** `server/test/web.test.ts` fails on any gradient, text/drop shadow, blur or backdrop filter, any `box-shadow` that is not `none`, a `--shadow-*` token or a zero-blur offset in a token colour, and any emoji (the `✓ ✗ ▶ ⏸ ✎` text marks are allowed).
 - **No inline `style=`** in templates: use the spacing helpers at the end of the stylesheet.

@@ -1035,6 +1035,20 @@ describe("session screen", () => {
     assert.ok(!/\.still[^{]*\{[^}]*(gradient|box-shadow)/.test(css), "flat colour only");
   });
 
+  test("final polish: no gradient, no glow, no emoji in the dashboard", () => {
+    const src = readFileSync(join(here, "..", "..", "web", "index.html"), "utf8");
+    assert.ok(!/(linear|radial|conic)-gradient|repeating-.*gradient/i.test(src), "no gradients");
+    assert.ok(!/text-shadow|drop-shadow|filter:\s*blur|backdrop-filter/i.test(src), "no glow or glass");
+    // box-shadow: a token, none, or a flat offset/inset with zero blur; never a blurred colour
+    const shadows = [...src.matchAll(/box-shadow:\s*([^;}]+)/gi)].map((m) => m[1]!.trim());
+    assert.ok(shadows.length > 0);
+    for (const v of shadows) {
+      const ok = v === "none" || /^var\(--shadow-(low|high)\)$/.test(v) || /^(inset )?0 -?\d+px 0 var\(--[\w-]+\)$/.test(v);
+      assert.ok(ok, `box-shadow must be flat or a token: ${v}`);
+    }
+    assert.ok(!/\p{Emoji_Presentation}|\uFE0F/u.test(src), "no emoji; use the ghost icons and text");
+  });
+
   test("board: no task list is a voiced, still empty state", async () => {
     await go("#/board/bare", 400);
     const e = doc().querySelector("#main .empty.voice.still");
