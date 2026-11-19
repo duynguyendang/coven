@@ -1901,7 +1901,7 @@
       ${stageHtml(members)}
       ${monitorHtml(b)}
       <h2>Whiteboard</h2>${compose}
-      <div class="wall">${(b.notes || []).map(stickyNote).join("") || '<p class="hint">The whiteboard is blank. The Elf has ideas; so do you: post the first note.</p>'}</div>`;
+      <div class="wall">${(b.notes || []).map(stickyNote).join("") || voice("The whiteboard is blank.", "The Elf has ideas.", "elf")}</div>`;
   }
 
   /* ------------------------------------------------------------- council chat */
