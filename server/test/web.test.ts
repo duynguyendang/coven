@@ -117,6 +117,9 @@ before(async () => {
 
   await send("lab", "member_wsl-7", [{ ...ev("member_wsl-7", "lab", "task_created", { task: "council#rq9-1", title: "Run the relay tests", agent: "white-hat", detail: "read tests/test_relay.py", source: "evt_x" }, 4), member: "wsl-7" }]);
 
+  // 5d. a project with a note and no task list: the board's task area is empty
+  await send("bare", "member_wsl-7", [{ ...ev("member_wsl-7", "bare", "board_note", { note: "Nothing planned yet.", kind: "note" }, 4), member: "wsl-7" }]);
+
   // 5c. a project with a task list and no notes: the whiteboard is blank
   await send("quiet", "member_wsl-7", [{ ...ev("member_wsl-7", "quiet", "spec_artifact_updated", { artifact: "tasks", spec: "quiet", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [
     { task_id: "Q1", title: "Sit still", status: "not_started", paths: ["quiet/"] }] }, 21), member: "wsl-7" }]);
@@ -1030,6 +1033,15 @@ describe("session screen", () => {
     const css = doc().querySelector("style")!.textContent!;
     assert.match(css, /\.empty\.voice\.still \.peek \.av \{ animation: none;/);
     assert.ok(!/\.still[^{]*\{[^}]*(gradient|box-shadow)/.test(css), "flat colour only");
+  });
+
+  test("board: no task list is a voiced, still empty state", async () => {
+    await go("#/board/bare", 400);
+    const e = doc().querySelector("#main .empty.voice.still");
+    assert.ok(e, "ops empty state sits still");
+    assert.match(e!.textContent!, /No task list yet\./);
+    assert.ok(e!.querySelector(".peek .av"), "the Chair's ghost is there");
+    await go("#/");
   });
 
   test("board: a person posts a note from the web and it lands on the board", async () => {
