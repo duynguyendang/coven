@@ -1896,7 +1896,7 @@
       ${waitingForYou(cols)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
-        : '<p class="hint">No task list yet. It appears when a member\'s Kiro starts or finishes a spec task.</p>'}
+        : voice("No task list yet.", "It appears when a member's Kiro starts or finishes a spec task.", "grey-witch", true)}
       ${decidedList(decidedPlans, b)}
       ${stageHtml(members)}
       ${monitorHtml(b)}
