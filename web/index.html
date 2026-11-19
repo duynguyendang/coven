@@ -714,7 +714,9 @@
   .login h2 b { color: var(--color-accent); font-size: 0.875rem; letter-spacing: 0.2em; }
   .login h2 span { color: var(--coven-stage-muted); font-size: 0.8125rem; }
   .login .hero { margin: 4px 0 0; font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 6vw, 2.75rem); line-height: 1.1; letter-spacing: -0.015em; color: var(--coven-stage-ink); min-block-size: 2.3em; }
-  .login .hero .caret { display: inline-block; inline-size: 0.08em; block-size: 0.9em; margin-left: 0.06em; vertical-align: -0.08em; background: var(--coven-caret); animation: blink 1s steps(1) infinite; }
+  .login .hero .type { display: inline-block; max-inline-size: 100%; overflow: hidden; white-space: nowrap; vertical-align: top; animation: type-in 1.4s steps(22, end) 1 both; }
+  .login .hero::after { content: ""; display: inline-block; inline-size: 0.08em; block-size: 0.9em; margin-left: 0.06em; vertical-align: -0.08em; background: var(--coven-caret); animation: blink 1s steps(1) infinite; }
+  @keyframes type-in { from { inline-size: 0; } to { inline-size: 22ch; } }
   @keyframes blink { 50% { opacity: 0; } }
   .login .tagline code, #login-why code { color: var(--coven-stage-ink); background: color-mix(in srgb, var(--coven-stage-ink) 10%, transparent); border: 0; }
   .login .tagline { color: var(--coven-stage-muted); font-size: 1rem; line-height: 1.5; margin: 0 0 8px; }
@@ -738,7 +740,7 @@
   @media (prefers-reduced-motion: reduce) {
     .ghost-mood.think, .ghost-mood.shrug .av, .msg.arrive, .peek .av, .login-panel .ghost-peek.peeking .av, .login.busy .ghost-peek .av, .badge.live::before { animation: none; }
     .login-panel .ghost-peek .av { transition: none; }
-    .login .hero .caret { animation: none; }
+    .login .hero .type, .login .hero::after { animation: none; }
   }
 
   /* spacing helpers (replace inline style attributes) */
@@ -803,7 +805,7 @@
 <dialog class="login" id="login" aria-labelledby="login-title" aria-describedby="login-tagline">
   <form id="login-form">
     <div class="login-brand"><h2 id="login-title"><b>COVEN</b><span>Sign in</span></h2></div>
-    <p class="hero" id="login-hero" data-text="Kiro, meet your Coven.">Kiro, meet your Coven.</p>
+    <p class="hero" id="login-hero"><span class="type">Kiro, meet your Coven.</span></p>
     <p class="tagline" id="login-tagline">Watch every Kiro session live, and let the witches work: your hosts build each task on its own branch, tick <code>tasks.md</code>, and merge what every reviewer passed.</p>
     <div class="login-panel">
       <span class="ghost-peek" id="login-ghost" aria-hidden="true"></span>
@@ -2880,20 +2882,10 @@
   });
   document.querySelectorAll(".brand").forEach((el) => el.insertAdjacentHTML("afterbegin", avatar("coven")));
   $("login-ghost").innerHTML = avatar("coven");
-  // Each time the sign-in opens, the headline types itself once, with a blinking caret, and the ghost peeks up.
-  // Its full text is the label, for readers; under reduced motion it is simply there.
-  let typing = null;
+  // Each time the sign-in opens the ghost peeks up; the headline types itself in CSS alone (steps() on a ch width, reduced-motion safe).
   function greet() {
-    const el = $("login-hero"), text = el.dataset.text;
-    el.setAttribute("aria-label", text);
-    clearInterval(typing);
     const peek = $("login-ghost");
     peek.classList.remove("peeking"); void peek.offsetWidth; peek.classList.add("peeking"); // restart its animation
-    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = text; return; }
-    let n = 0;
-    const draw = () => { el.innerHTML = `<span aria-hidden="true">${esc(text.slice(0, n))}</span><span class="caret" aria-hidden="true"></span>`; };
-    draw();
-    typing = setInterval(() => { n += 1; draw(); if (n >= text.length) clearInterval(typing); }, 55);
   }
   $("install-cmd").textContent = `coven login --cloud-url ${location.origin} --token <password>`;
   $("install-copy").addEventListener("click", async () => {
