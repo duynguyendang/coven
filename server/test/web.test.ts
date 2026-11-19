@@ -1523,6 +1523,23 @@ describe("signing out", () => {
     assert.match(doc().getElementById("install-cmd")!.textContent!, /^coven login --cloud-url http:\/\/127\.0\.0\.1:\d+ --token <password>$/, "the command to connect a machine, for this cloud");
   });
 
+  test("ghost reactions are state classes on one element; reduced motion clears them and keeps the ghost visible", () => {
+    const css = doc().querySelector("style")!.textContent!;
+    assert.match(css, /\.login-panel \.ghost-peek\.peeking \.av \{[^}]*animation: peek-up/, "peek");
+    assert.match(css, /\.login\.wrong \.ghost-peek \.av \{ translate: 0 92%; animation: none; \}/, "duck");
+    assert.match(css, /\.login\.busy \.ghost-peek \.av \{ animation: bob /, "bob");
+    assert.match(css, /\.ghost-mood\.shrug \.av \{ animation: shrug /, "shrug");
+    const rm = css.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.ghost-mood\.think[^@]*?\n  \}/)?.[0] ?? "";
+    assert.match(rm, /\.ghost-mood\.think, \.ghost-mood\.shrug \.av[^{]*\.login-panel \.ghost-peek\.peeking \.av, \.login\.busy \.ghost-peek \.av[^{]*\{ animation: none; \}/);
+    assert.match(rm, /\.login\.wrong \.ghost-peek \.av \{ translate: none; animation: none; \}/, "the ghost is not hidden by .wrong");
+    const login = doc().getElementById("login")!;
+    for (const state of ["wrong", "busy"]) {
+      login.classList.add(state);
+      assert.equal(doc().querySelectorAll("#login-ghost svg.av").length, 1, `${state}: still one ghost, no SVG swap`);
+      login.classList.remove(state);
+    }
+  });
+
   test("the headline types in CSS only: steps() on a ch width, a violet caret, still under reduced motion", () => {
     const css = doc().querySelector("style")!.textContent!;
     assert.match(css, /\.login \.hero \.type \{[^}]*animation: type-in [\d.]+s steps\(22, end\) 1 both/);

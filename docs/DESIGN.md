@@ -258,6 +258,9 @@ palette. The Kiroween character comes from the witches' ghost icons, not from th
 - **The ghost reacts:** it peeks up on the sign-in and over empty states, ducks behind the panel on
   a wrong password, bobs while connecting and while a message waits for the council, and shrugs on a
   council error. A new chat message slides in once. All of it stops under `prefers-reduced-motion`.
+  It is one ghost element and state classes only (`peeking`, `wrong`, `busy` on the sign-in; `think`,
+  `shrug` on `.ghost-mood`), never a per-state SVG swap. Under reduced motion the animations are
+  cleared and `.wrong` is overridden (no translate), so the ghost stays visible.
 - **Copy has a voice** where nothing is happening ("The cauldron is cold.", "Every witch stayed inside
   her circle.") and states facts everywhere else. A witch's first "never" is on her card.
 
