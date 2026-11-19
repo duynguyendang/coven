@@ -147,7 +147,7 @@ export class Board {
       const list = this.chat.get(project) ?? [];
       const entry = {
         message_id: event.event_id, project_id: project, ts: event.ts, role: p.role, kind: p.kind,
-        message: String(p.message ?? "").slice(0, MAX_NOTE_CHARS), task: typeof p.task === "string" ? p.task : null,
+        message: String(p.message ?? "").slice(0, p.role === "human" ? 20000 : MAX_NOTE_CHARS), task: typeof p.task === "string" ? p.task : null,
         to: typeof p.to === "string" ? p.to : null, reply_to: typeof p.reply_to === "string" ? p.reply_to : null,
         // A human message is the cloud's (POST /v1/chat): its author is the name they typed. An answer names its member.
         author: p.role === "human" ? `${p.author || "someone"}` : (event.member || "unknown"),

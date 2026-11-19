@@ -38,13 +38,13 @@ const SECRET_GLOBAL: [string, RegExp][] = SECRET_PATTERNS.map(([name, re]) => [n
 const GENERIC_ASSIGNMENT = /\b(password|passwd|secret|token|api[_-]?key)\b\s*[:=]\s*['"]?[A-Za-z0-9_\-./+=]{8,}/gi;
 const HOME_PATTERN = /\/(?:home|Users)\/[^/\s"']+/g;
 
-export function redactText(value: string): string {
+export function redactText(value: string, max: number = MAX_STRING): string {
   let text = value;
   for (const [name, pattern] of SECRET_GLOBAL) text = text.replace(pattern, `[REDACTED:${name}]`);
   text = text.replace(GENERIC_ASSIGNMENT, (_match, word: string) => `${word}=[REDACTED]`);
   text = text.replace(HOME_PATTERN, "~");
   const chars = Array.from(text); // count code points, as the Python implementation does
-  if (chars.length > MAX_STRING) text = chars.slice(0, MAX_STRING).join("") + "…[truncated]";
+  if (chars.length > max) text = chars.slice(0, max).join("") + "…[truncated]";
   return text;
 }
 

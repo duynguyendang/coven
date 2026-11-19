@@ -114,14 +114,18 @@ export const AGENT_SLUGS = new Set(["green-witch", "white-hat", "black-hat", "im
 export const CHAT_ROLES = new Set(["chair", "sa", "dev", "tester", "red-team", "brainstorm", ...AGENT_SLUGS]);
 /** The Dev builds from a task in tasks.md (paths, verify); a free-text request has neither. */
 const BUILDERS = new Set(["dev", "green-witch"]);
-export const MAX_CHAT_CHARS = 400; // the redaction budget for any string
+export const MAX_CHAT_CHARS = 400; // the redaction budget for any string (a council message)
+export const MAX_HUMAN_CHAT_CHARS = 20000; // a person may paste or upload a document (a .md file)
 const TASK_REF = /^[^#\s]{1,80}#[^#\s]{1,20}$/;
 
 export function chatProblems(payload: Json): string[] {
   const errors: string[] = [];
   const message = payload.message;
   if (typeof message !== "string" || !message.trim()) errors.push("a chat message needs text (payload.message)");
-  else if (Array.from(message).length > MAX_CHAT_CHARS) errors.push(`a chat message is at most ${MAX_CHAT_CHARS} characters`);
+  else {
+    const limit = payload.role === "human" ? MAX_HUMAN_CHAT_CHARS : MAX_CHAT_CHARS;
+    if (Array.from(message).length > limit) errors.push(`a chat message is at most ${limit} characters`);
+  }
   if (payload.role === "human") {
     if (!HUMAN_CHAT_KINDS.has(payload.kind)) errors.push(`a human message is one of ${[...HUMAN_CHAT_KINDS].join(", ")}`);
     if (payload.kind === "reject" && !payload.task) errors.push("a rejection names the task it rejects");

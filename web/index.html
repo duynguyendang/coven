@@ -2021,7 +2021,9 @@
           <span class="pick">as <button class="link" type="button" data-edit-name>${esc(localStorage.getItem("coven_author") || "someone")}</button></span>
         </div>
         <div class="write">
-          <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="400" required aria-describedby="chat-keys" rows="1" placeholder="Ask, or say what you want done…"></textarea>
+          <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="20000" required aria-describedby="chat-keys" rows="1" placeholder="Ask, or say what you want done…"></textarea>
+          <input type="file" id="chat-file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden />
+          <button class="act quiet" type="button" id="chat-attach" aria-label="Attach a Markdown file" title="Attach a .md or .txt file (up to 20,000 characters): its text is added to your message">${icon("plus")}</button>
           <button class="send" type="submit" aria-label="Send" title="Send (Enter)">${icon("send")}</button>
         </div>
         <div class="foot"><span id="chat-error" role="alert">${esc(state.chatError)}</span>
@@ -2641,11 +2643,29 @@
           box.style.height = `${Math.min(box.scrollHeight, 9 * 21)}px`;
         }
         const n = box.value.length, count = $("chat-count"), send = box.form && box.form.querySelector(".send");
-        if (count) count.textContent = n > 300 ? `${n} / 400` : "";
+        if (count) count.textContent = n > 15000 ? `${n} / 20000` : "";
         if (send) send.disabled = !box.value.trim();
       };
       box.addEventListener("input", grow);
       grow();
+      // Attach: a Markdown or text file is read in the browser and added to the message; nothing is uploaded until Send.
+      const file = $("chat-file"), attach = $("chat-attach");
+      if (file && attach) {
+        attach.addEventListener("click", () => file.click());
+        file.addEventListener("change", async () => {
+          const f = file.files && file.files[0];
+          file.value = "";
+          if (!f) return;
+          const fail = (m) => { state.chatError = m; $("chat-error").textContent = m; };
+          if (f.size > 200000) return fail("That file is too large; the limit is 20,000 characters.");
+          const text = (await f.text()).replace(/\r\n?/g, "\n").trim();
+          const joined = box.value.trim() ? `${box.value.trim()}\n\n${text}` : text;
+          if (Array.from(joined).length > 20000) return fail(`Too long: ${Array.from(joined).length} characters, the limit is 20,000.`);
+          box.value = joined;
+          state.chatError = ""; $("chat-error").textContent = "";
+          grow(); box.focus();
+        });
+      }
     });
     // Reject is the one decision that binds: a button that exists only while a task is chosen under "About".
     root.querySelectorAll("#chat-reject").forEach((el) => el.addEventListener("click", () => { const form = $("chat-form"); if (form) sendChat(form, "reject"); }));

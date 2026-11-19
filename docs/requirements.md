@@ -125,6 +125,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | Id | Requirement | Pri | Status |
 | :--- | :--- | :--- | :--- |
 | FR-CH1 | People send one kind of message, to the council or to one witch (said to the council it is an `ask` the Chair understands; to a witch it is a `do`; to the Dev it is an `ask`), and Reject on a chosen task. Idea, Suggestion and Do it stay valid on the API. | Must | Built |
+| FR-CH12 | A person's chat message may be up to 20,000 characters, and the composer can attach a `.md` or `.txt` file whose text joins the message. | Should | Built |
 | FR-CH11 | A person can start a **New chat** (`kind: new`): the dashboard and the Chair read from the last marker on, earlier messages are one click away, and a chat draws at most its newest 60 messages at a time. | Should | Built |
 | FR-CH2 | Everything said to the council goes to the Chair when an online host runs her. She is told what each witch can do and which are online, the last 10 messages and the open tasks; she answers and, when work is wanted, makes jobs. | Must | Built |
 | FR-CH3 | The Chair's jobs become tasks of the spec `council` on the board, taken by a host that runs that witch; the answer returns to the chat and the board. Jobs for the Dev, the Chair or unknown witches are dropped. | Must | Built |

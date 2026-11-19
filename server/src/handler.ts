@@ -14,10 +14,10 @@
  */
 
 import { authorised, type Env, type Scope } from "./auth.ts";
-import { chatProblems, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES, WEB_ONLY_TYPES } from "./events.ts";
+import { chatProblems, MAX_HUMAN_CHAT_CHARS, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES, WEB_ONLY_TYPES } from "./events.ts";
 import { IDEMPOTENT_PATHS, DEFAULT_TTL_SECONDS, KEY_PATTERN, bodyHash, idemId, scopeOf, type IdemEntry } from "./idempotency.ts";
 import { presented } from "./auth.ts";
-import { redactEvent } from "./redact.ts";
+import { redactEvent, redactText } from "./redact.ts";
 import { type MemoryStore, now } from "./store.ts";
 
 export const HEARTBEAT_SECONDS = 5;
@@ -514,7 +514,10 @@ export function createHandler(options: HandlerOptions): Handler {
       };
       const problems = chatProblems(payload);
       if (problems.length) throw validation("message", problems.join("; "));
-      const event = await store.postChat(projectId, redactEvent({ payload }).payload);
+      // The message gets the longer human budget (secrets are still redacted); every other field keeps the 400-character one.
+      const { message: said, ...rest } = payload;
+      const clean = redactEvent({ payload: rest }).payload as Json;
+      const event = await store.postChat(projectId, { ...clean, message: redactText(said as string, MAX_HUMAN_CHAT_CHARS) });
       return json(201, { message_id: event.event_id });
     }
 

@@ -90,11 +90,22 @@ describe("council chat", () => {
   test("bad messages are refused: no text, too long, unknown kind or role, a rejection without its task", async () => {
     const s = await startServer();
     try {
-      for (const body of [{ message: "  " }, { message: "x".repeat(401) }, { kind: "approve", message: "ship it" },
+      for (const body of [{ message: "  " }, { message: "x".repeat(20001) }, { kind: "approve", message: "ship it" },
         { kind: "reject", message: "no" }, { message: "hi", to: "boss" }, { message: "hi", task: "not a task ref" }]) {
         const r = await say(s.base, body);
         assert.equal(r.status, 422, JSON.stringify(body));
       }
+    } finally { await s.close(); }
+  });
+
+  test("a long message (an attached document) is kept whole, with its secrets redacted", async () => {
+    const s = await startServer();
+    try {
+      const doc = "# Plan\n" + "line of the document\n".repeat(500) + "key AKIAABCDEFGHIJKLMNOP\n";
+      assert.equal((await say(s.base, { message: doc })).status, 201);
+      const m = (await getJson(s.base, "/v1/chat?project_id=shop")).body.messages[0];
+      assert.ok(m.message.length > 9000 && !m.message.includes("truncated"));
+      assert.ok(m.message.includes("[REDACTED:aws_access_key]") && !m.message.includes("AKIA"));
     } finally { await s.close(); }
   });
 
