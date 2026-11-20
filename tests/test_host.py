@@ -1371,3 +1371,38 @@ def test_the_host_tells_the_monitor_each_run_with_its_start_at_once(repo, monkey
     h._reap()
     h.presence()
     assert cloud.monitor[-1][1] == [], "a finished run leaves the monitor at once"
+
+
+def test_a_branch_already_in_base_is_reported_once_per_tip_until_the_board_shows_it_done(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"]).run(once=True)
+    sent = []
+    monkeypatch.setattr(board, "_member_event", lambda root, type_, payload: sent.append((type_, payload)) or {})
+    h = host.Host(repo, slots=1, runner=Runner(), only=["green-witch"])
+    h._in_base({})
+    assert sent == [], "not merged yet"
+    git(repo, "merge", "-q", "coven/shop-1")
+    tip = git(repo, "rev-parse", "coven/shop-1")
+    h._in_base({})
+    h._in_base({})
+    assert sent == [("branch_in_base", {"task": "shop#1", "branch": "coven/shop-1", "tip": tip, "base": "main"})], "once per tip and base"
+    other = host.Host(repo, slots=1, runner=Runner(), only=["green-witch"])
+    other._in_base({"specs": [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "done"}]}]})
+    assert len(sent) == 1, "the board shows it done: nothing more"
+
+
+def test_a_failed_in_base_report_is_tried_again_next_poll(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"]).run(once=True)
+    git(repo, "merge", "-q", "coven/shop-1")
+    calls = []
+
+    def flaky(root, type_, payload):
+        calls.append(payload["task"])
+        if len(calls) == 1:
+            raise board.BoardError("offline", 503, {})
+        return {}
+
+    monkeypatch.setattr(board, "_member_event", flaky)
+    h = host.Host(repo, slots=1, runner=Runner(), only=["green-witch"])
+    assert h._in_base({}) == [] and h._in_base({}) == ["shop#1"] and h._in_base({}) == []

@@ -1778,6 +1778,7 @@ class Host:
         self.running: dict[str, Future] = Runs()  # stamps when each run started, for the witch monitor
         self.process = f"p_{secrets.token_hex(4)}"  # this process: two hosts that share an id still tell apart
         self._announced: tuple = ()
+        self._in_base_sent: set[tuple[str, str, str]] = set()  # (ref, tip, base) already reported as in base
         self.host_id = config.host_id(root)
         self.attempts: dict[str, int] = {}  # ref -> runs of it the board has seen (`doer_attempts`), refreshed each tick
         self._presence_at: float | None = None
@@ -1844,6 +1845,32 @@ class Host:
                 _forget(self.root, ref)
                 finished.append(ref)
         return finished
+
+    def _in_base(self, view: dict) -> list[str]:
+        """Tell the board about a submitted coven/* branch whose tip is already in its base (a person merged it by hand).
+        Once per tip and base; nothing more once the board shows the task done. Never blocks the tick."""
+        acked = {f"{s.get('spec')}#{t.get('task_id')}" for s in view.get("specs") or [] for t in s.get("tasks") or []
+                 if t.get("doer_state") == "done" or t.get("merged")}
+        sent = []
+        for ref, record in load(self.root).items():
+            branch, base = str(record.get("branch") or ""), str(record.get("base") or "")
+            if record.get("state") != "submitted" or not branch.startswith("coven/") or not base or ref in acked or ref in self.running:
+                continue
+            if not record.get("commits"):
+                continue  # nothing was built on it: an empty branch is trivially "in" the base
+            try:
+                tip = work._git(self.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False).strip()
+                if not tip or (ref, tip, base) in self._in_base_sent:
+                    continue
+                inside = subprocess.run(["git", "merge-base", "--is-ancestor", tip, base], cwd=self.root, capture_output=True, check=False)
+                if inside.returncode != 0:
+                    continue
+                board._member_event(self.root, "branch_in_base", {"task": ref, "branch": branch, "tip": tip, "base": base[:100]})
+            except Exception:  # noqa: BLE001 - a courtesy: try again next poll
+                continue
+            self._in_base_sent.add((ref, tip, base))
+            sent.append(ref)
+        return sent
 
     def _rework(self, chat: dict, notes: list[dict], tasks: dict[str, dict]) -> list[str]:
         started = []
@@ -2190,6 +2217,7 @@ class Host:
         self._requeued(view)
         pushed = self._pushes(view)  # a push needs no model: it goes on while paused
         accepted = self._accepts(view)  # nor does a person's Accept: merge, check, push
+        self._in_base(view)  # before a merged branch is forgotten below
         if self.paused():
             # Kiro is down: start nothing that needs a model. Messages and tasks wait; the pause ends by itself.
             finished = self._release_finished(tasks, view)
