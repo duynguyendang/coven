@@ -473,6 +473,41 @@ describe("several hosts (spec multi-host)", () => {
     } finally { await s.close(); }
   });
 
+  test("accept_progress: one merge_state per accept request; changes has none; stale progress is ignored", async () => {
+    const s = await startServer();
+    try {
+      const accept = (body: Json) => postJson(s.base, "/v1/board/accept", { project_id: "shop", task: "s#1", author: "duy", ...body }, auth());
+      const progress = (request_id: unknown, state: string, extra: Json = {}) => send(s.base, [ev("accept_progress", { task: "s#1", request_id, state, ...extra })]);
+      const acc = async () => { await send(s.base, [ev("spec_artifact_updated", { spec: "s", tasks: [{ task_id: "1", title: "x" }] })]); return (await board(s.base)).specs.find((x: Json) => x.spec === "s").tasks[0].accept; };
+      await send(s.base, [ev("task_status", { task: "s#1", state: "submitted", agent: "green-witch", branch: "coven/s-1", branch_host: "h_0000000a", host_id: "h_0000000a" })]);
+      await accept({ decision: "changes", reason: "redo" });
+      let a = await acc();
+      assert.deepEqual([a.accepted, a.merge_state], [false, null], "changes has no merge_state");
+      await accept({ decision: "accept" });
+      a = await acc();
+      assert.deepEqual([a.accepted, a.merge_state], [true, "requested"]);
+      const first = a.request_id;
+      assert.equal((await progress(first, "bogus")).body.accepted, 0, "state is merging or held");
+      assert.equal((await progress(undefined, "merging")).body.accepted, 0, "needs the request_id");
+      await progress("not-the-request", "held", { reason: "stale" });
+      assert.equal((await acc()).merge_state, "requested", "stale request_id ignored");
+      await progress(first, "merging");
+      assert.equal((await acc()).merge_state, "merging");
+      await progress(first, "held", { reason: "make verify failed" });
+      a = await acc();
+      assert.deepEqual([a.merge_state, a.merge_reason], ["held", "make verify failed"]);
+      await accept({ decision: "accept" });
+      a = await acc();
+      assert.notEqual(a.request_id, first);
+      assert.deepEqual([a.merge_state, a.merge_reason ?? null], ["requested", null], "a new request clears the old state");
+      await progress(first, "merging");
+      assert.equal((await acc()).merge_state, "requested", "progress for the old request is ignored");
+      await send(s.base, [ev("task_merged", { task: "s#1", branch: "coven/s-1", commit: "abcdef1", base: "main", reviewers: [], decided_by: "person", author: "duy", host_id: "h_0000000a" })]);
+      a = await acc();
+      assert.deepEqual([a.merge_state, a.commit], ["merged", "abcdef1"]);
+    } finally { await s.close(); }
+  });
+
   test("the witch monitor: one row per run of every process, its stage, its heartbeat, never merged", async () => {
     const s = await startServer();
     try {
