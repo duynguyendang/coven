@@ -472,6 +472,17 @@ deploy, `/healthz`'s `started_at` shows when the instance last started.
 | A plan's tasks | steps in order: each waits until the earlier ones are merged | side by side from the base: a later step lacked the earlier one |
 | New code on the cloud | the Worker sends its version; an older Durable Object resets itself; streams end after 10 min | waiting for eviction: open dashboards kept old code running for hours |
 
+### 9.1 Open answers from Part 8 (council#rc185ff-1)
+
+Three questions in the Part 8 brief are still open. The brief is in no file in the repository, so
+the questions and their answers are not recorded here; a person adds each one below when decided.
+Decisions go in the table above once made. The ids the brief uses are listed, as proposed, in
+`requirements.md` §4.11.
+
+1. Open: _question and answer to be written by a person._
+2. Open: _question and answer to be written by a person._
+3. Open: _question and answer to be written by a person._
+
 ## 10. Risks and known limits
 
 - **Kiro coupling.** A change to hook payloads, `stream-json` or `--trust-tools` names breaks
