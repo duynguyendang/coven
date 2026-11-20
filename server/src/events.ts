@@ -58,6 +58,8 @@ export const EVENT_TYPES = new Set([
   "task_accept",
   // the host reports how it is handling a person's accept request (merging, or held with a reason) — contract §6.2
   "accept_progress",
+  // the host reports that a submitted branch's tip is already in the base branch — contract §6.2
+  "branch_in_base",
   "push_done",
   // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
   "plan_proposed",
@@ -265,6 +267,13 @@ export function validateEvent(event: Json): string[] {
     if (typeof p.request_id !== "string" || !p.request_id || p.request_id.length > 80) errors.push("accept_progress needs the request_id of the task_accept");
     if (!["merging", "held"].includes(p.state)) errors.push("accept_progress state is merging or held");
     if (p.reason !== undefined && (typeof p.reason !== "string" || p.reason.length > 300)) errors.push("accept_progress reason is at most 300 characters");
+  }
+  if (event.type === "branch_in_base") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("branch_in_base needs task as <spec>#<task>");
+    if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("branch_in_base branch must be coven/<name>");
+    if (typeof p.tip !== "string" || !/^[0-9a-f]{7,40}$/.test(p.tip)) errors.push("branch_in_base needs the branch tip commit");
+    if (typeof p.base !== "string" || !p.base || p.base.length > 100) errors.push("branch_in_base needs the base branch");
   }
   if (event.type === "plan_proposed") {
     const p = isObject(payload) ? payload : {};
