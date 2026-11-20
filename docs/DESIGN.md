@@ -81,7 +81,7 @@ typography:
     lineHeight: 1.4
   label-caps:
     fontFamily: Figtree
-    fontSize: 11px
+    fontSize: 12px
     fontWeight: 600
     letterSpacing: 0.12em
   data-lg:
@@ -96,7 +96,7 @@ typography:
     lineHeight: 1.4
   data-sm:
     fontFamily: ui-monospace
-    fontSize: 11px
+    fontSize: 12px
     fontWeight: 400
     letterSpacing: 0.06em
 rounded:
@@ -313,13 +313,13 @@ the Coven aliases at the top of `index.html` (`--bg`, `--panel`, `--line`, `--te
 ## Typography
 
 Two families from Astryx: **Figtree** (UI, falls back to the system sans) and **ui-monospace**
-(`SF Mono`, Consolas…). Base 14 px / 1.45. Nothing readable is below 12 px; 11 px is only for caps labels, pills and badges.
+(`SF Mono`, Consolas…). Base 14 px / 1.45. 12 px is the type floor: nothing is smaller, including caps labels (`label-caps`), data (`data-sm`), pills and badges.
 
 - **Headlines:** Figtree 600, 17–22 px in the ops rooms. Only the front door goes bigger, in a
   serif: the sign-in headline (~40 px), an empty state's sentence (22 px), the chat's title (28–40 px).
 - **Brand:** `COVEN` in pumpkin, 700, with 0.12 em tracking, beside the ghost.
 - **Body:** Figtree 400, 14 px; secondary text 12.5 px muted.
-- **Section labels:** 11 px, uppercase, 0.12 em tracking, 600, muted.
+- **Section labels:** 12 px, uppercase, 0.12 em tracking, 600, muted.
 - **Data is mono:** ids (`coven-relay#13`), counts, durations, paths, timestamps, pills and badges,
   tile numbers (22 px). Numbers line up and read as data, not prose.
 
@@ -444,7 +444,7 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
 
 ## Clean pass (type, rows, bars)
 
-- **Type scale:** 11, 12, 13, 14 px for UI text (`0.6875`, `0.75`, `0.8125`, `0.875rem`), 17 px brand, 22 px for numbers and page titles. No other sizes in the stylesheet.
+- **Type scale:** 12, 13, 14 px for UI text (`0.75`, `0.8125`, `0.875rem`), 17 px brand, 22 px for numbers and page titles. No other sizes in the stylesheet.
 - **Radius:** `--radius-inner` (6 px) for fields and buttons, `--radius-element` for cards, full for pills. One shared rule styles every text field and select; a rule sets only size and padding.
 - **Left bars** mean attention, failure or waiting (session needing attention, deviation, failed turn, waiting flow, *Waiting for you*). Council and finished-flow cards have none.
 - **Rows are lines:** task rows in a column and monitor rows are separated by hairlines, not boxed one by one. A state (stuck, runs twice, stale, disconnected) is a tint on the row.
