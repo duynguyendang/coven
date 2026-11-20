@@ -1597,3 +1597,43 @@ describe("signing out", () => {
     assert.match(says, /merge/);
   });
 });
+
+describe("flowState", () => {
+  const flowState = (t: Json, all: Json[], notes: Json[] = []) => (dom.window as any).__coven.flowState(t, all, notes);
+  const task: Json = { ref: "s#1", doer_state: "submitted", branch_host: "h_1" };
+  const review = (agent: string, doer_state: string, doer_verdict?: string): Json => ({ ref: `council#${agent}`, review_of: "s#1", agent, doer_state, doer_verdict });
+
+  test("pass: every reviewer passed, a person may accept", () => {
+    const f = JSON.parse(JSON.stringify(flowState(task, [review("white-hat", "answered", "pass"), review("black-hat", "answered", "pass")])));
+    assert.deepEqual(f.reviews, [{ who: "white-hat", state: "pass" }, { who: "black-hat", state: "pass" }]);
+    assert.equal(f.merge, null);
+    assert.deepEqual(f.actions, ["accept", "changes"]);
+  });
+
+  test("changes: a reviewer asked for changes", () => {
+    const f = flowState(task, [review("white-hat", "answered", "pass"), review("black-hat", "answered", "changes")]);
+    assert.equal(f.reviews[1].state, "changes");
+    assert.equal(f.actions.length, 2);
+  });
+
+  test("running: reviewers still working, nothing for a person yet", () => {
+    const f = flowState(task, [review("white-hat", "working")]);
+    assert.equal(f.reviews[0].state, "running");
+    assert.equal(f.actions.length, 0);
+  });
+
+  test("held: the host held it for a person", () => {
+    const notes = [{ task: "s#1", kind: "question", note: "host holds s#1 for a person: tests failed" }];
+    const f = flowState(task, [review("white-hat", "answered", "pass")], notes);
+    assert.equal(f.held, true);
+    assert.equal(f.actions.length, 2);
+  });
+
+  test("a merged task has merge set and no actions; every board card carries flow", () => {
+    const f = flowState({ ...task, merged: { commit: "abc" } }, []);
+    assert.equal(f.merge, "merged");
+    assert.equal(f.actions.length, 0);
+    const cols = (dom.window as any).__coven.boardColumns({ specs: [{ spec: "s", tasks: [{ task_id: "1", leaf: true, doer_state: "done" }, { task_id: "2", leaf: true }] }], notes: [] });
+    for (const c of Object.values(cols) as Json[][]) for (const card of c) assert.ok(card.flow, "flow on every card");
+  });
+});
