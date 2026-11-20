@@ -112,6 +112,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H17 | A build worktree has the main checkout's installed dependencies linked (not copied, ignored by git), so the project's tests run there; the links and the files Kiro rewrites by itself never count against `_Paths:_`. | Must | Built |
 | FR-H18 | A failed build can be checked again without a model run (`coven host retry <task> --recheck`, or `all`); a person can send any failed task back to the queue from the board (**Retry**, `task_status queued`). | Must | Built |
 | FR-H16 | Hosts announce free slots; the Chair sees who has room, and which ready build tasks share no path (a person may send them to Kiro Web; the Chair never does). | Should | Built |
+| FR-H19 | A host can report that a submitted branch is already in the base (`branch_in_base {task, branch, tip, base}`). Host origin only; `tip` must match the submitted tip; it never overrides a reject and never skips review. | Should | Planned: contract and validation only |
 
 ### 4.6 Task status
 
