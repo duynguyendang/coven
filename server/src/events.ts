@@ -56,6 +56,8 @@ export const EVENT_TYPES = new Set([
   "task_merged",
   // a person's final evaluation of a submitted branch (POST /v1/board/accept) — contract §6.2
   "task_accept",
+  // the host reports how it is handling a person's accept request (merging, or held with a reason) — contract §6.2
+  "accept_progress",
   "push_done",
   // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
   "plan_proposed",
@@ -256,6 +258,13 @@ export function validateEvent(event: Json): string[] {
     if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("task_accept branch must be coven/<name>");
     if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push("task_accept names the host that holds the branch");
     if (p.reason !== undefined && (typeof p.reason !== "string" || p.reason.length > 300)) errors.push("task_accept reason is at most 300 characters");
+  }
+  if (event.type === "accept_progress") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("accept_progress needs task as <spec>#<task>");
+    if (typeof p.request_id !== "string" || !p.request_id || p.request_id.length > 80) errors.push("accept_progress needs the request_id of the task_accept");
+    if (!["merging", "held"].includes(p.state)) errors.push("accept_progress state is merging or held");
+    if (p.reason !== undefined && (typeof p.reason !== "string" || p.reason.length > 300)) errors.push("accept_progress reason is at most 300 characters");
   }
   if (event.type === "plan_proposed") {
     const p = isObject(payload) ? payload : {};
