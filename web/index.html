@@ -415,6 +415,9 @@
   .tile .go:empty { display: none; }
   .tile .go.warn { color: var(--warn-ink); font-weight: 600; }
   [data-board-project] { padding: 3px 8px; }
+  .wall-group { margin: 0 0 12px; }
+  .wall-group > summary { cursor: pointer; font-weight: 600; font-size: 0.875rem; padding: 4px 0 8px; display: flex; align-items: center; gap: 8px; }
+  .wall-group > summary .n { font-weight: 400; font-size: 0.75rem; color: var(--muted); font-family: var(--mono); }
   .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   /* Notes are neutral cards; only the kind tag carries colour (colour means kind, never failure). */
   .sticky { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; font-size: 0.875rem; line-height: 1.45;
@@ -1757,6 +1760,21 @@
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
     return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${acceptLine(t)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>`;
   }
+  /** The whiteboard by the status of the task a note is about: in progress (claimed or in review), open (ready, blocked, or about the whole project), done.
+      In progress and open are shown; done is folded until a person opens it. */
+  const WALL_GROUPS = [["progress", "In progress", true], ["open", "Open", true], ["done", "Done", false]];
+  function wallHtml(b, cols) {
+    const status = new Map();
+    for (const [key, group] of [["claimed", "progress"], ["review", "progress"], ["ready", "open"], ["failed", "open"], ["done", "done"]]) for (const t of cols[key] || []) status.set(t.ref, group);
+    const groups = { progress: [], open: [], done: [] };
+    for (const n of b.notes || []) groups[(n.task && status.get(n.task)) || "open"].push(n);
+    if (!(b.notes || []).length) return `<div class="wall">${voice("The whiteboard is blank.", "The Elf has ideas.", "elf")}</div>`;
+    return WALL_GROUPS.filter(([id]) => groups[id].length).map(([id, label, byDefault]) => {
+      const shown = state.ui.wall && id in state.ui.wall ? state.ui.wall[id] : byDefault;
+      return `<details class="wall-group" data-wall="${id}" data-key="wall-${id}"${shown ? " open" : ""}><summary>${label}<span class="n">${groups[id].length}</span></summary>
+        <div class="wall">${groups[id].map(stickyNote).join("")}</div></details>`;
+    }).join("");
+  }
   function stickyNote(n) {
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
       <div class="kind">${n.agent ? avatar(n.agent) : ""}${esc(KIND_LABEL[n.kind] || n.kind)}</div><div>${esc(n.note)}</div>
@@ -1901,7 +1919,7 @@
       ${stageHtml(members)}
       ${monitorHtml(b)}
       <h2>Whiteboard</h2>${compose}
-      <div class="wall">${(b.notes || []).map(stickyNote).join("") || voice("The whiteboard is blank.", "The Elf has ideas.", "elf")}</div>`;
+      ${wallHtml(b, cols)}`;
   }
 
   /* ------------------------------------------------------------- council chat */
@@ -2513,6 +2531,10 @@
     root.querySelectorAll("[data-stage-pick]").forEach((el) => el.addEventListener("click", () => { state.stagePick = state.stagePick === el.dataset.stagePick ? null : el.dataset.stagePick; render({ keepScroll: true }); }));
     root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { if (state.boardOpen !== el.dataset.col) state.colFilter = ""; state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
     root.querySelectorAll("details.decided-plans").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.decidedPlans)) { state.ui.decidedPlans = el.open; saveUi(); } }));
+    root.querySelectorAll("details.wall-group").forEach((el) => el.addEventListener("toggle", () => {
+      const was = state.ui.wall || {};
+      if (was[el.dataset.wall] !== el.open) { state.ui.wall = { ...was, [el.dataset.wall]: el.open }; saveUi(); }
+    }));
     root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage === true)) { state.ui.stage = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;

@@ -1015,6 +1015,14 @@ describe("session screen", () => {
     assert.match(first.textContent!.replace(/\s+/g, " "), /question\s*What if the cart is empty\?\s*cy · on shop#1 · \d+ (?:s|min) ago/);
   });
 
+  test("board: the whiteboard is grouped by the status of the task a note is about; done is folded by default", async () => {
+    await go("#/board/shop", 400);
+    const groups = [...doc().querySelectorAll("details.wall-group")] as HTMLDetailsElement[];
+    assert.ok(groups.length >= 1);
+    for (const g of groups) assert.equal(g.open, g.dataset.wall !== "done", g.dataset.wall);
+    assert.ok(groups.some((g) => g.dataset.wall === "progress" && g.querySelector(".sticky")), "a note on a claimed task is in progress");
+  });
+
   test("board: a project with no notes shows the whiteboard empty state in the shared voice", async () => {
     await go("#/board/quiet", 400);
     const wall = doc().querySelector(".wall")!;
