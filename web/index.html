@@ -1536,7 +1536,27 @@
     cols.ready.sort((a, b) => (a.waits_for ? 1 : 0) - (b.waits_for ? 1 : 0)); // what can start now comes first
     const everyTask = (b.specs || []).flatMap((spec) => spec.tasks.map((t) => ({ ...t, ref: `${spec.spec}#${t.task_id}` })));
     for (const card of [...cols.review, ...cols.failed]) card.needs = needsYou(card, everyTask, b.notes || []);
+    for (const col of Object.values(cols)) for (const card of col) card.flow = flowState(card, everyTask, b.notes || []);
     return cols;
+  }
+  /** Where a task stands in review, accept and merge, for any card.
+      {reviews:[{who,state}], accept, merge, actions[]}. A review's state is running, failed, pass or changes
+      (or answered, with no verdict). `accept` is null, "requested", "accepted" or "changes". `merge` is null or "merged".
+      `actions` are what a person may do now: accept, changes, retry, done. */
+  function flowState(t, all, notes) {
+    const mine = (notes || []).filter((n) => n.task === t.ref);
+    const reviews = (all || []).filter((x) => x.review_of === t.ref).map((x) => ({
+      who: x.agent || "reviewer",
+      state: x.doer_state === "failed" ? "failed" : x.doer_state !== "answered" ? "running" : (x.doer_verdict || "answered"),
+    }));
+    const held = mine.some((n) => n.kind === "question" && /holds .* for a person/i.test(n.note || ""));
+    const merged = !!t.merged || t.doer_state === "done" || t.status === "completed" || mine.some((n) => /\bmerged into\b/i.test(n.note || ""));
+    let accept = null;
+    if (t.accept) accept = t.accept.decision === "accept" ? "accepted" : t.accept.decision === "changes" ? "changes" : "requested";
+    else if (mine.some((n) => /\baccepted by\b/i.test(n.note || ""))) accept = "accepted";
+    const needs = merged ? null : needsYou(t, all || [], notes || []);
+    const actions = !needs ? [] : needs.kind === "failed" ? ["retry", "done"] : ["accept", "changes"];
+    return { reviews, accept, merge: merged ? "merged" : null, held, actions };
   }
   /** What a task waits for from a PERSON, if anything: null when the witches and hosts are still on it.
       {kind, label, why, accept}: `label` is the short badge, `why` says what to do and what happens next. */
@@ -2056,14 +2076,14 @@
 
   /* ------------------------------------------------------------------- flows */
   const STEP_MARK = { pending: "·", running: "▶", "waiting for you": "⏸", done: "✓", failed: "✗" };
-  const flowState = (f) => (f.status === "finished" ? `finished · ${f.outcome || "—"}` : f.waiting_for ? `waiting for you at ${f.waiting_for}` : f.step ? `running: ${f.step}` : "started");
+  const flowRunText = (f) => (f.status === "finished" ? `finished · ${f.outcome || "—"}` : f.waiting_for ? `waiting for you at ${f.waiting_for}` : f.step ? `running: ${f.step}` : "started");
   function flowCard(f) {
     const cls = f.waiting_for ? "waiting" : f.status === "finished" ? "done" : "";
     return `<li class="card flow-card ${cls}"><div class="body">
       <div class="row1"><a href="#/flow/${encodeURIComponent(f.flow_id)}" data-key="flow-${esc(f.flow_id)}"><b>${esc(taskLabel(f.spec, f.task_id, f.title))}</b></a>
         ${f.waiting_for ? '<span class="chip">waiting for you</span>' : ""}
         <span class="spacer"></span><span class="hint">${agoTag(f.last_event_at || f.started_at)}</span></div>
-      <div class="hint mt-1">${esc(f.project_id)} · ${esc(flowState(f))} · round ${esc(f.rounds)} · guard ${esc(f.verdict || "—")}</div>
+      <div class="hint mt-1">${esc(f.project_id)} · ${esc(flowRunText(f))} · round ${esc(f.rounds)} · guard ${esc(f.verdict || "—")}</div>
     </div></li>`;
   }
   function flowsView() {
@@ -2090,7 +2110,7 @@
     const facts = [`project <b>${esc(f.project_id)}</b>`, `recipe <b class="mono">${esc(f.recipe || "—")}</b>`, `round <b>${esc(f.rounds)}</b>`,
       `reworks <b>${esc(f.reworks)}</b>`, `guard <b>${esc(f.verdict || "—")}</b>`, f.decision ? `decision <b>${esc(f.decision)}</b>` : "",
       f.council_id && state.councils.some((c) => c.council_id === f.council_id) ? `<a href="#/councils">council</a>` : ""].filter(Boolean);
-    return `${pageHeader({ crumbs, title: taskLabel(f.spec, f.task_id, f.title) || "Flow", lede: esc(flowState(f)) })}
+    return `${pageHeader({ crumbs, title: taskLabel(f.spec, f.task_id, f.title) || "Flow", lede: esc(flowRunText(f)) })}
       ${waiting ? `<div class="gate" role="status"><b>Waiting for you.</b> ${gateText}</div>` : ""}
       <div class="facts">${facts.map((x) => `<span>${x}</span>`).join("")}</div>
       <section class="card" aria-label="Steps"><ol class="stepper">${rows}</ol></section>
@@ -2951,6 +2971,7 @@
   window.addEventListener("hashchange", onRoute);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) { loadFleet(); if (state.route.view === "session") loadSession().then(() => render({ keepScroll: true })); } });
 
+  window.__coven = { flowState, boardColumns }; // read-only handles for the tests
   start();
 })();
 </script>

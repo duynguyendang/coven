@@ -244,11 +244,21 @@ export class Board {
         detail: `merged into ${String(p.base).slice(0, 60)} at ${String(p.commit).slice(0, 7)}, ${who}`.slice(0, 200),
         merged: { commit: String(p.commit).slice(0, 40), base: String(p.base).slice(0, 100), reviewers: (p.reviewers || []).slice(0, 6) } });
       this.statuses.set(project, all);
+      const acc = this.accepts.get(project)?.get(p.task);
+      if (acc && acc.accepted) Object.assign(acc, { merge_state: "merged", merge_reason: null, commit: String(p.commit).slice(0, 40) });
     } else if (event.type === "task_accept" && typeof p.task === "string") {
       const all = this.accepts.get(project) ?? new Map<string, Json>();
-      all.set(p.task, { decision: p.decision, state: "requested", branch: p.branch, host_id: p.host_id, by: String(p.author ?? "someone").slice(0, 40),
+      // One merge_state per accept request: a new request clears the old one; only an accept has one (changes never merges).
+      all.set(p.task, { decision: p.decision, accepted: p.decision === "accept", merge_state: p.decision === "accept" ? "requested" : null, state: "requested", branch: p.branch, host_id: p.host_id, by: String(p.author ?? "someone").slice(0, 40),
         reason: typeof p.reason === "string" ? p.reason.slice(0, 300) : null, ts: event.ts, request_id: event.event_id });
       this.accepts.set(project, all);
+    } else if (event.type === "accept_progress" && typeof p.task === "string") {
+      // The host's word on the request it is working. A stale request_id (an older accept) is ignored, and so is anything after the merge.
+      const cur = this.accepts.get(project)?.get(p.task);
+      if (cur && cur.accepted && cur.request_id === p.request_id && cur.merge_state !== "merged" && (p.state === "merging" || p.state === "held")) {
+        cur.merge_state = p.state;
+        cur.merge_reason = p.state === "held" && typeof p.reason === "string" ? p.reason.slice(0, 300) : null;
+      }
     } else if ((event.type === "push_request" || event.type === "push_done") && typeof p.task === "string") {
       const all = this.pushes.get(project) ?? new Map<string, Json>();
       const known = all.get(p.task);
