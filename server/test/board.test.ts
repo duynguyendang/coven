@@ -721,3 +721,69 @@ describe("council reply repeat rule", () => {
     } finally { await s.close(); }
   });
 });
+
+describe("branch_in_base (FR-H19)", () => {
+  const ev = (type: string, payload: Json, member = "wsl-1"): Json => ({
+    event_id: `evt_bib_${Math.random().toString(16).slice(2, 12)}`, project_id: "shop", run_id: `member_${member}`, type, ts: new Date().toISOString(), source: "coven-cli", member, payload,
+  });
+  const send = (base: string, events: Json[], member = "wsl-1") => postJson(base, "/v1/events", { project_id: "shop", run_id: `member_${member}`, events }, auth());
+  const submit = (base: string, extra: Json = {}) => send(base, [ev("task_status", { task: "s#1", state: "submitted", agent: "green-witch", branch: "coven/s-1", branch_host: "h_0000000a", host_id: "h_0000000a", tip: "abcdef1", ...extra })]);
+  const inBase = (base: string, extra: Json = {}, member = "wsl-1") => send(base, [ev("branch_in_base", { task: "s#1", branch: "coven/s-1", tip: "abcdef1", base: "main", ...extra }, member)], member);
+  const view = async (base: string) => {
+    await send(base, [ev("spec_artifact_updated", { spec: "s", tasks: [{ task_id: "1", title: "x" }] })]);
+    const b = (await getJson(base, "/v1/board?project_id=shop")).body;
+    return { task: b.specs.find((x: Json) => x.spec === "s").tasks[0], notes: b.notes.filter((n: Json) => n.task === "s#1") };
+  };
+
+  test("the submitting host with the submitted tip makes the task done, once", async () => {
+    const s = await startServer();
+    try {
+      await submit(s.base);
+      await inBase(s.base);
+      let v = await view(s.base);
+      assert.deepEqual([v.task.doer_state, v.task.doer_detail], ["done", "in base (repo)"]);
+      assert.equal(v.task.merged.in_base, true);
+      await inBase(s.base, { tip: "abcdef1" });
+      v = await view(s.base);
+      assert.equal(v.task.doer_state, "done", "idempotent");
+      assert.equal(v.notes.filter((n: Json) => n.note.includes("ignored")).length, 0, "a repeat makes no drift note");
+    } finally { await s.close(); }
+  });
+
+  test("forged: another host's word is a drift note, the status stays submitted", async () => {
+    const s = await startServer();
+    try {
+      await submit(s.base);
+      await inBase(s.base, {}, "evil-host");
+      const v = await view(s.base);
+      assert.equal(v.task.doer_state, "submitted");
+      assert.ok(v.notes.some((n: Json) => n.note.includes("did not come from the host")));
+    } finally { await s.close(); }
+  });
+
+  test("stale: a tip other than the submitted one is a drift note; so is a task never submitted", async () => {
+    const s = await startServer();
+    try {
+      await inBase(s.base);
+      assert.ok((await view(s.base)).notes.some((n: Json) => n.note.includes("not waiting as submitted")));
+      await submit(s.base);
+      await inBase(s.base, { tip: "1234567" });
+      const v = await view(s.base);
+      assert.equal(v.task.doer_state, "submitted");
+      assert.ok(v.notes.some((n: Json) => n.note.includes("not the submitted tip")));
+    } finally { await s.close(); }
+  });
+
+  test("rejected: a person's request for changes is not overridden", async () => {
+    const s = await startServer();
+    try {
+      await submit(s.base);
+      const no = await postJson(s.base, "/v1/board/accept", { project_id: "shop", task: "s#1", author: "duy", decision: "changes", reason: "redo" }, auth());
+      assert.equal(no.status, 201);
+      await inBase(s.base);
+      const v = await view(s.base);
+      assert.equal(v.task.doer_state, "submitted");
+      assert.ok(v.notes.some((n: Json) => n.note.includes("sent it back for changes")));
+    } finally { await s.close(); }
+  });
+});
