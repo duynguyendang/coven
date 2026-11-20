@@ -396,6 +396,14 @@ def push_done(root: Path, ref: str, branch: str, ok: bool, detail: str | None = 
     return _member_event(root, "push_done", payload)
 
 
+def accept_progress(root: Path, ref: str, request_id: str, state: str, reason: str | None = None) -> dict:
+    """Report how this host handles a person's Accept: `merging`, or `held` with the reason."""
+    payload = {"task": ref, "request_id": str(request_id), "state": state, "host_id": config.host_id(root)}
+    if reason:
+        payload["reason"] = " ".join(str(reason).split())[:300]
+    return _member_event(root, "accept_progress", payload)
+
+
 def task_merged(root: Path, ref: str, branch: str, commit: str, base: str, reviewers: list[str], decided_by: str,
                 author: str | None = None) -> dict:
     """The host merged a branch into the base and pushed it: on the Chair's decision (auto-merge, `decided_by`
