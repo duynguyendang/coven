@@ -2110,20 +2110,37 @@ class Host:
                 if ref in self.running:
                     continue  # a rework or a review runs on it now: next tick
                 handled.add(accept.get("request_id"))
-                _remember_push(self.root, accept.get("request_id"))
+                request_id = accept.get("request_id")
+                _remember_push(self.root, request_id)
                 if accept.get("decision") != "accept":
                     continue
                 record = load(self.root).get(ref) or {}
                 if record.get("state") != "submitted" or not record.get("branch"):
-                    _note(self.root, f"{ref}: {accept.get('by') or 'a person'} accepted it, but this host holds no submitted branch of it any more.",
+                    why = "this host holds no submitted branch of it any more"
+                    _note(self.root, f"{ref}: {accept.get('by') or 'a person'} accepted it, but {why}.",
                           CHAIR, ref, kind="question", host_says=True)
+                    self._accept_progress(ref, request_id, "held", why)
                     continue
                 reviews = review_state(view, record.get("review_jobs") or [])
                 passed = [r.get("agent") or "" for r in reviews.values() if r.get("verdict") == "pass" and r.get("agent")]
                 self.out(f"host: {accept.get('by') or 'a person'} accepted {ref}: merging {record['branch']}")
-                result = merge_qualified(self.root, ref, record, passed, decided_by="person", author=accept.get("by"))
+                self._accept_progress(ref, request_id, "merging")
+                try:
+                    result = merge_qualified(self.root, ref, record, passed, decided_by="person", author=accept.get("by"))
+                except Exception as e:  # noqa: BLE001 - a crashed merge must not leave the accept dead
+                    self._accept_progress(ref, request_id, "held", f"the merge failed: {short_text(e, 200)}")
+                    raise
+                if result.get("action") == "held":
+                    self._accept_progress(ref, request_id, "held", result.get("why"))
                 done.append(result)
         return done
+
+    def _accept_progress(self, ref: str, request_id: str | None, state: str, reason: str | None = None) -> None:
+        """Tell the board how an Accept stands. A courtesy: the merge never waits on it."""
+        try:
+            board.accept_progress(self.root, ref, request_id or "", state, reason)
+        except Exception:  # noqa: BLE001
+            pass
 
     def monitor_runs(self) -> list[dict]:
         """This process's runs as the witch monitor shows them: ref, witch, start, run id. Never anything they say."""

@@ -1160,6 +1160,52 @@ def test_a_host_pushes_only_when_a_person_asked_it_and_only_once(repo, origin, m
     assert h._pushes(board.read(repo)) == [], "the same request is not acted on twice"
 
 
+def _accept_setup(repo, monkeypatch, request_id):
+    from coven import config
+
+    cloud = FakeCloud().install(monkeypatch)
+    sent = []
+    monkeypatch.setattr(board, "accept_progress", lambda root, ref, rid, state, reason=None: sent.append((ref, rid, state, reason)) or {})
+    h = host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"])
+    accept = {"state": "requested", "decision": "accept", "host_id": config.host_id(repo), "request_id": request_id, "by": "duy"}
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "accept": accept}]}]
+    return h, sent
+
+
+def test_an_accept_with_no_submitted_branch_is_held_with_a_reason(repo, monkeypatch):
+    h, sent = _accept_setup(repo, monkeypatch, "evt_a0")
+    assert h._accepts(board.read(repo)) == []
+    assert [s[1:3] for s in sent] == [("evt_a0", "held")] and "no submitted branch" in sent[0][3]
+
+
+def test_an_accept_reports_merging_before_the_merge_and_held_when_it_holds(repo, monkeypatch):
+    h, sent = _accept_setup(repo, monkeypatch, "evt_a1")
+    host.execute(repo, specmap.load(repo)["shop#1"], "green-witch", Runner({"green-witch": builds_cart}))
+    seen = []
+
+    def fake_merge(root, ref, record, reviewers, decided_by="chair", author=None):
+        seen.append(list(sent))
+        return {"action": "held", "task": ref, "why": "coven/shop-1 does not merge cleanly into main"}
+
+    monkeypatch.setattr(host, "merge_qualified", fake_merge)
+    h._accepts(board.read(repo))
+    assert [s[2] for s in seen[0]] == ["merging"], "merging is sent before the merge starts"
+    assert [s[2] for s in sent] == ["merging", "held"] and "does not merge cleanly" in sent[1][3]
+
+
+def test_an_accept_whose_merge_crashes_is_held(repo, monkeypatch):
+    h, sent = _accept_setup(repo, monkeypatch, "evt_a2")
+    host.execute(repo, specmap.load(repo)["shop#1"], "green-witch", Runner({"green-witch": builds_cart}))
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(host, "merge_qualified", boom)
+    with pytest.raises(RuntimeError):
+        h._accepts(board.read(repo))
+    assert [s[2] for s in sent] == ["merging", "held"] and "disk full" in sent[1][3]
+
+
 def test_push_branch_refuses_anything_but_the_tasks_own_branch(repo):
     assert host.push_branch(repo, "main", "main") == (False, "not a coven/ task branch")
     assert host.push_branch(repo, "coven/x", "coven/y")[0] is False
