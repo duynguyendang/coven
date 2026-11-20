@@ -195,6 +195,10 @@ export class Board {
           branch_host: p.state === "submitted" && typeof p.branch_host === "string" && HOST_ID.test(p.branch_host) ? p.branch_host
             : (known?.branch_host ?? null),
           branch: typeof p.branch === "string" ? p.branch.slice(0, 110) : (known?.branch ?? null),
+          // the tip as last submitted, and the host member that submitted it: what a branch_in_base is checked against
+          tip: p.state === "submitted" ? (typeof p.tip === "string" ? p.tip.slice(0, 40) : null) : (known?.tip ?? null),
+          submitted_at: p.state === "submitted" ? event.ts : (known?.submitted_at ?? null),
+          submitted_by: p.state === "submitted" ? (event.member ?? null) : (known?.submitted_by ?? null),
           verdict: p.verdict === "pass" || p.verdict === "changes" ? p.verdict : null,
         });
       }
@@ -246,6 +250,8 @@ export class Board {
       this.statuses.set(project, all);
       const acc = this.accepts.get(project)?.get(p.task);
       if (acc && acc.accepted) Object.assign(acc, { merge_state: "merged", merge_reason: null, commit: String(p.commit).slice(0, 40) });
+    } else if (event.type === "branch_in_base" && typeof p.task === "string") {
+      this.branchInBase(project, event, p);
     } else if (event.type === "task_accept" && typeof p.task === "string") {
       const all = this.accepts.get(project) ?? new Map<string, Json>();
       // One merge_state per accept request: a new request clears the old one; only an accept has one (changes never merges).
@@ -323,6 +329,42 @@ export class Board {
       })));
       this.tasks.set(project, specs);
     }
+  }
+
+  /**
+   * A host says a submitted branch's tip is already in the base. The task becomes done ("in base (repo)") only when the
+   * sender is the host that submitted it, the tip equals the submitted tip, the task still waits as submitted, and no
+   * person's "changes" is newer than that submission. Anything else is a drift note and the status stays. Idempotent.
+   */
+  private branchInBase(project: string, event: Json, p: Json): void {
+    const all = this.statuses.get(project) ?? new Map<string, Json>();
+    const cur = all.get(p.task);
+    if (cur?.merged?.in_base || cur?.state === "done") return; // already settled: a repeat changes nothing
+    const rejected = this.accepts.get(project)?.get(p.task);
+    const tip = String(p.tip ?? "");
+    const same = (a: unknown, b: string) => typeof a === "string" && a.length >= 7 && b.length >= 7 && (a.startsWith(b) || b.startsWith(a));
+    let drift: string | null = null;
+    if (!cur || cur.state !== "submitted") drift = "the task is not waiting as submitted";
+    else if (!cur.submitted_by || cur.submitted_by !== event.member) drift = "it did not come from the host that submitted the branch";
+    else if (cur.branch && cur.branch !== p.branch) drift = "the branch is not the submitted one";
+    else if (!same(cur.tip, tip)) drift = "the tip is not the submitted tip";
+    else if (rejected && rejected.decision === "changes" && (rejected.ts || "") >= (cur.submitted_at || "")) drift = "a person sent it back for changes";
+    if (drift) {
+      const list = this.notes.get(project) ?? [];
+      if (list.some((n) => n.kind === "note" && n.task === p.task && n.reply_to === event.event_id)) return;
+      list.push({
+        note_id: `${event.event_id}_drift`, project_id: project, ts: event.ts, kind: "note",
+        note: `branch_in_base ignored for ${String(p.branch).slice(0, 110)} at ${tip.slice(0, 12)}: ${drift}`.slice(0, MAX_NOTE_CHARS),
+        task: p.task, reply_to: event.event_id, author: event.member || "unknown", role: null, agent: null, run_id: event.run_id,
+        task_key: this.keyFor(project, {}, p.task), attempt_id: null,
+      });
+      if (list.length > MAX_NOTES) list.splice(0, list.length - MAX_NOTES);
+      this.notes.set(project, list);
+      return;
+    }
+    all.set(p.task, { ...cur, state: "done", ts: event.ts, host: event.member ?? null, detail: "in base (repo)",
+      merged: { commit: tip.slice(0, 40), base: String(p.base).slice(0, 100), reviewers: [], in_base: true } });
+    this.statuses.set(project, all);
   }
 
   private seen(project: string, member: string, event: Json): void {

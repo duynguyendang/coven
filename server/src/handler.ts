@@ -281,6 +281,8 @@ export function createHandler(options: HandlerOptions): Handler {
         prepared.push(redactEvent(event));
       }
       const [accepted, duplicates] = await store.ingest(projectId, runId, prepared);
+      // branch_in_base changes the board (done, or a drift note): tell the open dashboards.
+      if (accepted && prepared.some((e) => e.type === "branch_in_base")) (store as any).publish({ kind: "board", project_id: projectId });
       return json(200, { accepted, duplicates, rejected, received: raw.length });
     }
 
