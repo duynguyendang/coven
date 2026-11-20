@@ -3,7 +3,8 @@
 > **Status:** v1, 2026-11-13. What Coven must do, stated so each line can be tested. How it does
 > it is in [`ADD.md`](ADD.md). Each requirement has an id, a priority (**Must**, **Should**,
 > **Could**) and a status: **Built** (in the code and covered by tests), **Partial** (built in
-> part; the gap is named) or **Planned** (designed, not built).
+> part; the gap is named), **Planned** (designed, not built) or **Proposed** (named by a
+> person's brief, meaning not yet written down).
 
 ## 1. Purpose
 
@@ -202,6 +203,26 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-CO6 | A planning session runs in stages: the Elf's alternative, the Elder Witch's plan, the Black Hat's challenge (up to three rounds), the Scribe's rules; a person decides, and the decision's reasons are read by the next round. | Should | Built (the Scribe's rules are the host's check, not a model run) |
 | FR-CO7 | Jobs are typed handoffs (`from`, `expects`, `reply_to`, `depth`); a task's conversation is one thread (`GET /v1/board/thread`); a job shows its delivery: requested, claimed, answered, failed or expired. | Should | Built |
 | FR-CO8 | Every witch prompt carries a short, redacted project brief (specs, open tasks, recent plan decisions) as data. | Could | Built |
+
+### 4.11 Part 8 ids (proposed)
+
+These ids come from the Part 8 brief (council#rc185ff-1). No file in the repository defines them,
+so the meaning of each is **not recorded yet**: a person fills in the Requirement column. Nothing
+here is built or planned until they do.
+
+| Id | Requirement | Pri | Status |
+| :--- | :--- | :--- | :--- |
+| S-01 | _To be written by a person._ | | Proposed |
+| S-02 | _To be written by a person._ | | Proposed |
+| E-01 | _To be written by a person._ | | Proposed |
+| E-02 | _To be written by a person._ | | Proposed |
+| F-01 | _To be written by a person._ | | Proposed |
+| F-02 | _To be written by a person._ | | Proposed |
+| F-03 | _To be written by a person._ | | Proposed |
+| F-04 | _To be written by a person._ | | Proposed |
+
+Constraints ("the donts") from the Part 8 brief: _to be copied in by a person._ Until then they
+bind nothing, and no id above may be read as scope.
 
 ## 5. Non-functional requirements
 
