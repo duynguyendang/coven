@@ -223,6 +223,9 @@ here is built or planned until they do.
 | F-03 | _To be written by a person._ | | Proposed |
 | F-04 | _To be written by a person._ | | Proposed |
 
+The spec `.kiro/specs/ux-v2/` lists these ids in work order (S-01, S-02, E-01 with E-02, F-01) and still
+awaits the brief's text.
+
 Constraints ("the donts") from the Part 8 brief: _to be copied in by a person._ Until then they
 bind nothing, and no id above may be read as scope.
 
