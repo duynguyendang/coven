@@ -1967,6 +1967,7 @@ describe("chat example exchange: when it shows, when it never does, what it neve
     for (const seen of [false, true]) {
       if (seen) dom.window.localStorage.setItem(SEEN, "1"); else dom.window.localStorage.removeItem(SEEN);
       for (const hash of ["#/p/atlas", "#/p/shop", "#/board/shop", "#/chat/shop"]) {
+        if (!seen && hash === "#/chat/shop") continue; // an empty unseen chat legitimately shows the example under DEMO DATA
         await go(hash);
         assert.equal(banner(), null, `${hash} (chat seen: ${seen}) shows no demo banner`);
       }
