@@ -226,6 +226,12 @@ here is built or planned until they do.
 The spec `.kiro/specs/ux-v2/` lists these ids in work order (S-01, S-02, E-01 with E-02, F-01) and still
 awaits the brief's text.
 
+Blocked: the S-01 and S-02 task (ux-v2 tasks 1 and 2) was tried by the Dev and not built. Neither
+id has text here, in the spec, or in the Elder Witch's plan, so which board fields and which UI
+elements they cover is unknown. `web/index.html` and `server/test/web.test.ts` are unchanged on
+purpose. A person writes the two Requirement cells above (what is shown, which board fields it
+reads, how it is checked); the task is then built from that text.
+
 Constraints ("the donts") from the Part 8 brief: _to be copied in by a person._ Until then they
 bind nothing, and no id above may be read as scope.
 
