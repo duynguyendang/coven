@@ -1658,3 +1658,15 @@ describe("flowState", () => {
     for (const c of Object.values(cols) as Json[][]) for (const card of c) assert.ok(card.flow, "flow on every card");
   });
 });
+
+describe("CSS font sizes", () => {
+  test("no font-size in web/index.html is under 0.75rem", () => {
+    const css = readFileSync(join(webDir, "index.html"), "utf8");
+    const small: string[] = [];
+    for (const m of css.matchAll(/font-size:\s*([\d.]+)(rem|em|px)/g)) {
+      const px = Number(m[1]) * (m[2] === "px" ? 1 : 16);
+      if (px < 12) small.push(m[0]);
+    }
+    assert.deepEqual(small, []);
+  });
+});
