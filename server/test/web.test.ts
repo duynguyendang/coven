@@ -1638,8 +1638,25 @@ describe("council chat", () => {
   const type = (id: string, value: string) => { (doc().getElementById(id) as HTMLInputElement).value = value; };
   const bubbles = () => [...doc().querySelectorAll(".chat .msg")].map((el) => el.textContent!.replace(/\s+/g, " ").trim());
 
+  test("a first-time visitor to an empty chat sees the example exchange under DEMO DATA", async () => {
+    dom.window.localStorage.removeItem("coven_chat_seen");
+    await go("#/chat/shop");
+    const seed = [...doc().querySelectorAll("#chat-thread .seed-chat li.msg.seed")];
+    assert.equal(seed.length, 5, "the five example lines");
+    assert.ok(doc().querySelector("#main .chat-page .banner.demo"), "DEMO DATA says it is an example");
+    assert.ok(!text().includes("The council is gathered and quiet"), "the example takes the quiet voice's place");
+    assert.ok((doc().querySelector('[data-new-chat]') as HTMLButtonElement).disabled, "the example is nothing to start over from");
+    const server = (await getJson(s.base, "/v1/chat?project_id=shop")).body;
+    assert.equal(server.messages.length, 0, "the example is never sent");
+    dom.window.localStorage.setItem("coven_chat_seen", "1");
+    await go("#/");
+  });
+
   test("the sidebar leads to the chat; nobody listening is said plainly", async () => {
     await go("#/chat/shop");
+    assert.ok(doc().querySelector("#main .chat-page"), "the chat page is drawn");
+    assert.equal(doc().querySelector("#main .chat-page .banner.demo"), null, "a real project with a seen chat says no DEMO DATA");
+    assert.equal(doc().querySelector("#chat-thread .seed-chat"), null, "once seen, no example");
     assert.ok(doc().querySelector('[data-key="nav-chat"]'), "a Council chat place in the sidebar");
     assert.equal(doc().querySelector("#main h1")!.textContent, "Council chat · shop");
     assert.ok(text().includes("No member is listening") && text().includes("coven council listen"));

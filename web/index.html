@@ -2329,8 +2329,11 @@
     const hidden = groups.slice(0, Math.max(0, groups.length - state.chatShown)).filter((m) => !(m.role === "human" && m.kind === "new")).length;
     const more = `${hidden ? `<button class="act quiet" type="button" data-chat-more data-key="chat-more">Show ${Math.min(hidden, 60)} earlier of ${plural(hidden, "message")}</button>` : ""}`
       + `${c.earlier || state.chatEarlier ? `<button class="act quiet" type="button" data-chat-earlier data-key="chat-earlier" aria-pressed="${state.chatEarlier}">${state.chatEarlier ? "Hide earlier chats" : `Earlier chats (${plural(c.earlier, "message")})`}</button>` : ""}`;
+    // a first-time visitor to an empty chat sees an example exchange (drawn only, never in state.chat or sent) until she first sends
+    const showSeed = !real.length && !localStorage.getItem("coven_chat_seen");
     const thread = (more ? `<div class="chat-more">${more}</div>` : "") + (real.length
       ? `<ol class="chat" aria-label="Conversation" aria-live="polite">${groups.slice(-state.chatShown).map((m) => chatMessage(m, byId, waiting, ctx)).join("")}</ol>`
+      : showSeed ? `<ol class="chat seed-chat" aria-label="Example conversation">${seedChatHtml()}</ol>`
       : voice("The council is gathered and quiet.", "Say what you want: a question, an idea, or work to do. The Chair answers and hands the work to the witches.", "grey-witch", true));
     if (state.chatSeen) state.chatSeen.primed = true; // from now on, a new message slides in
     const tasks = ((state.board && state.board.project_id === project && state.board.specs) || [])
@@ -2350,7 +2353,7 @@
         <div class="foot"><span id="chat-error" role="alert">${esc(state.chatError)}</span>
           <button class="act quiet bad" type="button" id="chat-reject" data-key="chat-reject" title="A binding decision: the guard of this task's flow rejects until new work comes after it">${icon("undo")}<span>Reject this task</span></button><span class="keys" id="chat-keys"><kbd class="kbd">${esc(SHORTCUTS.send)}</kbd> to send · <kbd class="kbd">Shift+${esc(SHORTCUTS.send)}</kbd> for a new line</span><span class="spacer"></span><span id="chat-count" aria-hidden="true"></span></div>
       </form>`;
-    return `<div class="chat-page">${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Council chat · ${project}`,
+    return `<div class="chat-page">${demoBanner(seededProject(project) || showSeed)}${pageHeader({ crumbs, title: `Council chat · ${project}`,
         lede: "You decide; the council advises and dispatches. Everyone signed in speaks as Human; a rejection is the one message that binds." })}
       <div class="chat-head">${status}<span class="spacer"></span>${picker}
         <button class="act quiet" type="button" data-new-chat data-key="new-chat"${real.length ? "" : " disabled"} title="Start a fresh conversation: the Chair forgets this one">${icon("plus")}<span>New chat</span></button></div>
@@ -3053,6 +3056,7 @@
       form.dataset.sending = "1";
       try {
         await api("/v1/chat", { method: "POST", body: JSON.stringify(body) });
+        localStorage.setItem("coven_chat_seen", "1"); // the example exchange is gone from now on
         state.chatError = "";
         state.chatStick = true;
         $("chat-text").value = "";
