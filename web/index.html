@@ -1671,16 +1671,27 @@
   /** The final evaluation of a submitted branch: Accept (the host that holds it merges it under the auto-merge checks)
       or Request changes (the reason goes to the Dev). Shown while the branch waits on a host. */
   function acceptLine(t) {
-    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return "";
     const a = t.accept;
-    if (a && a.state === "requested" && a.decision === "accept") {
-      return `<div class="who"><span class="badge working">Accepted</span> <span class="hint">by ${esc(a.by || "someone")}: the host that holds the branch merges it once it merges cleanly and <code>make verify</code> passes on the result</span></div>`;
+    const isAccept = !!a && a.decision === "accept";
+    // One row from Accepted to Merged or Held, from the derived merge_state; a new accept starts it over (the cloud resets it).
+    if (isAccept && a.merge_state === "merged") {
+      const sha = String(a.commit || (t.merged && t.merged.commit) || "").slice(0, 40);
+      const link = sha ? ` at <a href="#/board/${encodeURIComponent(state.boardProject || "")}" data-commit="${esc(sha)}" data-key="commit-${esc(t.ref)}"><code>${esc(sha.slice(0, 7))}</code></a>` : "";
+      return `<div class="who accept-row" data-merge-state="merged"><span class="badge accept">Merged</span> <span class="hint">accepted by ${esc(a.by || "someone")}${link}</span></div>`;
+    }
+    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return "";
+    if (isAccept && a.merge_state === "merging") {
+      return `<div class="who accept-row" data-merge-state="merging"><span class="badge working">Merging</span> <span class="hint">accepted by ${esc(a.by || "someone")}: the host is merging the branch and running <code>make verify</code> on the result</span></div>`;
+    }
+    if (isAccept && a.merge_state !== "held") {
+      return `<div class="who accept-row" data-merge-state="requested"><span class="badge working">Accepted</span> <span class="hint">by ${esc(a.by || "someone")}: the host that holds the branch merges it once it merges cleanly and <code>make verify</code> passes on the result</span></div>`;
     }
     const asking = state.changesFor === t.ref;
     const form = asking ? `<form class="changes-form" data-changes-form="${esc(t.ref)}"><label class="sr" for="changes-${esc(t.ref)}">What should change</label>
         <input id="changes-${esc(t.ref)}" data-key="changes-${esc(t.ref)}" maxlength="300" required placeholder="What should change? The Dev reads this." />
         <button class="act bad" type="submit">${icon("send")}<span>Send to the Dev</span></button></form>` : "";
-    const last = a && a.decision === "changes" ? `<span class="hint">changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span> ` : "";
+    const held = isAccept ? `<span class="badge warn">Held</span> <span class="hint">${esc(short(a.merge_reason || "the host did not say why", 200))}</span> ` : "";
+    const last = held || (a && a.decision === "changes" ? `<span class="hint">changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span> ` : "");
     return `<div class="who accept-row">${last}<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>
       <button class="act quiet" type="button" data-changes="${esc(t.ref)}" data-key="changes-btn-${esc(t.ref)}" aria-expanded="${asking}">${icon("undo")}<span>Request changes</span></button></div>${form}`;
   }

@@ -1231,6 +1231,19 @@ describe("keyboard, safety and states", () => {
     await wait(900);
     assert.match(card(), /Accepted by .*merges it once it merges cleanly/);
     assert.equal(doc().querySelector('[data-key="accept-evalu#1"]'), null, "accepted once");
+    // the same row follows the host's word: merging, held (with the buttons again), a new accept, merged
+    const reqId = ((await getJson(s.base, "/v1/board?project_id=shop")).body.specs as any[]).find((x) => x.spec === "evalu")?.tasks[0]?.accept?.request_id as string | undefined;
+    assert.ok(reqId, "the accept has a request id");
+    const mergeEv = (state: string, seq: number, extra: object = {}) => ({ ...ev("member_ac", "shop", "accept_progress", { task: "evalu#1", request_id: reqId, state, ...extra }, seq), member: "ac" });
+    await send("shop", "member_ac", [mergeEv("merging", 3)]);
+    await go("#/"); await go("#/board/shop", 600); openColumn("review"); openTask("evalu#1");
+    assert.match(card(), /Merging/);
+    assert.ok(!/Accepted by/.test(card()), "one badge at a time");
+    closeTask();
+    await send("shop", "member_ac", [mergeEv("held", 4, { reason: "make verify failed on the merged tree" })]);
+    await go("#/"); await go("#/board/shop", 600); openColumn("review"); openTask("evalu#1");
+    assert.match(card(), /Held.*make verify failed on the merged tree/);
+    assert.ok(doc().querySelector('[data-key="accept-evalu#1"]'), "held: the buttons are back");
     closeTask();
     await go("#/");
   });
