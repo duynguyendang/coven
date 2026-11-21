@@ -15,9 +15,12 @@ services:
       COVEN_AUTONOMOUS_PLANS: ${COVEN_AUTONOMOUS_PLANS:-}
       # "1": an autonomous host's Elder Witch may mark tasks done; empty: follows COVEN_AUTONOMOUS_PLANS
       COVEN_AUTONOMOUS_SIGNOFF: ${COVEN_AUTONOMOUS_SIGNOFF:-}
+      # A restart replays the whole event store into memory; past ~140 MB of events the default heap (about 256 MB under
+      # a 320 MB limit) runs out. The 512 MB plan has 1 GB of swap: give the heap room and let it page while it loads.
+      NODE_OPTIONS: ${COVEN_NODE_OPTIONS:---max-old-space-size=900}
     volumes: [coven-data:/data]
     expose: ["8080"]
-    mem_limit: 320m
+    mem_limit: ${COVEN_MEM_LIMIT:-1200m}
   caddy:
     image: caddy:2
     restart: unless-stopped
