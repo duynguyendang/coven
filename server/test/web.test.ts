@@ -1040,6 +1040,37 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: the Stage is open on a first visit, and a close is remembered across a reload", async () => {
+    const stageBox = (d: Document = doc()) => d.querySelector("details.stage-box") as HTMLDetailsElement;
+    const uiSaved = () => JSON.parse(dom.window.localStorage.getItem("coven_ui") || "{}");
+    dom.window.localStorage.removeItem("coven_ui");
+    await go("#/board/sm1", 600);
+    assert.equal(stageBox().open, true, "first visit: open");
+    assert.equal(uiSaved().stage, undefined, "opening nothing is not stored");
+    stageBox().open = false;
+    await wait(100);
+    assert.equal(uiSaved().stage, false, "a first-time close is stored");
+    // reload: a new page over the same storage
+    const second = await JSDOM.fromURL(`${s.base}/#/board/sm1`, {
+      runScripts: "dangerously", pretendToBeVisual: true, virtualConsole: new VirtualConsole(),
+      beforeParse(window) {
+        window.localStorage.setItem("coven_token", "dev");
+        window.localStorage.setItem("coven_ui", JSON.stringify({ stage: false }));
+        (window as any).fetch = (url: string, init?: RequestInit) => fetch(new URL(url, s.base), init);
+        (window as any).EventSource = class { onopen: (() => void) | null = null; onerror: (() => void) | null = null; addEventListener() {} close() {} };
+        (window as any).HTMLElement.prototype.scrollIntoView = () => {};
+      },
+    });
+    try {
+      await wait(900);
+      assert.equal(stageBox(second.window.document).open, false, "after a reload it is still closed");
+    } finally { second.window.close(); }
+    stageBox().open = true;
+    await wait(100);
+    assert.equal(uiSaved().stage, true, "opening it again is stored");
+    await go("#/");
+  });
+
   test("board: what waits for a person is said at the top, with the button that answers it", async () => {
     const spec = (id: string, seq: number) => ({ ...ev("member_wy", "wy", "spec_artifact_updated", { artifact: "tasks", spec: id, total: 1, done: 0, in_progress: 0, queued: 0, optional: 0,
       tasks: [{ task_id: "1", title: `Task ${id}`, status: "not_started", paths: ["x/"] }] }, seq), member: "wy" });

@@ -851,7 +851,7 @@
   "use strict";
 
   const UI_KEY = "coven_ui";
-  const UI_DEFAULT = { sort: "attention", group: true, nav: true, open: [] };
+  const UI_DEFAULT = { sort: "attention", group: true, nav: true, stage: true, open: [] };
   function loadUi() {
     try { return { ...UI_DEFAULT, ...JSON.parse(localStorage.getItem(UI_KEY) || "{}") }; } catch { return { ...UI_DEFAULT }; }
   }
@@ -2110,7 +2110,7 @@
     const nudge = members.idle.length && roster ? `<p class="hint">${members.idle.length <= 3 ? `${members.idle.map((x) => esc(agentName(x.slug))).join(", ")} ${members.idle.length === 1 ? "is" : "are"} not on any host`
       : `${members.idle.length} witches are not on any host`}${members.idle.some((x) => x.slug === "green-witch") ? ": nothing gets built until a host runs her (<code>./run-host.sh</code>)" : ""}.</p>` : "";
     const counts = roster ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : "";
-    return `<details class="stage-box" data-key="stage"${state.ui.stage === true ? " open" : ""}><summary>Witches${counts}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
+    return `<details class="stage-box" data-key="stage"${state.ui.stage !== false ? " open" : ""}><summary>Witches${counts}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
   }
   /** Each witch's line in her own voice: copy, not a rule (her rules are WITCH_ROLES). */
   const WITCH_MOTTO = { "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
@@ -2840,7 +2840,7 @@
       ev.stopPropagation();
       runBatch(el.dataset.batch, (el.dataset.batchRefs || "").split(" ").filter(Boolean), el.dataset.key);
     }));
-    root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage === true)) { state.ui.stage = el.open; saveUi(); } }));
+    root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage !== false)) { state.ui.stage = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try {
