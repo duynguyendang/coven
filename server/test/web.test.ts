@@ -734,7 +734,15 @@ describe("session screen", () => {
     assert.deepEqual(column("Done"), ["shop#3"]);
     column("In review");
     assert.equal(doc().querySelector("#main .tcard"), null, "a column lists rows; a task opens in a dialog");
-    const cart = openTask("shop#1").textContent!;
+    const cardEl = openTask("shop#1");
+    const kids = [...cardEl.children].map((c) => c.className.split(" ")[0] || c.tagName);
+    assert.equal(kids[0], "id");
+    assert.equal(kids[1], "tt");
+    assert.equal(cardEl.lastElementChild!.tagName, "DETAILS", "the conversation comes last");
+    assert.ok(cardEl.lastElementChild!.hasAttribute("data-thread"));
+    const bar = cardEl.querySelector("[data-actions]");
+    assert.ok(bar && bar.compareDocumentPosition(cardEl.querySelector("details.convo")!) & 4, "the action bar comes before the conversation");
+    const cart = cardEl.textContent!;
     assert.match(cart, /ana is on it.*reviewing: cy.*1 note/s);
     const dialog = doc().getElementById("task-dialog") as any;
     assert.ok(dialog.open && dialog.getAttribute("closedby") === "any" && dialog.getAttribute("aria-labelledby") === "task-dialog-title");
