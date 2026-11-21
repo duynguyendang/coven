@@ -826,8 +826,8 @@ describe("session screen", () => {
     const pick = async (slug: string) => { (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click(); await wait(50); return doc().querySelector(".stage-card .witch")!; };
     const text = (el: Element) => el.textContent!.replace(/\s+/g, " ");
     let card = await pick("elf");
-    assert.match(text(card), /Working.*on lab#L1 · wsl-7/);
-    assert.ok(card.classList.contains("working"));
+    assert.match(text(card), /Available.*on wsl-7/, "lab#L1 is answered: the claim the host keeps on it is not a run");
+    assert.ok(card.classList.contains("available") && !doc().querySelector('[data-stage-pick="elf"]')!.classList.contains("working"));
     card = await pick("raven");
     assert.match(text(card), /Available.*on wsl-7/);
     assert.ok(card.classList.contains("available"));
@@ -866,9 +866,14 @@ describe("session screen", () => {
     closeTask();
     assert.match(blocked, /Raven needed/);
     assert.match(blocked, /Failed.*no answer within 5 s/);
+    assert.equal(doc().querySelector(".wall .sticky"), null, "the Elf's note is about a task now done: hidden by default");
+    const showDone = doc().querySelector("[data-wall-done]") as HTMLInputElement;
+    showDone.checked = true; showDone.dispatchEvent(new dom.window.Event("change")); await wait(50);
     const sticky = doc().querySelector(".wall .sticky")!;
     assert.match(sticky.textContent!.replace(/\s+/g, " "), /Elf on wsl-7/);
     assert.ok(sticky.querySelector("svg.av"), "the note carries its agent's icon");
+    const hideDone = doc().querySelector("[data-wall-done]") as HTMLInputElement;
+    hideDone.checked = false; hideDone.dispatchEvent(new dom.window.Event("change")); await wait(50);
     await go("#/");
   });
 
@@ -976,6 +981,38 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: the stage and the monitor agree: a stale `working` with no live run is not a witch at work", async () => {
+    const m = (p: string, e: Json) => ({ ...e, member: "wsl-s" });
+    const online = (p: string, runs: Json[], secs: number) => m(p, ev(`member_${p}`, p, "host_online", { agents: ["elf", "raven"], slots: 2, running: runs.map((r) => r.ref), process: "p_0000aaaa", runs }, secs));
+    const spec = (p: string) => m(p, ev(`member_${p}`, p, "spec_artifact_updated", { artifact: "tasks", spec: p, total: 2, done: 0, in_progress: 0, queued: 0, optional: 0,
+      tasks: [{ task_id: "1", title: "Idea", status: "not_started", paths: ["a/"], agent: "elf" }, { task_id: "2", title: "Watch", status: "not_started", paths: ["b/"], agent: "raven" }] }, 30));
+    // sm1: the elf's run said `working`, then the host stopped it (Ctrl+C); it still announces, with no run, and its claim is still in lease
+    await send("sm1", "member_sm1", [spec("sm1"), m("sm1", ev("member_sm1", "sm1", "task_status", { task: "sm1#1", state: "working", agent: "elf" }, 25)), online("sm1", [], 2)]);
+    assert.equal((await postJson(s.base, "/v1/claims", { project_id: "sm1", member: "wsl-s", agent: "elf", spec: "sm1", task_id: "1", paths: ["a/"] })).status, 201);
+    await go("#/board/sm1", 600);
+    const stageWorking = () => [...doc().querySelectorAll(".stage-witch.working")].map((x) => (x as HTMLElement).dataset.witch);
+    assert.deepEqual(stageWorking(), [], "no witch stuck at a station");
+    assert.equal(doc().querySelector('.station[data-station="board"] [data-witch="elf"]'), null);
+    assert.ok(doc().querySelector('.station[data-station="rest"] [data-witch="elf"]'), "she rests");
+    assert.match(doc().querySelector(".stage-box > summary")!.textContent!, /2 available, 0 working/);
+    assert.match(doc().querySelector(".mon-empty")!.textContent!, /No witch is working right now/);
+    openColumn("claimed");
+    assert.match(doc().querySelector('[data-key="row-sm1#1"]')!.textContent!, /Working · no live run/, "the stale status is said on the task row");
+    // sm2: the raven's run is live on the host: the stage and the monitor show the same run
+    await send("sm2", "member_sm2", [spec("sm2"), m("sm2", ev("member_sm2", "sm2", "task_status", { task: "sm2#2", state: "working", agent: "raven" }, 3)),
+      online("sm2", [{ ref: "sm2#2", started_at: at(4), agent: "raven" }], 2)]);
+    await go("#/board/sm2", 600);
+    const rows = [...doc().querySelectorAll(".monitor .mon-row")].map((r) => r.getAttribute("data-key"));
+    assert.deepEqual(stageWorking(), ["raven"]);
+    assert.ok(doc().querySelector('.station[data-station="board"] [data-witch="raven"]'), "at her station");
+    assert.equal(rows.length, 1);
+    assert.match(rows[0]!, /^mon-sm2#2-p_0000aaaa$/);
+    assert.match(doc().querySelector(".stage-box > summary")!.textContent!, /1 available, 1 working/);
+    assert.match(doc().querySelector("#main")!.textContent!, /Monitor · 1 run going/);
+    assert.equal(doc().querySelector(".mon-empty"), null);
+    await go("#/");
+  });
+
   test("board: what waits for a person is said at the top, with the button that answers it", async () => {
     const spec = (id: string, seq: number) => ({ ...ev("member_wy", "wy", "spec_artifact_updated", { artifact: "tasks", spec: id, total: 1, done: 0, in_progress: 0, queued: 0, optional: 0,
       tasks: [{ task_id: "1", title: `Task ${id}`, status: "not_started", paths: ["x/"] }] }, seq), member: "wy" });
@@ -997,9 +1034,11 @@ describe("session screen", () => {
     openColumn("review");
     assert.match(doc().querySelector('[data-key="row-wp#1"]')!.textContent!, /Needs you: accept/);
     assert.doesNotMatch(doc().querySelector('[data-key="row-wr#1"]')!.textContent!, /Needs you/);
-    assert.match(doc().querySelector('[data-key="row-wp#1"] [data-flow-chips]')!.textContent!, /White Hat Witch pass/, "the row keeps its needs-you badge and shows the review");
-    assert.match(doc().querySelector('[data-key="row-wc#1"] [data-flow-chips]')!.textContent!, /White Hat Witch changes/);
-    assert.match(doc().querySelector('[data-key="row-wr#1"] [data-flow-chips]')!.textContent!, /White Hat Witch running/);
+    assert.match(doc().querySelector('[data-key="row-wp#1"] [data-review-pills]')!.textContent!, /Test pass/, "the row keeps its needs-you badge and shows the review as a pill");
+    assert.match(doc().querySelector('[data-key="row-wc#1"] [data-review-pills]')!.textContent!, /Test changes/);
+    assert.match(doc().querySelector('[data-key="row-wr#1"] [data-review-pills]')!.textContent!, /Test pending/);
+    assert.doesNotMatch(doc().querySelector('[data-key="row-wp#1"] [data-flow-chips]')!.textContent!, /White Hat Witch pass/, "said once: the pill, not a chip as well");
+    assert.equal(doc().querySelector('[data-key="row-council#wp-t"]'), null, "a review job is a pill on its task, not a row of its own");
     assert.match(openTask("wc#1").textContent!.replace(/\s+/g, " "), /Needs you: decide.*asked for changes/);
     closeTask();
     await go("#/");
@@ -1047,12 +1086,198 @@ describe("session screen", () => {
     assert.match(first.textContent!.replace(/\s+/g, " "), /question\s*What if the cart is empty\?\s*cy · on shop#1 · \d+ (?:s|min) ago/);
   });
 
-  test("board: the whiteboard is grouped by the status of the task a note is about; done is folded by default", async () => {
-    await go("#/board/shop", 400);
-    const groups = [...doc().querySelectorAll("details.wall-group")] as HTMLDetailsElement[];
-    assert.ok(groups.length >= 1);
-    for (const g of groups) assert.equal(g.open, g.dataset.wall !== "done", g.dataset.wall);
-    assert.ok(groups.some((g) => g.dataset.wall === "progress" && g.querySelector(".sticky")), "a note on a claimed task is in progress");
+  test("board: the whiteboard hides notes about done tasks, filters holds and verdicts, and shows the newest 10 first", async () => {
+    const m = (e: Json) => ({ ...e, member: "wb" });
+    const notes: Json[] = [m(ev("member_wb", "wb", "board_note", { note: "Old idea about the finished task", kind: "idea", task: "wb#1" }, 900))];
+    for (let i = 0; i < 13; i += 1) {
+      const kind = i < 2 ? "question" : i < 4 ? "review" : "note";
+      notes.push(m(ev("member_wb", "wb", "board_note", { note: `Note ${i} ${kind === "review" ? "VERDICT: pass" : ""}`.trim(), kind, task: "wb#2" }, 800 - i * 10)));
+    }
+    await send("wb", "member_wb", [m(ev("member_wb", "wb", "spec_artifact_updated", { artifact: "tasks", spec: "wb", total: 2, done: 1, in_progress: 0, queued: 0, optional: 0,
+      tasks: [{ task_id: "1", title: "Finished", status: "completed", paths: ["x/"] }, { task_id: "2", title: "Open", status: "not_started", paths: ["y/"] }] }, 950)), ...notes]);
+    await go("#/board/wb", 600);
+    const stickies = () => [...doc().querySelectorAll(".wall .sticky")].map((x) => x.textContent!.replace(/\s+/g, " "));
+    assert.equal(stickies().length, 10, "the newest 10 first");
+    assert.match(stickies()[0], /Note 12/, "newest first");
+    assert.ok(!stickies().some((t) => /finished task/.test(t)), "a note about a done task is hidden by default");
+    const done = doc().querySelector("[data-wall-done]") as HTMLInputElement;
+    assert.equal(done.checked, false);
+    assert.match(done.closest("label")!.textContent!, /Show notes from done tasks \(1\)/);
+    const more = () => doc().querySelector("[data-wall-more]") as HTMLButtonElement | null;
+    assert.equal(more()!.textContent, "Show more (3 older)");
+    more()!.click(); await wait(50);
+    assert.equal(stickies().length, 13);
+    assert.equal(more(), null, "nothing older left");
+    const pill = (k: string) => doc().querySelector(`[data-wall-filter="${k}"]`) as HTMLButtonElement;
+    assert.equal(pill("all").getAttribute("aria-pressed"), "true");
+    pill("holds").click(); await wait(50);
+    assert.equal(stickies().length, 2);
+    assert.ok([...doc().querySelectorAll(".wall .sticky")].every((x) => x.classList.contains("question")), "holds and questions only");
+    pill("verdicts").click(); await wait(50);
+    assert.deepEqual(stickies().map((t) => /VERDICT: pass/.test(t)), [true, true]);
+    pill("all").click(); await wait(50);
+    const box = doc().querySelector("[data-wall-done]") as HTMLInputElement;
+    box.checked = true; box.dispatchEvent(new dom.window.Event("change")); await wait(50);
+    more()!.click(); await wait(50);
+    assert.ok(stickies().some((t) => /finished task/.test(t)), "shown when a person asks");
+    const again = doc().querySelector("[data-wall-done]") as HTMLInputElement;
+    again.checked = false; again.dispatchEvent(new dom.window.Event("change")); await wait(50);
+    await go("#/");
+  });
+
+  test("board: witch logs (verdicts, ready-for-review, consultations) are hidden by default; people, project notes and holds stay; long cards clamp", async () => {
+    const w = (note: string, kind: string, extra: Json, secs: number) => ({ ...ev("member_wl", "wl", "board_note", { note, kind, ...extra }, secs), member: "wl" });
+    const long = "A long note from a person about the cart. ".repeat(6).trim();
+    await send("wl", "member_wl", [
+      { ...ev("member_wl", "wl", "spec_artifact_updated", { artifact: "tasks", spec: "wl", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0,
+        tasks: [{ task_id: "1", title: "Cart", status: "not_started", paths: ["x/"] }] }, 100), member: "wl" },
+      w("VERDICT: pass — tests ran", "review", { task: "wl#1", agent: "white-hat" }, 90),
+      w("Ready for review: wl#1 Cart. Green Witch — Dev on wsl: branch coven/wl-1", "review-wanted", { task: "wl#1", agent: "green-witch" }, 89),
+      w("Black Hat Witch — Red Team asks Elder Witch — SA: is total() public?", "question", { task: "wl#1", agent: "black-hat" }, 88),
+      w("Elder Witch — SA answers: yes", "answer", { task: "wl#1", agent: "elder-witch" }, 87),
+      w("Auto-merge holds wl#1 for a person: the Chair holds it", "question", { task: "wl#1", agent: "green-witch" }, 86),
+      w("The whole project needs a changelog", "idea", { agent: "elf" }, 85),
+      w(long, "note", { task: "wl#1" }, 84)]);
+    await go("#/board/wl", 600);
+    const notes = () => [...doc().querySelectorAll(".wall .sticky")].map((x) => x.textContent!.replace(/\s+/g, " "));
+    const shown = notes();
+    assert.equal(shown.length, 3, shown.join(" | "));
+    assert.ok(shown.some((t) => /holds wl#1 for a person/.test(t)), "a host's hold stays");
+    assert.ok(shown.some((t) => /changelog/.test(t)), "a note about the whole project stays");
+    assert.ok(shown.some((t) => /A long note from a person/.test(t)), "a person's note stays");
+    for (const gone of [/VERDICT: pass/, /Ready for review/, /is total\(\) public/, /answers: yes/]) assert.ok(!shown.some((t) => gone.test(t)), String(gone));
+    const logs = doc().querySelector("[data-wall-logs]") as HTMLInputElement;
+    assert.equal(logs.checked, false);
+    assert.match(logs.closest("label")!.textContent!, /Show witch logs \(4\)/);
+    (doc().querySelector('[data-wall-filter="verdicts"]') as HTMLButtonElement).click(); await wait(50);
+    assert.deepEqual(notes().map((t) => /VERDICT: pass/.test(t)), [true], "the Verdicts pill shows verdicts with witch logs off");
+    (doc().querySelector('[data-wall-filter="all"]') as HTMLButtonElement).click(); await wait(50);
+    const box = doc().querySelector("[data-wall-logs]") as HTMLInputElement;
+    box.checked = true; box.dispatchEvent(new dom.window.Event("change")); await wait(50);
+    assert.equal(notes().length, 7, "every note with witch logs on");
+    const again = doc().querySelector("[data-wall-logs]") as HTMLInputElement;
+    again.checked = false; again.dispatchEvent(new dom.window.Event("change")); await wait(50);
+    // a long card is clamped to four lines, with Expand; its task opens the task dialog
+    const card = [...doc().querySelectorAll(".wall .sticky")].find((x) => /A long note/.test(x.textContent!))!;
+    assert.ok(card.querySelector(".body.clamped"));
+    (card.querySelector("[data-note-more]") as HTMLButtonElement).click(); await wait(50);
+    const open = [...doc().querySelectorAll(".wall .sticky")].find((x) => /A long note/.test(x.textContent!))!;
+    assert.equal(open.querySelector(".body.clamped"), null);
+    assert.equal(open.querySelector("[data-note-more]")!.textContent, "Collapse");
+    assert.ok(open.querySelector('[data-task-open="wl#1"]'), "on wl#1 opens the task");
+    assert.match(doc().querySelector("style")!.textContent!, /\.sticky \.body\.clamped \{[^}]*-webkit-line-clamp: 4/);
+    await go("#/");
+  });
+
+  /** Record the board decisions the page sends (and optionally fail some), passing the rest to the test cloud. */
+  const recordDecisions = (fail?: (n: number) => boolean) => {
+    const calls: { url: string; body: Json; key: string | null; labels: string[] }[] = [];
+    const real = (dom.window as any).fetch;
+    (dom.window as any).fetch = (url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && /\/v1\/board\/(done|accept)$/.test(String(url))) {
+        const headers = (init.headers || {}) as Record<string, string>;
+        calls.push({ url: String(url), body: JSON.parse(String(init.body)), key: headers["Idempotency-Key"] ?? null,
+          labels: [...doc().querySelectorAll("[data-batch] span")].map((x) => x.textContent!) });
+        if (fail && fail(calls.length)) return Promise.resolve(new Response("{}", { status: 500, statusText: "Internal Server Error" }));
+      }
+      return real(url, init);
+    };
+    return { calls, restore: () => { (dom.window as any).fetch = real; } };
+  };
+
+  test("board: In review splits into Ready for sign-off and Needs attention; reviews are pills; answered Q&A folds into a drawer", async () => {
+    const m = (e: Json) => ({ ...e, member: "bs" });
+    const tasks = [1, 2, 3, 4].map((i) => ({ task_id: String(i), title: `Thing ${i}`, status: "not_started", paths: [`p${i}/`] }));
+    const submitted = (i: number, s: number) => m(ev("member_bs", "bs", "task_status", { task: `bs#${i}`, state: "submitted", agent: "green-witch", branch: `coven/bs-${i}`, branch_host: "h_0000cccc", host_id: "h_0000cccc" }, s));
+    const review = (job: string, of: string, agent: string, verdict: string, s: number) => [
+      m(ev("member_bs", "bs", "task_created", { task: `council#${job}`, title: `Review ${of}`, agent, review_of: of, branch: "coven/x", expects: "review" }, s)),
+      m(ev("member_bs", "bs", "task_status", { task: `council#${job}`, state: "answered", agent, verdict, detail: `verdict: ${verdict}` }, s - 1))];
+    await send("bs", "member_bs", [
+      m(ev("member_bs", "bs", "spec_artifact_updated", { artifact: "tasks", spec: "bs", total: 4, done: 0, in_progress: 0, queued: 0, optional: 0, tasks }, 100)),
+      submitted(1, 90), ...review("b1-t", "bs#1", "white-hat", "pass", 89), ...review("b1-x", "bs#1", "black-hat", "pass", 87), ...review("b1-d", "bs#1", "elder-witch", "pass", 85),
+      m(ev("member_bs", "bs", "task_status", { task: "bs#2", state: "answered", agent: "green-witch", detail: "no change needed" }, 80)),
+      m(ev("member_bs", "bs", "task_status", { task: "bs#4", state: "answered", agent: "green-witch", detail: "no change needed" }, 79)),
+      submitted(3, 70), ...review("b3-t", "bs#3", "white-hat", "changes", 69),
+      m(ev("member_bs", "bs", "task_created", { task: "council#q1", title: "What does the relay do?", agent: "elf", expects: "answer" }, 60)),
+      m(ev("member_bs", "bs", "task_status", { task: "council#q1", state: "answered", agent: "elf", detail: "It relays." }, 59))]);
+    await go("#/board/bs", 600);
+    openColumn("review");
+    const label = (col: string) => doc().querySelector(`button.tile[data-col="${col}"]`)!.getAttribute("aria-label");
+    assert.equal(label("review"), "In review: 4 tasks", "review jobs shown as pills and the drawer are not counted");
+    const inLane = (lane: string, ref: string) => doc().querySelector(`[data-lane="${lane}"] [data-key="row-${ref}"]`);
+    assert.ok(inLane("ready", "bs#1") && inLane("ready", "bs#2") && inLane("ready", "bs#4"), "all passed, or answered with no branch");
+    assert.ok(inLane("attention", "bs#3"), "a reviewer asked for changes");
+    assert.match(inLane("attention", "bs#3")!.textContent!, /Test changes.*Attack pending.*SA pending.*a reviewer asked for changes/s);
+    assert.equal(inLane("ready", "bs#1")!.querySelector("[data-review-pills]")!.textContent!.replace(/\s+/g, " "), "Test passAttack passSA pass");
+    for (const job of ["b1-t", "b1-x", "b1-d", "b3-t"]) assert.equal(doc().querySelector(`[data-key="row-council#${job}"]`), null, `${job} is a pill, not a row`);
+    const drawer = doc().querySelector('details.drawer[data-group="review:drawer"]') as HTMLDetailsElement;
+    assert.ok(drawer && !drawer.open, "the drawer is closed by default");
+    assert.match(drawer.querySelector("summary")!.textContent!.replace(/\s+/g, " "), /Answered Q&A & closed reviews\s*1/);
+    assert.ok(drawer.querySelector('[data-key="row-council#q1"]'));
+    assert.match(doc().querySelector('[data-lane="ready"] details.tgroup > summary')!.textContent!, /Ungrouped \/ Spec tasks/);
+    assert.equal(doc().querySelector('[data-key="batch-done-review:ready:-"]')!.textContent!.trim(), "Mark all done (2)");
+    assert.equal(doc().querySelector('[data-key="batch-accept-review:ready:-"]')!.textContent!.trim(), "Accept & merge all (1)");
+    assert.equal(doc().querySelector('[data-lane="attention"] [data-batch]'), null, "nothing to batch in Needs attention");
+    await go("#/");
+  });
+
+  test("board: a batch sign-off sends one decision at a time, shows progress, stops at the first failure, and Mark done closes open reviews", async () => {
+    await go("#/board/bs", 600);
+    openColumn("review");
+    dom.window.localStorage.setItem("coven_author", "ana");
+    const batch = (kind: string) => doc().querySelector(`[data-key="batch-${kind}-review:ready:-"]`) as HTMLButtonElement;
+    // a failure stops the batch: the second task is never sent
+    let rec = recordDecisions((n) => n === 1);
+    batch("done").click(); await wait(500);
+    rec.restore();
+    assert.equal(rec.calls.length, 1, "stopped at the first failure");
+    assert.ok(doc().querySelector('[data-lane="ready"] [data-key="row-bs#2"]'), "nothing was marked done");
+    // the real run
+    rec = recordDecisions();
+    batch("done").click(); await wait(700);
+    rec.restore();
+    assert.deepEqual(rec.calls.map((c) => [c.url.replace(/^.*\/v1/, "/v1"), c.body.task, c.body.author]), [["/v1/board/done", "bs#2", "ana"], ["/v1/board/done", "bs#4", "ana"]]);
+    assert.ok(rec.calls.every((c) => c.key) && new Set(rec.calls.map((c) => c.key)).size === 2, "a fresh Idempotency-Key per request");
+    assert.ok(rec.calls[0].labels.includes("1/2…") && rec.calls[1].labels.includes("2/2…"), "live progress on the button");
+    assert.equal(doc().querySelector('button.tile[data-col="review"]')!.getAttribute("aria-label"), "In review: 2 tasks");
+    // Accept & merge all asks first; a no sends nothing
+    const confirm = dom.window.confirm;
+    (dom.window as any).confirm = () => false;
+    rec = recordDecisions();
+    batch("accept").click(); await wait(300);
+    assert.equal(rec.calls.length, 0, "a person said no");
+    (dom.window as any).confirm = () => true;
+    batch("accept").click(); await wait(700);
+    rec.restore();
+    (dom.window as any).confirm = confirm;
+    assert.deepEqual(rec.calls.map((c) => [c.body.task, c.body.decision, c.body.author]), [["bs#1", "accept", "ana"]]);
+    assert.ok(doc().querySelector('[data-lane="ready"] [data-key="row-bs#1"]'), "accepted: the host merges it, nothing waits for a person");
+    assert.equal(batch("accept"), null, "an accepted branch is not offered again");
+    // a person's Mark done on a task closes its open review jobs too
+    rec = recordDecisions();
+    (openTask("bs#3").querySelector('[data-key="done-bs#3"]') as HTMLButtonElement).click(); await wait(700);
+    rec.restore();
+    closeTask();
+    assert.deepEqual(rec.calls.map((c) => c.body.task), ["bs#3", "council#b3-t"]);
+    dom.window.localStorage.removeItem("coven_author");
+    await go("#/");
+  });
+
+  test("reviewLanes groups by plan (newest first, spec tasks last) and reads the latest review round", () => {
+    const { reviewLanes, boardColumns } = (dom.window as any).__coven;
+    const t = (task_id: string, extra: Json) => ({ task_id, title: task_id, leaf: true, status: "not_started", ...extra });
+    const reviewer = (task_id: string, agent: string, verdict: string, created_at: string) => t(task_id, { agent, review_of: "s#2", doer_state: "answered", doer_verdict: verdict, created_at });
+    const b = { notes: [], hosts: [], specs: [
+      { spec: "council", tasks: [t("p1b1", { from_plan: "council#p1", doer_state: "answered", created_at: "2026-01-01" }), t("p2b1", { from_plan: "council#p2", doer_state: "answered", created_at: "2026-02-01" }),
+        reviewer("vk1t1", "white-hat", "changes", "2026-01-01"), reviewer("vk1t2", "white-hat", "pass", "2026-01-02"),
+        reviewer("vk1x1", "black-hat", "pass", "2026-01-01"), reviewer("vk1d1", "elder-witch", "pass", "2026-01-01")] },
+      { spec: "s", tasks: [t("1", { doer_state: "answered" }), t("2", { doer_state: "submitted", branch_host: "h_0000dddd" })] }] };
+    const lanes = JSON.parse(JSON.stringify(reviewLanes(boardColumns(b), b))); // out of the page's realm, for deepEqual
+    assert.deepEqual(lanes.ready.map((g: Json) => g.plan), ["council#p2", "council#p1", null]);
+    const spec = lanes.ready[2].items.map((x: Json) => [x.ref, x.signoff.batch]);
+    assert.deepEqual(spec, [["s#1", "done"], ["s#2", "accept"]], "the second round's pass replaces the first round's changes");
+    assert.equal(lanes.attention.length, 0);
+    assert.equal(lanes.folded, 4, "every review job is a pill on its task");
   });
 
   test("board: a project with no notes shows the whiteboard empty state in the shared voice", async () => {

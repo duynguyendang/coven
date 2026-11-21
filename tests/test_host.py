@@ -70,6 +70,16 @@ class FakeCloud:
         monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None, sender=None, expects=None, reply_to=None, depth=None: c.created.append(
             {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key, "from": sender, "expects": expects, "reply_to": reply_to}) or {})
         c.plans = []
+        c.decisions = []
+        monkeypatch.setattr(board, "plan_decide", lambda root, plan, reasons=None: c.decisions.append({"plan": plan, "reasons": reasons}) or {})
+        c.signoffs, c.signoff_refuse = [], False
+
+        def signoff(root, items):
+            c.signoffs.extend(items)
+            if c.signoff_refuse:
+                return {"accepted": 0, "rejected": [{"task": ref, "problems": ["done is people's word"]} for ref, _ in items]}
+            return {"accepted": len(items), "rejected": []}
+        monkeypatch.setattr(board, "signoff", signoff)
         monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
             {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
         monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None, verdict=None: (c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch)), c.verdicts.append((ref, verdict))) and {})
@@ -1212,14 +1222,20 @@ def test_push_branch_refuses_anything_but_the_tasks_own_branch(repo):
 
 
 def test_no_code_path_pushes_except_a_persons_request():
-    # Two places push: a person's push request (push_branch), and a qualified auto-merge (merge_qualified, opt-in per host).
+    # Pushes: a person's push request (push_branch), and a qualified merge (merge_into_base and drop_branch), reached only from
+    # merge_qualified (auto-merge or a person's Accept) and merge_prepare (an autonomous host's witch-and-paths prep branch).
     import inspect
+    import re as _re
 
     src = Path(host.__file__).parent
     calls = [(f.name, line.strip()) for f in sorted(src.glob("*.py")) for line in f.read_text().splitlines() if '"push"' in line and "git" in line]
     assert all(name == "host.py" for name, _ in calls) and len(calls) == 3, calls
-    allowed = inspect.getsource(host.push_branch) + inspect.getsource(host.merge_qualified)
-    assert all(line in allowed for _, line in calls), "a push outside push_branch and merge_qualified"
+    allowed = inspect.getsource(host.push_branch) + inspect.getsource(host.merge_into_base) + inspect.getsource(host.drop_branch)
+    assert all(line in allowed for _, line in calls), "a push outside push_branch, merge_into_base and drop_branch"
+    text = Path(host.__file__).read_text()
+    callers = {m.group(1) for m in _re.finditer(r"^def (\w+)\(", text, _re.M)
+               if _re.search(r"\b(merge_into_base|drop_branch)\(", inspect.getsource(getattr(host, m.group(1))).split("\n", 1)[1])}
+    assert callers == {"merge_qualified", "merge_prepare"}, callers
 
 
 def test_the_chair_sees_free_slots_and_tasks_that_can_run_at_once(repo):
@@ -1434,3 +1450,296 @@ def test_the_board_view_is_dated_only_when_it_is_old():
     assert host.board_as_of(now - timedelta(seconds=30), now) == ""
     assert host.board_as_of(now - timedelta(minutes=10), now) == "11:50"
     assert host.board_as_of(None, now) == ""
+
+
+# ------------------------------------------------- a build that changes nothing (allow_empty_diff, sweeps, delegated work)
+
+def does_nothing(cwd, prompt):
+    return "nothing to change", None
+
+
+def only_task(repo, body):
+    """Make `body` the repository's only spec task list, committed on main."""
+    (repo / ".kiro" / "specs" / "shop" / "tasks.md").write_text("# Implementation Plan\n\n" + body)
+    git(repo, "commit", "-qam", "tasks")
+
+
+def run_dev(repo, runner, lines=None):
+    return host.Host(repo, slots=1, runner=runner, only=["green-witch"], out=(lines.append if lines is not None else lambda *a: None)).run(once=True)
+
+
+def test_the_annotations_for_an_empty_change_are_read_and_parents_and_sweeps_allow_it_by_default():
+    tasks = specmap.parse("- [ ] 1. Milestone\n  - [ ] 1.1 Build it\n    - _Paths: `src/`_\n"
+                          "- [ ] 2. Sweep leftovers and fix only what verify flags\n"
+                          "- [ ] 3. Audit the relay\n"
+                          "- [ ] 4. Pinned\n  - _AllowEmpty: true_\n"
+                          "- [ ] 5. Not a sweep after all: sweep leftovers\n  - _Allow_Empty: false_\n"
+                          "- [ ] 6. Delegated\n  - _Delegated: `council#r1-1b2`, council#r1-1b3_\n", "s")
+    assert {k: t["allow_empty_diff"] for k, t in tasks.items()} == {
+        "s#1": True, "s#1.1": False, "s#2": True, "s#3": False, "s#4": True, "s#5": False, "s#6": False}
+    assert tasks["s#6"]["delegated"] == ["council#r1-1b2", "council#r1-1b3"] and tasks["s#1.1"]["delegated"] == []
+    assert specmap.is_sweep("Sweep leftovers") and not specmap.is_sweep("Verify the relay") and not specmap.is_sweep("Audit host.py")
+
+
+def test_a_standard_build_that_changes_nothing_is_still_refused_and_fails(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    runner = Runner({"green-witch": does_nothing})
+    run_dev(repo, runner)
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "failed" and record["error"] == "nothing changed in the checkout"
+    assert len([c for c in runner.calls if "Task shop#1" in c["prompt"]]) == 2, "one more try, as for any refused change"
+    assert ("shop#1", "failed") in [s[:2] for s in cloud.statuses] and ("shop#1", "answered") not in [s[:2] for s in cloud.statuses]
+    assert "may need no change" not in runner.calls[0]["prompt"], "a build task is not told an empty change is fine"
+
+
+def test_a_task_that_allows_an_empty_change_is_answered_not_blocked(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    only_task(repo, "- [ ] 1. Check the docs still hold\n  - _Paths: `docs/`_\n  - _Verify: `true`_\n  - _AllowEmpty: true_\n")
+    runner, lines = Runner({"green-witch": does_nothing}), []
+    run_dev(repo, runner, lines)
+    assert len(runner.calls) == 1 and "may need no change" in runner.calls[0]["prompt"]
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "answered" and record["no_change"] == "allow_empty_diff" and not record.get("commits")
+    assert [s[1] for s in cloud.statuses if s[0] == "shop#1"] == ["working", "answered"], "never failed: not WAITING FOR YOU as blocked"
+    assert "host: shop#1 completed with no diff required (allow_empty_diff)" in lines
+    assert git(repo, "branch", "--list", "coven/shop-1") == "" and not host.worktree_dir(repo, "shop-1").exists(), "no branch, no worktree"
+    assert not [c for c in cloud.created if c.get("review_of")], "nothing to review"
+    assert cloud.claims, "the claim stays until a person marks it done"
+    # a person's Mark done frees it, as for any answered task
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "done"}]}]
+    assert host.Host(repo, slots=1, runner=Runner(), only=["green-witch"]).tick()["finished"] == ["shop#1"]
+
+
+def test_an_empty_change_is_refused_when_the_tasks_verify_fails_or_is_missing(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    only_task(repo, "- [ ] 1. Check the docs\n  - _Paths: `docs/`_\n  - _Verify: `false`_\n  - _AllowEmpty: true_\n"
+                    "- [ ] 2. Check more docs\n  - _Paths: `src/`_\n  - _AllowEmpty: true_\n")
+    run_dev(repo, Runner({"green-witch": does_nothing}))
+    record = host.load(repo)
+    assert record["shop#1"]["state"] == "failed" and "verify command did not pass on the unchanged checkout" in record["shop#1"]["error"]
+    run_dev(repo, Runner({"green-witch": does_nothing}))
+    assert host.load(repo)["shop#2"]["state"] == "failed" and "declares no `_Verify:_`" in host.load(repo)["shop#2"]["error"]
+
+
+def test_a_sweep_with_a_clean_run_and_a_passing_verify_finishes_with_no_change(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    only_task(repo, "- [ ] 1. Sweep leftovers and fix only what verify flags\n  - _Paths: `src/`_\n  - _Verify: `true`_\n")
+    lines = []
+    run_dev(repo, Runner({"green-witch": does_nothing}), lines)
+    assert host.load(repo)["shop#1"]["state"] == "answered" and host.load(repo)["shop#1"]["no_change"] == "sweep"
+    assert "host: shop#1 completed with no diff required (sweep)" in lines
+    assert "no change needed" in cloud.statuses[-1][3]
+
+
+def test_a_sweep_whose_run_reported_an_error_is_not_taken_for_nothing_to_fix(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    only_task(repo, "- [ ] 1. Sweep leftovers and fix only what verify flags\n  - _Paths: `src/`_\n  - _Verify: `true`_\n")
+    run_dev(repo, Runner({"green-witch": lambda cwd, prompt: ("partial answer", "the run failed: tool error")}))
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "failed" and "only after a run that reported no error" in record["error"]
+
+
+def test_a_task_whose_delegated_council_tasks_are_merged_finishes_and_waits_while_one_is_open(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    only_task(repo, "- [ ] 1. S-01\n  - _Requirements: S-01_\n  - _Delegated: `council#r1-1b2`, `council#r1-1b3`_\n")
+    merged = {"task_id": "r1-1b2", "doer_state": "done", "merged": {"commit": "abc1234", "base": "main"}}
+    cloud.specs = [{"spec": "council", "tasks": [merged, {"task_id": "r1-1b3", "doer_state": "working", "claimed_by": "wsl-2"}]}]
+    run_dev(repo, Runner({"green-witch": does_nothing}))
+    record = host.load(repo)["shop#1"]
+    assert record["state"] == "failed" and "delegated tasks are not done yet: council#r1-1b3" in record["error"]
+    assert host.retry(repo, "shop#1")["action"] == "retry"
+    cloud.specs = [{"spec": "council", "tasks": [merged, {"task_id": "r1-1b3", "doer_state": "done"}]}]
+    lines = []
+    run_dev(repo, Runner({"green-witch": does_nothing}), lines)
+    assert host.load(repo)["shop#1"]["state"] == "answered" and host.load(repo)["shop#1"]["no_change"] == "delegated"
+    assert "host: shop#1 completed with no diff required (delegated)" in lines
+
+
+def test_a_rework_that_changes_nothing_is_still_refused_even_when_empty_is_allowed(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    only_task(repo, "- [ ] 1. Docs\n  - _Paths: `docs/`_\n  - _Verify: `true`_\n  - _AllowEmpty: true_\n")
+    task = specmap.load(repo)["shop#1"]
+    path, branch = host.prepare_worktree(repo, task, "main")
+    assert host.submit_checked(repo, task, "green-witch", "wsl-1", path, branch, first=False, run_ok=True) == (None, "nothing changed in the checkout")
+
+
+# ------------------------------------------- an autonomous host merges the Scribe's witch and paths; verify waits for a person
+
+def test_an_autonomous_host_merges_witch_and_paths_and_leaves_verify_commands_for_a_person(repo, origin, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    monkeypatch.setenv("COVEN_MERGE_CHECK", "true")
+    (repo / ".kiro" / "specs" / "shop" / "tasks.md").write_text(UNPREPARED)
+    git(repo, "commit", "-qam", "unprepared tasks")
+    git(repo, "push", "-q", "origin", "main")
+    result = host.prepare(repo, Runner({"scribe": lambda cwd, prompt: (PROPOSAL, None)}), autonomous=True)
+    assert result["action"] == "prepared" and result["merged"] and result["held"] is None
+    on_main = (repo / ".kiro" / "specs" / "shop" / "tasks.md").read_text()
+    assert "_Paths: `src/cart/`_" in on_main and "_Agent: green-witch_" in on_main, "the witch and paths are in the base"
+    assert "_Verify: `pytest -q tests/test_cart.py`_" not in on_main, "a verify command is never merged by the host"
+    assert git(repo, "rev-parse", "main") == git(origin, "rev-parse", "main"), "pushed, never forced"
+    assert git(repo, "branch", "--list", "coven/prepare-all") == "", "the merged prep branch is deleted"
+    assert result["verify_branch"] == "coven/prepare-verify-all"
+    assert "_Verify: `pytest -q tests/test_cart.py`_" in git(repo, "show", "coven/prepare-verify-all:.kiro/specs/shop/tasks.md")
+    assert [w["task"] for w in result["tasks"]] == ["shop#1", "shop#2"] and result["tasks"][0]["verify"] == "pytest -q tests/test_cart.py"
+    wanted = [n for n in cloud.notes if n["kind"] == "review-wanted"]
+    assert len(wanted) == 1 and "coven/prepare-verify-all" in wanted[0]["note"] and "a person reviews and merges" in wanted[0]["note"]
+    assert any(n["note"].startswith("Merged coven/prepare-all into main") for n in cloud.notes)
+    steps = host.prepare_steps(result)
+    assert "Witch and paths merged into the base" in steps[0] and "coven/prepare-verify-all" in steps[0]
+    git(repo, "merge", "-q", "--no-edit", "coven/prepare-verify-all")  # a person merges it later: it merges cleanly
+    assert host.unprepared(repo) == []
+
+
+def test_an_autonomous_prep_branch_that_fails_the_check_is_held_and_main_is_untouched(repo, origin, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    monkeypatch.setenv("COVEN_MERGE_CHECK", "false")
+    (repo / ".kiro" / "specs" / "shop" / "tasks.md").write_text(UNPREPARED)
+    git(repo, "commit", "-qam", "unprepared tasks")
+    before = git(repo, "rev-parse", "main")
+    result = host.prepare(repo, Runner({"scribe": lambda cwd, prompt: (PROPOSAL, None)}), autonomous=True)
+    assert result["merged"] is None and "failed on the merged tree" in result["held"]
+    assert git(repo, "rev-parse", "main") == before and git(repo, "branch", "--list", "coven/prepare-all") != "", "kept for a person"
+    held = [n for n in cloud.notes if n["kind"] == "question"]
+    assert held and "holds coven/prepare-all for a person" in held[-1]["note"]
+
+
+def test_coven_host_run_is_opt_in_and_manual_wins(repo, monkeypatch):
+    from coven import cli
+
+    seen = []
+
+    class FakeHost:
+        def __init__(self, root, **kwargs):
+            seen.append(kwargs)
+            self.can_run, self.slots, self.autonomous, self.auto_merge = [], 1, kwargs["autonomous"], kwargs["auto_merge"] or kwargs["autonomous"]
+
+        def run(self, once=False, interval=15.0):
+            return {}
+
+    real = host.Host
+    monkeypatch.setattr(host, "Host", FakeHost)
+    monkeypatch.setattr(host, "hold_host_lock", lambda root: object())
+    monkeypatch.setattr(host, "self_check", lambda root: ([], []))
+    monkeypatch.setattr(board, "_cloud", lambda root: ("http://x", "t", "shop"))
+    for name in ("COVEN_AUTONOMOUS", "COVEN_AUTO_MERGE"):
+        monkeypatch.delenv(name, raising=False)
+
+    def autonomous(*args):
+        seen.clear()
+        assert cli.main(["host", "run", "--once", *args]) == 0
+        return seen[0]["autonomous"]
+
+    assert autonomous() is False, "coven host run is not autonomous without being asked"
+    assert autonomous("--autonomous") is True
+    monkeypatch.setenv("COVEN_AUTONOMOUS", "1")
+    assert autonomous() is True and autonomous("--manual") is False
+    monkeypatch.setenv("COVEN_AUTONOMOUS", "0")
+    assert autonomous() is False
+    FakeCloud().install(monkeypatch)
+    assert real(repo, runner=Runner(), autonomous=True).auto_merge is True, "autonomous implies auto-merge"
+    assert real(repo, runner=Runner()).auto_merge is False
+
+
+def test_a_run_is_announced_when_it_starts_and_again_the_moment_it_ends(repo, monkeypatch):
+    """The stage and the monitor read the host's announced runs: neither may lag a run by a tick (ADD §6.2 host_online)."""
+    cloud = FakeCloud().install(monkeypatch)
+    gate = threading.Event()
+    runner = Runner({"elf": lambda cwd, p: (gate.wait(5), ("An idea.", None))[1]})
+    h = host.Host(repo, slots=1, runner=runner, only=["elf"], clock=lambda: 0.0, sleep=lambda s: None)
+    h.presence(force=True)
+    h.tick()
+    assert [r["ref"] for r in cloud.monitor[-1][1]] == ["shop#2"], "announced in the tick that started it"
+    sent = len(cloud.monitor)
+    gate.set()
+    h._wait(5)
+    assert len(cloud.monitor) == sent + 1 and cloud.monitor[-1][1] == [], "announced when it ended, not a tick later"
+    h.pool.shutdown()
+
+
+# ------------------------------------------------ an autonomous host's final sign-off by the Elder Witch (FR-ST2, the cloud's consent)
+
+def test_an_autonomous_host_signs_off_verified_no_ops_and_its_answered_questions_once(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    only_task(repo, "- [ ] 1. Check the docs\n  - _Paths: `docs/`_\n  - _Verify: `true`_\n  - _AllowEmpty: true_\n")
+    h = host.Host(repo, slots=1, runner=Runner({"green-witch": does_nothing}), only=["green-witch"], autonomous=True, out=lambda *a: None)
+    h.run(once=True)
+    assert host.load(repo)["shop#1"]["no_change"] == "allow_empty_diff"
+    cloud.specs = [{"spec": "council", "tasks": [
+        {"task_id": "q1", "expects": "answer", "doer_state": "answered", "doer_host": "wsl-1", "delivery": "answered"},
+        {"task_id": "q2", "expects": "answer", "doer_state": "answered", "doer_host": "wsl-9", "delivery": "answered"},
+        {"task_id": "q3", "expects": "review", "doer_state": "answered", "doer_host": "wsl-1", "delivery": "answered"}]}]
+    assert sorted(h.tick()["signed"]) == ["council#q1", "shop#1"]
+    assert sorted(cloud.signoffs) == [("council#q1", "autonomous-signoff: answered"), ("shop#1", "autonomous-signoff: verified no-op (allow_empty_diff)")]
+    assert "signed" not in h.tick() and len(cloud.signoffs) == 2, "once each: another host's job and a review are not this host's to close"
+    manual = FakeCloud().install(monkeypatch)
+    manual.specs = cloud.specs
+    host.Host(repo, slots=1, runner=Runner(), only=["green-witch"], out=lambda *a: None).tick()
+    assert manual.signoffs == [], "a host that is not autonomous never signs off"
+
+
+def test_the_elder_witch_signs_off_an_answered_task_or_holds_it_for_a_person(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    verdicts = iter(["Read it; it is the result.\nVERDICT: pass", "VERDICT: changes — the idea needs a person's choice"])
+    runner = Runner({"elf": lambda cwd, p: ("Use a view.", None), "elder-witch": lambda cwd, p: (next(verdicts), None)})
+    h = host.Host(repo, slots=1, runner=runner, only=["elf", "elder-witch"], autonomous=True, out=lambda *a: None)
+    h.run(once=True)
+    assert host.load(repo)["shop#2"]["state"] == "answered"
+    assert h.tick()["signed"] == ["shop#2"]
+    (call,) = [c for c in runner.calls if c["agent"] == "elder-witch"]
+    assert "final sign-off on task shop#2: Alternative for search" in call["prompt"] and call["env"]["COVEN_READ_ONLY"] == "1"
+    assert cloud.signoffs == [("shop#2", "sa-approved: Elder Witch — SA signed off the answer")]
+    # a second answered task: her `changes` holds it for a person, said once, and nothing is closed
+    host._update(repo, "shop#3", task="shop#3", state="answered", answer="The build is green.")
+    h.tick()
+    assert len(cloud.signoffs) == 1 and host.load(repo)["shop#3"]["sa"] == "changes"
+    assert cloud.notes[-1]["kind"] == "question" and "holds shop#3 for a person: the idea needs a person's choice" in cloud.notes[-1]["note"]
+    h.tick()
+    assert len([c for c in runner.calls if c["agent"] == "elder-witch"]) == 2, "one SA check per task"
+
+
+def test_a_cloud_that_refuses_the_sign_off_is_asked_once_and_tasks_wait_for_a_person(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.signoff_refuse = True
+    said = []
+    h = host.Host(repo, slots=1, runner=Runner(), only=["green-witch"], autonomous=True, out=said.append)
+    cloud.specs = [{"spec": "council", "tasks": [{"task_id": "q1", "expects": "answer", "doer_state": "answered", "doer_host": "wsl-1", "delivery": "answered"}]}]
+    h.tick()
+    h.tick()
+    assert cloud.signoffs == [("council#q1", "autonomous-signoff: answered")], "asked once per process"
+    assert any("refuses an autonomous sign-off" in line for line in said)
+
+
+def test_reconcile_closes_answered_tasks_without_changes_and_branches_already_in_the_base(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    for n in ("1", "5"):
+        git(repo, "branch", f"coven/shop-{n}")
+    git(repo, "checkout", "-q", "coven/shop-5")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "x.md").write_text("x\n")
+    git(repo, "add", "docs"), git(repo, "commit", "-qm", "not merged")
+    git(repo, "checkout", "-q", "main")
+    view = {"specs": [{"spec": "shop", "tasks": [
+        {"task_id": "1", "doer_state": "submitted"}, {"task_id": "2", "doer_state": "answered", "doer_verdict": None},
+        {"task_id": "3", "doer_state": "answered", "doer_verdict": "changes"}, {"task_id": "4", "doer_state": "done"},
+        {"task_id": "5", "doer_state": "submitted"}]},
+        {"spec": "council", "tasks": [{"task_id": "r1-t", "doer_state": "answered", "doer_verdict": "pass"}]}]}
+    dry = host.reconcile(repo, dry_run=True, view=view)
+    assert dry["tasks"] == ["shop#1", "shop#2", "council#r1-t"] and cloud.signoffs == [], "a dry run sends nothing"
+    done = host.reconcile(repo, view=view)
+    assert done["reconciled"] == 3 and done["refused"] == 0 and done["dry_run"] is False
+    assert dict(cloud.signoffs)["shop#1"] == "autonomous-signoff: reconciled, coven/shop-1 is in base main"
+    assert "shop#3" not in dict(cloud.signoffs) and "shop#5" not in dict(cloud.signoffs), "changes asked, or a branch not merged, waits"
+
+
+def test_coven_host_reconcile_says_what_it_closed_and_what_the_cloud_refused(repo, monkeypatch, capsys):
+    from coven import cli
+
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "2", "doer_state": "answered"}]}]
+    assert cli.main(["host", "reconcile", "--dry-run"]) == 0
+    assert "1 In review task(s) would be closed: shop#2" in capsys.readouterr().out and cloud.signoffs == []
+    assert cli.main(["host", "reconcile"]) == 0
+    assert "closed 1 of 1 In review task(s)" in capsys.readouterr().out
+    cloud.signoff_refuse = True
+    assert cli.main(["host", "reconcile"]) == 1
+    assert "refused by the cloud: done is people's word" in capsys.readouterr().out

@@ -6,8 +6,15 @@
 #   ./run-host.sh --all                   every installed witch, the Dev too (builds tasks in git worktrees)
 #   ./run-host.sh --agents elf,raven      only these witches
 #   ./run-host.sh --slots 3 --once        any other `coven host run` option goes through
+#   ./run-host.sh --manual                not autonomous (as is COVEN_AUTONOMOUS=0 ./run-host.sh)
+#   ./run-host.sh --reconcile             close the In review backlog by the SA's sign-off once, then exit
+#
+# This script starts the host AUTONOMOUS by default (COVEN_AUTONOMOUS=1; `coven host run` itself is opt-in): auto-merge,
+# the Chair approves plans the Black Hat left with no P0 or P1 objection (only if the cloud sets COVEN_AUTONOMOUS_PLANS=1),
+# and witch-and-paths prep branches merge here. Verify commands, holds and deadlocks still wait for a person.
 #
 # Environment: COVEN_HOST_NAME (default: this machine's name), COVEN_SLOTS (default 2),
+# COVEN_AUTONOMOUS (default 1 here; 0 turns it off),
 # COVEN_PY (the interpreter, default python3; extra words are passed as its first arguments),
 # COVEN_CLOUD_URL (default: the test cloud on AWS Lightsail) and COVEN_TOKEN (default: dev).
 # When the saved login points at another cloud, the host logs in to COVEN_CLOUD_URL and restarts the relay.
@@ -30,11 +37,15 @@ if [ "${node_major:-0}" -lt 22 ] || { [ "$node_major" -eq 22 ] && [ "${node_mino
   exit 1
 fi
 
-agents=""; all=0; extra=()
+agents=""; all=0; extra=(); reconcile=0
+# Autonomous unless the person says otherwise (COVEN_AUTONOMOUS=0, or --manual below).
+export COVEN_AUTONOMOUS="${COVEN_AUTONOMOUS:-1}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) all=1 ;;
     --agents) agents="${2:?--agents needs a list}"; shift ;;
+    --manual) COVEN_AUTONOMOUS=0 ;;
+    --reconcile) reconcile=1 ;;
     *) extra+=("$1") ;;
   esac
   shift
@@ -67,10 +78,19 @@ if ! coven doctor 2>&1 | grep -q "^relay: running"; then
   sleep 2
 fi
 
+if [ "$reconcile" = 1 ]; then
+  exec "${py[@]}" -m coven.cli host reconcile
+fi
+
 # 4. which witches: by default not the Dev, so nothing builds or commits until you ask (--all)
 if [ -z "$agents" ] && [ "$all" = 0 ]; then
   agents="$(coven host agents | awk '$NF=="installed" && $1!="green-witch" {printf "%s%s", sep, $1; sep=","}')"
 fi
 [ -n "$agents" ] && extra+=(--agents "$agents")
+
+if [ "$COVEN_AUTONOMOUS" = 1 ]; then
+  echo "host: autonomous mode on (COVEN_AUTONOMOUS=1; turn it off with --manual or COVEN_AUTONOMOUS=0)"
+  case ",$agents," in *,green-witch,*) ;; *) [ "$all" = 1 ] || echo "host: the Dev is not on this host (add --all): approved plans wait for a host that builds" ;; esac
+fi
 
 exec "${py[@]}" -m coven.cli host run --slots "${COVEN_SLOTS:-2}" "${extra[@]}"

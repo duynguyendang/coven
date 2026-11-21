@@ -9,6 +9,8 @@ and the `tasks.md` template Kiro writes):
       - _Paths: `src/coven/`, `tests/`_          Coven annotation: declared paths
       - _Verify: `pytest -q tests/test_x.py`_    Coven annotation: the guard's command
       - _Agent: elf_                             Coven annotation: which persona works it (default green-witch)
+      - _AllowEmpty: true_                       Coven annotation: finishing with no change is a valid result
+      - _Delegated: `council#r1b2`_              Coven annotation: the council tasks that do this task's work
     - [ ]* 1.2 Write property tests              `*` after the box: optional sub-task
 
     ## Task Dependency Graph
@@ -40,9 +42,19 @@ NUMBER = (re.compile(r"^(\d+(?:\.\d+)*)\s"), re.compile(r"^(\d+(?:\.\d+)*)\."))
 STATUS = {" ": "not_started", "x": "completed", "-": "in_progress", "~": "queued"}
 GRAPH_HEADING = "## Task Dependency Graph"
 # `- _Paths: ..._`, `_Verify: ..._`, `_Requirements: ..._` (bullet and underscores optional).
-ANNOTATION = re.compile(r"^\s*(?:[-*+]\s+)?_?(?P<key>paths|verify|requirements|agent)\s*:\s*(?P<value>.*?)_?\s*$", re.IGNORECASE)
+ANNOTATION = re.compile(r"^\s*(?:[-*+]\s+)?_?(?P<key>paths|verify|requirements|agent|allow[_ -]?empty|delegated)\s*:\s*(?P<value>.*?)_?\s*$",
+                        re.IGNORECASE)
 BACKTICKED = re.compile(r"`([^`]+)`")
 HEADING = re.compile(r"^\s*#{1,6}\s")
+TRUE = {"true", "yes", "1", "on"}
+# A sweep: the task is to fix whatever its verify command flags, so "nothing to fix" is a valid result.
+# Only explicit phrases: a word like "verify" or "audit" also names ordinary build tasks.
+SWEEP = re.compile(r"\bsweep\s+leftovers\b|\bfix\s+only\s+what\s+(?:the\s+)?verify\s+flags\b", re.IGNORECASE)
+
+
+def is_sweep(title: str | None) -> bool:
+    """True for a sweep task's title ("Sweep leftovers and fix only what verify flags")."""
+    return bool(SWEEP.search(title or ""))
 
 
 def task_number(text: str) -> str | None:
@@ -124,14 +136,14 @@ def _process(lines: list[str], start: int, parent_text: str | None, out: list[di
 
 
 def _annotations(content: list[str]) -> dict:
-    found: dict = {"paths": [], "verify": None, "requirements": [], "agent": None}
+    found: dict = {"paths": [], "verify": None, "requirements": [], "agent": None, "allow_empty": None, "delegated": []}
     for line in content:
         if HEADING.match(line):  # `## Notes` / `## Task Dependency Graph` are not task content for Coven
             break
         match = ANNOTATION.match(line)
         if not match:
             continue
-        key, value = match.group("key").lower(), match.group("value").strip()
+        key, value = re.sub(r"[_ -]", "", match.group("key").lower()), match.group("value").strip()
         quoted = BACKTICKED.findall(value)
         if key == "paths":
             items = quoted or [part.strip() for part in value.split(",")]
@@ -142,6 +154,11 @@ def _annotations(content: list[str]) -> dict:
             found["agent"] = (quoted[0] if quoted else value).strip() or None
         elif key == "requirements":
             found["requirements"].extend(part.strip() for part in value.split(",") if part.strip())
+        elif key == "allowempty" and found["allow_empty"] is None:
+            found["allow_empty"] = (quoted[0] if quoted else value).strip().lower() in TRUE
+        elif key == "delegated":
+            items = [part.strip().strip("`").strip() for part in value.split(",")]
+            found["delegated"].extend(item for item in items if "#" in item and item not in found["delegated"])
     return found
 
 
@@ -212,10 +229,19 @@ def parse(text: str, spec: str | None = None) -> dict[str, dict]:
             "verify": notes["verify"],
             "requirements": notes["requirements"],
             "agent": notes["agent"],
+            "allow_empty": notes["allow_empty"],
+            "delegated": notes["delegated"],
             "wave": waves.get(task_id),
             "line": task["line"],
         }
 
+    # Finishing with no change is valid when a person said so (`_AllowEmpty: true_`), for a parent (a milestone that
+    # groups its sub-tasks) and for a sweep. An explicit `_AllowEmpty: false_` wins. `_Delegated:_` never implies it:
+    # the host checks those council tasks are done instead.
+    parents = {task["parent"] for task in tasks.values() if task.get("parent")}
+    for task in tasks.values():
+        explicit = task.pop("allow_empty")
+        task["allow_empty_diff"] = explicit if explicit is not None else (task["task_id"] in parents or is_sweep(task["title"]))
     # A sub-task without `_Paths:_` uses its parent's declared paths: still declared, not inferred.
     for task in tasks.values():
         current, seen = task, set()
@@ -264,7 +290,7 @@ def tick(path: Path, task: dict) -> bool:
     return True
 
 
-ANNOTATION_ORDER = ("paths", "verify", "agent")
+ANNOTATION_ORDER = ("paths", "verify", "agent")  # the Scribe's keys; `_AllowEmpty:_` and `_Delegated:_` are a person's
 
 
 def _annotation_line(indent: str, key: str, value) -> str:

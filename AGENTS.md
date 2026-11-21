@@ -61,7 +61,11 @@ make deploy      # Cloudflare (only when asked)
    a host started with `--auto-merge` merges and pushes the base branch itself, but only a branch White
    Hat, Black Hat and the Elder Witch all passed, that the Chair decided to merge, that no person
    rejected, that merges cleanly, and whose merged tree passes `make verify` (`COVEN_MERGE_CHECK`).
-   It never force-pushes. A person's **Accept and merge** on the board (`POST /v1/board/accept`) is the other
+   It never force-pushes. A host started with `--autonomous` (`COVEN_AUTONOMOUS=1`, the default of `./run-host.sh`;
+   `--manual` or `COVEN_AUTONOMOUS=0` turns it off) does the same, and also merges the Scribe's `_Agent:_`/`_Paths:_`
+   prep branch under those checks and has the Chair approve a plan the Black Hat left with no P0/P1 objection (the
+   cloud takes that only when its operator sets `COVEN_AUTONOMOUS_PLANS=1`); `_Verify:_` lines always wait for a person.
+   A person's **Accept and merge** on the board (`POST /v1/board/accept`) is the other
    way: the host that holds the branch merges it under the same checks and pushes the base. An agent working
    on this repo outside a host still follows the rule.
 3. **Events are a contract.** A new event type, field or endpoint goes into

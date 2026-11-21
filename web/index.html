@@ -417,9 +417,18 @@
   .tile .go:empty { display: none; }
   .tile .go.warn { color: var(--warn-ink); font-weight: 600; }
   [data-board-project] { padding: 3px 8px; }
-  .wall-group { margin: 0 0 12px; }
-  .wall-group > summary { cursor: pointer; font-weight: 600; font-size: 0.875rem; padding: 4px 0 8px; display: flex; align-items: center; gap: 8px; }
-  .wall-group > summary .n { font-weight: 400; font-size: 0.75rem; color: var(--muted); font-family: var(--mono); }
+  .wall-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 8px; }
+  .wall-bar .filters { margin: 0; }
+  .wall-bar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 0.8125rem; cursor: pointer; min-block-size: var(--target-size); }
+  .wall-more { margin-top: 12px; }
+  .sticky .body.clamped { display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .sticky .note-more { font-size: 0.75rem; align-self: flex-start; }
+  .lane { margin: 4px 0 12px; }
+  .lane > h4 { margin: 4px 0 6px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .lane > h4 .n { font-family: var(--mono); font-weight: 400; letter-spacing: 0; }
+  .tgroup > summary .batch { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 6px; }
+  .tgroup.drawer { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .trow .rpills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
   .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   /* Notes are neutral cards; only the kind tag carries colour (colour means kind, never failure). */
   .sticky { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-element); padding: 10px 12px; font-size: 0.875rem; line-height: 1.45;
@@ -1565,10 +1574,10 @@
     const chips = [];
     for (const r of all.filter((x) => x.review_of === t.ref)) {
       const name = agentName(r.agent || "white-hat");
-      if (r.doer_verdict === "pass") chips.push({ label: `${name} pass`, tone: "accept" });
-      else if (r.doer_verdict === "changes") chips.push({ label: `${name} changes`, tone: "reject" });
-      else if (r.doer_state === "failed") chips.push({ label: `${name} failed`, tone: "reject" });
-      else chips.push({ label: `${name} running`, tone: "working" });
+      if (r.doer_verdict === "pass") chips.push({ label: `${name} pass`, tone: "accept", review: true });
+      else if (r.doer_verdict === "changes") chips.push({ label: `${name} changes`, tone: "reject", review: true });
+      else if (r.doer_state === "failed") chips.push({ label: `${name} failed`, tone: "reject", review: true });
+      else chips.push({ label: `${name} running`, tone: "working", review: true });
     }
     const a = t.accept;
     if (a && a.state === "requested") chips.push(a.decision === "accept" ? { label: "accept requested", tone: "warn" } : { label: "changes requested", tone: "warn" });
@@ -1594,6 +1603,77 @@
     return { kind: "accept", label: "Needs you: accept", why: reviews.length ? "Every reviewer passed it. Accept and merge, or request changes." : "Submitted, with no review recorded. Accept and merge, or request changes.", accept: true };
   }
   const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"]];
+  /* ------------------------------------------- In review, decluttered (no contract change: GET /v1/board fields only)
+     Review jobs fold onto their task as pills; answered Q&A jobs and the reviews of done tasks go to a closed drawer; what
+     is left splits into Ready for sign-off and Needs attention, each grouped by the plan it came from. */
+  const REVIEW_PILLS = [["white-hat", "Test"], ["black-hat", "Attack"], ["elder-witch", "SA"]];
+  const isDoneTask = (t) => !!t && (t.status === "completed" || t.doer_state === "done" || !!t.merged);
+  const boardTasks = (b) => ((b && b.specs) || []).flatMap((s) => (s.tasks || []).map((t) => ({ ...t, spec: s.spec, ref: `${s.spec}#${t.task_id}` })));
+  /** The latest review job of each reviewer for `ref`: a later round replaces an earlier one. */
+  function latestReviews(ref, all) {
+    const out = {};
+    for (const x of all) {
+      if (x.review_of !== ref) continue;
+      const who = x.agent || "white-hat", was = out[who];
+      const later = !was || (x.created_at || "") > (was.created_at || "") || ((x.created_at || "") === (was.created_at || "") && String(x.task_id) > String(was.task_id));
+      if (later) out[who] = x;
+    }
+    return out;
+  }
+  /** Test, Attack and SA for one task: pass, changes, failed, or pending (running, or no job yet). */
+  function reviewPills(ref, all) {
+    const latest = latestReviews(ref, all);
+    return REVIEW_PILLS.map(([agent, label]) => {
+      const r = latest[agent];
+      const st = !r ? "pending" : r.doer_verdict === "pass" ? "pass" : r.doer_verdict === "changes" ? "changes" : r.doer_state === "failed" ? "failed" : "pending";
+      return { agent, label, state: st, ref: r ? r.ref : null };
+    });
+  }
+  /** The review jobs of a task (every round) that are not done yet: a person's Mark done closes them with it. */
+  const openReviewJobs = (ref, all) => all.filter((x) => x.review_of === ref && !isDoneTask(x)).map((x) => x.ref);
+  /** Which lane a task in review is in, and what a batch may do with it: {lane, batch: "done" | "accept" | null, pills, why}. */
+  function signoff(t, all) {
+    if (t.doer_state === "answered") return { lane: "ready", batch: "done", pills: null, why: null }; // an answer, or an FR-H20 no-op: no branch
+    if (t.doer_state !== "submitted") return { lane: "attention", batch: null, pills: null, why: "still being worked on" };
+    const pills = reviewPills(t.ref, all), a = t.accept;
+    if (a && a.decision === "accept" && a.merge_state === "held") return { lane: "attention", batch: null, pills, why: "held by the host" };
+    if (a && a.decision === "accept" && a.merge_state !== "merged") return { lane: "ready", batch: null, pills, why: null }; // the host is on it
+    if (a && a.decision === "changes") return { lane: "attention", batch: null, pills, why: "changes requested" };
+    if (t.needs && t.needs.kind === "held") return { lane: "attention", batch: null, pills, why: "held for a person" };
+    if (pills.some((p) => p.state === "changes")) return { lane: "attention", batch: null, pills, why: "a reviewer asked for changes" };
+    if (pills.some((p) => p.state !== "pass")) return { lane: "attention", batch: null, pills, why: "reviews not complete" };
+    if (!t.branch_host) return { lane: "attention", batch: null, pills, why: "no host holds its branch" };
+    return { lane: "ready", batch: "accept", pills, why: null };
+  }
+  /** Tasks grouped by `from_plan`, newest plan first; tasks from no plan last. */
+  function byPlan(list) {
+    const groups = new Map();
+    for (const t of list) groups.set(t.from_plan || "", [...(groups.get(t.from_plan || "") || []), t]);
+    const newest = (items) => items.reduce((m, t) => ((t.created_at || "") > m ? t.created_at || "" : m), "");
+    return [...groups.entries()].map(([plan, items]) => ({ plan: plan || null, items }))
+      .sort((x, y) => (!x.plan) - (!y.plan) || (newest(x.items) < newest(y.items) ? 1 : newest(x.items) > newest(y.items) ? -1 : 0));
+  }
+  /** The In review column, sorted out: {ready: groups, attention: groups, drawer: tasks, folded, count}. `count` is what the tile shows. */
+  function reviewLanes(cols, b) {
+    const all = boardTasks(b);
+    const where = new Map();
+    for (const [k] of COLUMNS) for (const t of cols[k] || []) where.set(t.ref, k);
+    const ready = [], attention = [], drawer = [];
+    let folded = 0;
+    for (const t of cols.review || []) {
+      if (t.review_of) {
+        const parent = where.get(t.review_of);
+        if (parent === "done") drawer.push(t);
+        else if (parent) folded += 1; // a pill on its task (or a chip on its row while the Dev reworks it)
+        else attention.push({ ...t, signoff: { lane: "attention", batch: null, pills: null, why: "its task is not on the board" } });
+        continue;
+      }
+      if (t.expects === "answer" && t.delivery === "answered") { drawer.push(t); continue; }
+      const s = signoff(t, all);
+      (s.lane === "ready" ? ready : attention).push({ ...t, signoff: s });
+    }
+    return { ready: byPlan(ready), attention: byPlan(attention), drawer, folded, count: ready.length + attention.length };
+  }
   const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed", queued: "Queued again" };
   /** The witches some online host can run now; a host from before hosts (no list) can still run the Dev. */
   function runnableWitches(b) {
@@ -1777,20 +1857,90 @@
         <input id="col-filter" class="col-filter" type="search" data-key="col-filter" placeholder="Filter ${esc(label.toLowerCase())} by id, title or witch" autocomplete="off" /></div>
       <div class="tgroups">${body}</div><p class="hint col-none" hidden>No task matches.</p></section>`;
   }
-  /** One line per task in a column; selecting it opens the task in a dialog. */
-  function taskRow(t) {
+  /** One line per task in a column; selecting it opens the task in a dialog. With `pills`, its reviews are Test/Attack/SA pills. */
+  function taskRow(t, opts = {}) {
     const need = t.agent || "green-witch";
     const holder = t.claimed_agent || need;
     const stuck = state.runnable && isStuck(t, state.runnable);
+    // `working` with no live run on any host: the host stopped or crashed; say so on the row (the stage does not show her working)
+    const stale = t.doer_state === "working" && state.liveRefs && !state.liveRefs.has(t.ref);
     const status = t.needs ? `<span class="badge warn needs-you" title="${esc(t.needs.why)}">${esc(t.needs.label)}</span>`
+      : stale ? '<span class="badge warn" data-stale title="Its status says working, but no online host runs it now">Working · no live run</span>'
       : t.doer_verdict ? `<span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes"}</span>`
       : t.merged ? '<span class="badge accept">Merged</span>'
       : t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
       ? `<span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>`
       : stuck ? '<span class="badge warn">Needs a host</span>' : t.waits_for && !t.claimed_by ? `<span class="hint">waits for ${esc(t.waits_for)}</span>` : "";
+    const s = opts.pills ? t.signoff || null : null;
+    const pills = s && s.pills ? `<span class="rpills" data-review-pills>${s.pills.map((p) => `<span class="badge ${PILL_TONE[p.state]}" data-pill="${esc(p.agent)}" title="${esc(agentName(p.agent))}: ${esc(p.state)}">${esc(p.label)} ${esc(p.state)}</span>`).join("")}</span>` : "";
+    const chips = (t.chips || []).filter((c) => !(s && s.pills && c.review));
+    const why = s && s.why ? `<span class="hint" data-why>${esc(s.why)}</span>` : "";
+    const line = pills || chips.length || why ? `<span class="flow-chips" data-flow-chips>${pills}${chips.map((c) => `<span class="badge ${esc(c.tone)}">${esc(c.label)}</span>`).join("")}${why}</span>` : "";
     return `<li><button class="trow ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" type="button" data-task-open="${esc(t.ref)}" data-key="row-${esc(t.ref)}"
       command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span class="id">${esc(t.ref)}</span><span class="tt">${esc(t.title || "")}</span>
-      <span class="who-row">${avatar(holder)}<span>${esc(agentName(holder))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : ""}</span>${status}</span>${(t.chips || []).length ? `<span class="flow-chips" data-flow-chips>${t.chips.map((c) => `<span class="badge ${esc(c.tone)}">${esc(c.label)}</span>`).join("")}</span>` : ""}</button></li>`;
+      <span class="who-row">${avatar(holder)}<span>${esc(agentName(holder))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : ""}</span>${status}</span>${line}</button></li>`;
+  }
+  const PILL_TONE = { pass: "accept", changes: "reject", failed: "reject", pending: "grey" };
+  /** A person's Mark done (POST /v1/board/done), and the same for the task's review jobs that are still open. */
+  async function markDone(ref) {
+    const author = localStorage.getItem("coven_author") || undefined;
+    const jobs = openReviewJobs(ref, boardTasks(state.board));
+    const post = (task) => api("/v1/board/done", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task, author }) });
+    await post(ref);
+    for (const job of jobs) await post(job);
+  }
+  /** A batch sign-off: one request at a time (each with its own Idempotency-Key, from api()), progress on the button, stop at the first failure. */
+  async function runBatch(kind, refs, key) {
+    if (!refs.length || state.batch) return;
+    if (kind === "accept" && !window.confirm(`Accept and merge ${refs.length} branch${refs.length === 1 ? "" : "es"}? Each host that holds one merges it, runs make verify on the result and pushes the base.`)) return;
+    let at = 0;
+    try {
+      for (const ref of refs) {
+        at += 1;
+        state.batch = { key, text: `${at}/${refs.length}…` };
+        render({ keepScroll: true });
+        if (kind === "accept") {
+          await api("/v1/board/accept", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: ref, decision: "accept", author: localStorage.getItem("coven_author") || undefined }) });
+        } else await markDone(ref);
+      }
+    } catch (error) {
+      if (error.message !== "unauthorised") toast(`stopped at ${refs[at - 1]} (${at}/${refs.length}): ${error.message}`);
+    } finally {
+      state.batch = null;
+      await loadBoard();
+      render({ keepScroll: true });
+    }
+  }
+  /** A batch button on a group header: its label is the live progress while the batch runs (it survives a redraw). */
+  function batchButton(kind, refs, id, text) {
+    if (!refs.length) return "";
+    const key = `batch-${kind}-${id}`;
+    const running = state.batch && state.batch.key === key;
+    return `<button class="act sm good" type="button" data-batch="${kind}" data-batch-refs="${esc(refs.join(" "))}" data-key="${esc(key)}"${state.batch ? " disabled" : ""}>${icon("check")}<span>${esc(running ? state.batch.text : text)}</span></button>`;
+  }
+  /** In review: Ready for sign-off, then Needs attention, each grouped by plan; answered Q&A and closed reviews in a closed drawer. */
+  function reviewDetail(label, lanes) {
+    const head = `<h3>${esc(label)} · ${plural(lanes.count, "task")}</h3>`;
+    const group = (lane, g) => {
+      const id = `review:${lane}:${g.plan || "-"}`;
+      const isOpen = openGroups.has(id) ? openGroups.get(id) : true;
+      const refs = (kind) => g.items.filter((t) => t.signoff.batch === kind).map((t) => t.ref);
+      const done = refs("done"), accept = refs("accept");
+      const buttons = lane === "ready" && (done.length || accept.length)
+        ? `<span class="batch">${batchButton("done", done, id, `Mark all done (${done.length})`)}${batchButton("accept", accept, id, `Accept & merge all (${accept.length})`)}</span>` : "";
+      return `<details class="tgroup" data-group="${esc(id)}"${isOpen ? " open" : ""}><summary><span class="mono">${g.plan ? `plan ${esc(g.plan)}` : "Ungrouped / Spec tasks"}</span><span class="n">${g.items.length}</span>${buttons}</summary>
+        <ul class="tlist">${g.items.map((t) => taskRow(t, { pills: true })).join("")}</ul></details>`;
+    };
+    const lane = (key, title, groups) => groups.length
+      ? `<section class="lane" data-lane="${key}" aria-label="${esc(title)}"><h4>${esc(title)}<span class="n">${groups.reduce((n, g) => n + g.items.length, 0)}</span></h4><div class="tgroups">${groups.map((g) => group(key, g)).join("")}</div></section>` : "";
+    const d = lanes.drawer;
+    const drawer = d.length ? `<details class="tgroup drawer" data-group="review:drawer"${openGroups.get("review:drawer") ? " open" : ""}><summary><span>Answered Q&amp;A &amp; closed reviews</span><span class="n">${d.length}</span>
+        <span class="batch">${batchButton("done", d.map((t) => t.ref), "review:drawer", `Mark all done (${d.length})`)}</span></summary><ul class="tlist">${d.map((t) => taskRow(t)).join("")}</ul></details>` : "";
+    const none = !lanes.count ? `<p class="hint p-1">${d.length ? "Nothing here needs a person: only answered questions and the reviews of finished tasks." : "Nothing waits for review: every branch has been judged."}</p>` : "";
+    return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">
+      <div class="col-head">${head}${lanes.count + d.length > 1 ? `<label class="sr" for="col-filter">Filter ${esc(label)}</label>
+        <input id="col-filter" class="col-filter" type="search" data-key="col-filter" placeholder="Filter ${esc(label.toLowerCase())} by id, title or witch" autocomplete="off" />` : ""}</div>
+      ${none}${lane("ready", "Ready for sign-off", lanes.ready)}${lane("attention", "Needs attention", lanes.attention)}${drawer}<p class="hint col-none" hidden>No task matches.</p></section>`;
   }
   /** The task a person selected, as the board knows it now (null when it left the board). */
   function selectedTask() {
@@ -1836,35 +1986,80 @@
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
     return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${dispatchLine(t, need)}${acceptLine(t)}${pushLine(t)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${threadBox(t)}${who ? `<div class="who">${who}</div>` : ""}${["submitted", "answered"].includes(t.doer_state) && t.status !== "completed" ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}" data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>`;
   }
-  /** The whiteboard by the status of the task a note is about: in progress (claimed or in review), open (ready, blocked, or about the whole project), done.
-      In progress and open are shown; done is folded until a person opens it. */
-  const WALL_GROUPS = [["progress", "In progress", true], ["open", "Open", true], ["done", "Done", false]];
+  /** The whiteboard: newest first, one list. Notes about done tasks are hidden unless a person asks for them; a filter keeps
+      holds and questions, or verdicts; the newest WALL_STEP show, then WALL_STEP more per click. */
+  const WALL_FILTERS = [["all", "All active"], ["holds", "Holds & Questions"], ["verdicts", "Verdicts"]];
+  const WALL_STEP = 10;
+  const isVerdict = (n) => n.kind === "review" || /\bverdict:/i.test(n.note || "");
+  const WALL_MATCH = { all: () => true, holds: (n) => n.kind === "question", verdicts: isVerdict };
+  /** A hold or an escalation the host says for a person: always shown, even when witch logs are hidden. */
+  const isHold = (n) => n.kind === "hold" || (n.kind === "question" && /\bholds\b.*\bfor a person\b|could not finish|for a person|lease lost/i.test(n.note || ""));
+  /** Witches' machine-to-machine notes: verdicts (shown as pills on the task row), "ready for review", and consultations
+      (they live in the task's thread). People's notes, notes about the whole project and holds are never witch logs. */
+  function isWitchLog(n) {
+    if (!n.task || !n.agent || isHold(n)) return false;
+    const text = n.note || "";
+    if (n.kind === "review" || /^\s*VERDICT:/i.test(text) || /^[^:]{1,80} — [^:]{1,40}: (pass|changes)\b/i.test(text)) return true;
+    if (n.kind === "review-wanted" || /^\s*Ready for review:/i.test(text)) return true;
+    return n.kind === "question" || n.kind === "answer";
+  }
+  /** {list, hiddenDone, hiddenLogs, counts}: the notes a filter shows (newest first, as the board sends them). The Verdicts pill shows
+      verdicts whether or not witch logs are on: that is what it is for. */
+  function wallNotes(b, cols, filter = "all", withDone = false, withLogs = false) {
+    const done = new Set((cols.done || []).map((t) => t.ref));
+    const all = (b && b.notes) || [];
+    const live = withDone ? all : all.filter((n) => !(n.task && done.has(n.task)));
+    const shown = (k) => live.filter((n) => WALL_MATCH[k](n) && (withLogs || k === "verdicts" || !isWitchLog(n)));
+    const counts = Object.fromEntries(WALL_FILTERS.map(([k]) => [k, shown(k).length]));
+    const key = WALL_MATCH[filter] ? filter : "all";
+    return { list: shown(key), hiddenDone: all.length - live.length, hiddenLogs: withLogs ? 0 : live.filter(isWitchLog).length, counts };
+  }
   function wallHtml(b, cols) {
-    const status = new Map();
-    for (const [key, group] of [["claimed", "progress"], ["review", "progress"], ["ready", "open"], ["failed", "open"], ["done", "done"]]) for (const t of cols[key] || []) status.set(t.ref, group);
-    const groups = { progress: [], open: [], done: [] };
-    for (const n of b.notes || []) groups[(n.task && status.get(n.task)) || "open"].push(n);
     if (!(b.notes || []).length) return `<div class="wall">${voice("The whiteboard is blank.", "The Elf has ideas.", "elf")}</div>`;
-    return WALL_GROUPS.filter(([id]) => groups[id].length).map(([id, label, byDefault]) => {
-      const shown = state.ui.wall && id in state.ui.wall ? state.ui.wall[id] : byDefault;
-      return `<details class="wall-group" data-wall="${id}" data-key="wall-${id}"${shown ? " open" : ""}><summary>${label}<span class="n">${groups[id].length}</span></summary>
-        <div class="wall">${groups[id].map(stickyNote).join("")}</div></details>`;
-    }).join("");
+    const filter = WALL_MATCH[state.ui.wallFilter] ? state.ui.wallFilter : "all";
+    const withDone = state.ui.wallDone === true, withLogs = state.ui.wallLogs === true;
+    const { list, hiddenDone, hiddenLogs, counts } = wallNotes(b, cols, filter, withDone, withLogs);
+    const limit = state.wallLimit && state.wallLimit.project === b.project_id ? state.wallLimit.n : WALL_STEP;
+    const shown = list.slice(0, limit), older = list.length - shown.length;
+    const bar = `<div class="wall-bar"><div class="filters" role="group" aria-label="Show notes">${WALL_FILTERS.map(([k, label]) =>
+        `<button class="filter" type="button" data-wall-filter="${k}" data-key="wall-filter-${k}" aria-pressed="${filter === k}">${esc(label)} <span class="mono">${counts[k]}</span></button>`).join("")}</div>
+      <label class="chk"><input type="checkbox" data-wall-done data-key="wall-done"${withDone ? " checked" : ""} /> Show notes from done tasks${hiddenDone && !withDone ? ` <span class="mono">(${hiddenDone})</span>` : ""}</label>
+      <label class="chk"><input type="checkbox" data-wall-logs data-key="wall-logs"${withLogs ? " checked" : ""} /> Show witch logs${hiddenLogs ? ` <span class="mono">(${hiddenLogs})</span>` : ""}</label></div>`;
+    const empty = shown.length ? "" : `<p class="hint">No note matches${hiddenDone && !withDone ? `; ${plural(hiddenDone, "note")} about done tasks ${hiddenDone === 1 ? "is" : "are"} hidden` : ""}.</p>`;
+    const more = older ? `<button class="act sm wall-more" type="button" data-wall-more data-key="wall-more">Show more (${older} older)</button>` : "";
+    return `${bar}${empty}<div class="wall" data-key="wall">${shown.map(stickyNote).join("")}</div>${more}`;
   }
+  const CLAMP_CHARS = 160; // about four lines of a 230 px card; the clamp itself is CSS
   function stickyNote(n) {
+    const long = String(n.note || "").length > CLAMP_CHARS;
+    const open = long && wallOpen.has(n.note_id);
+    const task = n.task ? `<span>on <button class="link mono" type="button" data-task-open="${esc(n.task)}" data-key="note-task-${esc(n.note_id || "")}"
+        command="show-modal" commandfor="task-dialog" aria-haspopup="dialog">${esc(n.task)}</button></span>` : "";
     return `<article class="sticky ${esc(cls(n.kind))}" aria-label="${esc(KIND_LABEL[n.kind] || n.kind)} from ${esc(n.author)}">
-      <div class="kind">${n.agent ? avatar(n.agent) : ""}${esc(KIND_LABEL[n.kind] || n.kind)}</div><div>${esc(n.note)}</div>
-      <div class="meta">${[n.agent ? `<b>${esc(agentName(n.agent))}</b> on ${esc(n.author)}` : `<b>${esc(n.author)}</b>`, n.task ? `<span>on ${esc(n.task)}</span>` : "", `<span>${agoTag(n.ts)}</span>`].filter(Boolean).join(" · ")}</div></article>`;
+      <div class="kind">${n.agent ? avatar(n.agent) : ""}${esc(KIND_LABEL[n.kind] || n.kind)}</div><div class="body${open ? "" : " clamped"}" data-note-body>${esc(n.note)}</div>
+      ${long ? `<button class="link note-more" type="button" data-note-more="${esc(n.note_id || "")}" aria-expanded="${open}">${open ? "Collapse" : "Expand"}</button>` : ""}
+      <div class="meta">${[n.agent ? `<b>${esc(agentName(n.agent))}</b> on ${esc(n.author)}` : `<b>${esc(n.author)}</b>`, task, `<span>${agoTag(n.ts)}</span>`].filter(Boolean).join(" · ")}</div></article>`;
   }
-  /* Who can take work: the witches, not the machines. A host only shows as "where". */
+  const wallOpen = new Set(); // note ids a person expanded
+  /* Who can take work: the witches, not the machines. A host only shows as "where".
+     Working comes from the monitor's live runs (what the hosts announce they run now, not DISCONNECTED), the same rows the
+     Monitor lists: a claim a host keeps on a submitted or answered task, or a stale `working` status, is not a run. Only a
+     cloud with no monitor falls back to claims. */
+  function liveRuns(b) { return ((b.monitor || {}).runs || []).filter((r) => r.heartbeat !== "DISCONNECTED"); }
   function witchRoster(b) {
     const hosts = (b.hosts || b.members || []).filter((h) => secondsSince(h.last_seen) !== null && secondsSince(h.last_seen) < ONLINE_SECONDS);
-    if (!hosts.length) return { roster: null, card: null, idle: [], hosts: 0, available: 0, working: 0 };
+    const runs = b.monitor ? liveRuns(b) : null;
+    // A fresh claim counts too, while its run starts: the task has no status yet, its host is online, the claim within its lease
+    // (b.claims are the active ones). A claim kept on a submitted or answered task, or under a stale `working`, does not.
+    const stateOf = new Map(((b.specs) || []).flatMap((s) => (s.tasks || []).map((t) => [`${s.spec}#${t.task_id}`, t.doer_state || null])));
+    const fresh = (h) => (h.working || []).filter((w) => !stateOf.get(w.task) && !(runs || []).some((r) => r.ref === w.task));
+    if (!hosts.length && !(runs || []).length) return { roster: null, card: null, idle: [], hosts: 0, available: 0, working: 0 };
     const roster = Object.keys(AGENT_NAME).map((slug) => {
-      const jobs = [], offers = [];
+      const jobs = runs ? runs.filter((r) => r.agent === slug).map((r) => ({ task: r.ref, host: r.host })) : [], offers = [];
       for (const h of hosts) {
-        const working = h.working || (h.claims || []).map((task) => ({ agent: null, task }));
-        for (const w of working) if ((w.agent || "green-witch") === slug) jobs.push({ task: w.task, host: h.member });
+        const working = runs ? [...runs.filter((r) => r.host === h.member), ...fresh(h)] : h.working || (h.claims || []).map((task) => ({ agent: null, task }));
+        if (runs) for (const w of fresh(h)) if ((w.agent || "green-witch") === slug) jobs.push({ task: w.task, host: h.member });
+        if (!runs) for (const w of working) if ((w.agent || "green-witch") === slug) jobs.push({ task: w.task, host: h.member });
         if ((h.agents || []).includes(slug)) offers.push({ host: h.member, free: working.length < (h.slots || 1) });
       }
       const state = jobs.length ? "working" : offers.some((o) => o.free) ? "available" : offers.length ? "full" : "offline";
@@ -1936,9 +2131,9 @@
       </li>`;
     };
     const twice = rows.filter((r) => r.duplicate).length;
-    return `<h2>Monitor <span class="hint">· ${rows.length ? `${plural(rows.length, "run")} going${twice ? `, <b class="bad">${twice} on the same work</b>` : ""}` : "observe only"}</span></h2>
-      ${rows.length ? `<ol class="monitor" aria-label="Runs going now">${rows.map(row).join("")}</ol>`
-        : '<p class="hint mon-empty">No witch is working right now.</p>'}`;
+    const live = liveRuns(b).length; // the same runs the stage puts at a station; DISCONNECTED rows stay listed until they drop
+    return `<h2>Monitor <span class="hint">· ${live ? `${plural(live, "run")} going${twice ? `, <b class="bad">${twice} on the same work</b>` : ""}` : "observe only"}</span></h2>
+      ${live ? "" : '<p class="hint mon-empty">No witch is working right now.</p>'}${rows.length ? `<ol class="monitor" aria-label="Runs going now">${rows.map(row).join("")}</ol>` : ""}`;
   }
   /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
   function roleCard(slug) {
@@ -1962,7 +2157,10 @@
     const picker = names.length > 1 ? `<label class="hint">Project <select data-board-project aria-label="Board project">${names.map((p) => `<option ${p === project ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
     const members = witchRoster(b);
     const cols = boardColumns(b);
+    const lanes = reviewLanes(cols, b);
+    const count = (key) => (key === "review" ? lanes.count : (cols[key] || []).length); // review jobs shown as pills and the drawer are not counted
     state.runnable = runnableWitches(b);
+    state.liveRefs = b.monitor ? new Set(liveRuns(b).map((r) => r.ref)) : null;
     state.cloudReady = cloudHostOnline(b);
     const stuckCount = cols.ready.filter((t) => isStuck(t, state.runnable)).length;
     // Plans that wait for a person first, then the three latest decided ones.
@@ -1972,10 +2170,10 @@
     const waitingPlans = waiting.length;
     // The board shows numbers only; a click on a number opens that column's tasks below.
     // A column is always open: the person's choice, else the most urgent one with tasks (review, then blocked, then ready).
-    const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => (cols[k] || []).length) || "ready";
+    const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => count(k)) || "ready";
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : firstFull;
-    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(cols[key].length, "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${cols[key].length}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host` : ""}</span></button>`;
-    const detail = open ? columnDetail(open, COLUMNS.find(([k]) => k === open)[1], cols[open]) : "";
+    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(count(key), "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${count(key)}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host` : ""}</span></button>`;
+    const detail = !open ? "" : open === "review" ? reviewDetail("In review", lanes) : columnDetail(open, COLUMNS.find(([k]) => k === open)[1], cols[open]);
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
     const compose = `<form class="compose" id="note-form" aria-label="Post a note">
@@ -2609,15 +2807,36 @@
     root.querySelectorAll("[data-stage-pick]").forEach((el) => el.addEventListener("click", () => { state.stagePick = state.stagePick === el.dataset.stagePick ? null : el.dataset.stagePick; render({ keepScroll: true }); }));
     root.querySelectorAll("[data-col]").forEach((el) => el.addEventListener("click", () => { if (state.boardOpen !== el.dataset.col) state.colFilter = ""; state.boardOpen = el.dataset.col; render({ keepScroll: true }); }));
     root.querySelectorAll("details.decided-plans").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== Boolean(state.ui.decidedPlans)) { state.ui.decidedPlans = el.open; saveUi(); } }));
-    root.querySelectorAll("details.wall-group").forEach((el) => el.addEventListener("toggle", () => {
-      const was = state.ui.wall || {};
-      if (was[el.dataset.wall] !== el.open) { state.ui.wall = { ...was, [el.dataset.wall]: el.open }; saveUi(); }
+    root.querySelectorAll("[data-wall-filter]").forEach((el) => el.addEventListener("click", () => {
+      state.ui.wallFilter = el.dataset.wallFilter; saveUi(); state.wallLimit = null; render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-wall-done]").forEach((el) => el.addEventListener("change", () => {
+      state.ui.wallDone = el.checked; saveUi(); state.wallLimit = null; render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-wall-logs]").forEach((el) => el.addEventListener("change", () => {
+      state.ui.wallLogs = el.checked; saveUi(); state.wallLimit = null; render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-note-more]").forEach((el) => el.addEventListener("click", () => {
+      const id = el.dataset.noteMore;
+      if (wallOpen.has(id)) wallOpen.delete(id); else wallOpen.add(id);
+      render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-wall-more]").forEach((el) => el.addEventListener("click", () => {
+      const project = state.board && state.board.project_id;
+      const now = state.wallLimit && state.wallLimit.project === project ? state.wallLimit.n : WALL_STEP;
+      state.wallLimit = { project, n: now + WALL_STEP };
+      render({ keepScroll: true });
+    }));
+    root.querySelectorAll("[data-batch]").forEach((el) => el.addEventListener("click", (ev) => {
+      ev.preventDefault(); // inside a group's summary: run the batch, do not fold the group
+      ev.stopPropagation();
+      runBatch(el.dataset.batch, (el.dataset.batchRefs || "").split(" ").filter(Boolean), el.dataset.key);
     }));
     root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage === true)) { state.ui.stage = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try {
-        await api("/v1/board/done", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.done, author: localStorage.getItem("coven_author") || undefined }) });
+        await markDone(el.dataset.done);
         await loadBoard();
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }
@@ -3029,7 +3248,7 @@
   window.addEventListener("hashchange", onRoute);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) { loadFleet(); if (state.route.view === "session") loadSession().then(() => render({ keepScroll: true })); } });
 
-  window.__coven = { flowState, boardColumns }; // read-only handles for the tests
+  window.__coven = { flowState, boardColumns, reviewLanes, wallNotes }; // read-only handles for the tests
   start();
 })();
 </script>

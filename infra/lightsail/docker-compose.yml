@@ -11,6 +11,10 @@ services:
       COVEN_TOKENS: ${COVEN_TOKENS:?set COVEN_TOKENS in .env}
       # people's decisions (Accept and merge, plans, Mark done, retry, push, dispatch) need this one; empty: read scope
       COVEN_ADMIN_TOKEN: ${COVEN_ADMIN_TOKEN:-}
+      # "1": an autonomous host's Chair may approve plans (FR-CH9); empty: only people approve plans
+      COVEN_AUTONOMOUS_PLANS: ${COVEN_AUTONOMOUS_PLANS:-}
+      # "1": an autonomous host's Elder Witch may mark tasks done; empty: follows COVEN_AUTONOMOUS_PLANS
+      COVEN_AUTONOMOUS_SIGNOFF: ${COVEN_AUTONOMOUS_SIGNOFF:-}
     volumes: [coven-data:/data]
     expose: ["8080"]
     mem_limit: 320m

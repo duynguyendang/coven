@@ -214,6 +214,16 @@ export function createHandler(options: HandlerOptions): Handler {
   const { store, storeName = "memory" } = options;
   const env: Env = options.env ?? (globalThis as any).process?.env ?? {};
   const startedAt = now();
+  /** An autonomous host's Chair approving a plan (FR-CH9): taken from a relay only when the cloud's operator allows it
+      (COVEN_AUTONOMOUS_PLANS=1), only as an approval, only by grey-witch. The board also requires the host that proposed it. */
+  const chairApproval = (event: Json): boolean => event.type === "plan_decision" && env.COVEN_AUTONOMOUS_PLANS === "1"
+    && (event.payload || {}).state === "approved" && (event.payload || {}).author === "grey-witch" && typeof event.member === "string" && event.member.length > 0;
+  /** An autonomous host's final sign-off (FR-ST2): `done` from a relay, signed by the Elder Witch and tagged, only when the operator
+      allows it (COVEN_AUTONOMOUS_SIGNOFF=1; unset, it follows COVEN_AUTONOMOUS_PLANS). The board never lets it close a waiting branch. */
+  const signoffOn = env.COVEN_AUTONOMOUS_SIGNOFF === "1" || ((env.COVEN_AUTONOMOUS_SIGNOFF ?? "") === "" && env.COVEN_AUTONOMOUS_PLANS === "1");
+  const autonomousDone = (event: Json): boolean => signoffOn && event.type === "task_status" && (event.payload || {}).state === "done"
+    && (event.payload || {}).agent === "elder-witch" && /^(autonomous-signoff|sa-approved)\b/.test(String((event.payload || {}).detail ?? ""))
+    && typeof event.member === "string" && event.member.length > 0;
 
   const need = (request: Request, url: URL, scope: Scope, allowQuery = false): void => {
     if (!authorised(request.headers.get("authorization"), url, scope, allowQuery, env)) {
@@ -267,8 +277,8 @@ export function createHandler(options: HandlerOptions): Handler {
         }
         const problems = validateEvent(event);
         if (CLOUD_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is made by the cloud only (POST /v1/claims)`);
-        if (WEB_ONLY_TYPES.has(event.type)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch, /v1/board/plan, /v1/board/push or /v1/board/accept), not a relay's`);
-        if (event.type === "task_status" && (event.payload || {}).state === "done") {
+        if (WEB_ONLY_TYPES.has(event.type) && !chairApproval(event)) problems.push(`${event.type} is a person's decision (POST /v1/board/dispatch, /v1/board/plan, /v1/board/push or /v1/board/accept), not a relay's`);
+        if (event.type === "task_status" && (event.payload || {}).state === "done" && !autonomousDone(event)) {
           problems.push("done is people's word (POST /v1/board/done), not a doer's report");
         }
         if (event.type === "chat_message" && (event.payload || {}).role !== "council") {
@@ -281,8 +291,8 @@ export function createHandler(options: HandlerOptions): Handler {
         prepared.push(redactEvent(event));
       }
       const [accepted, duplicates] = await store.ingest(projectId, runId, prepared);
-      // branch_in_base changes the board (done, or a drift note): tell the open dashboards.
-      if (accepted && prepared.some((e) => e.type === "branch_in_base")) (store as any).publish({ kind: "board", project_id: projectId });
+      // branch_in_base and a Chair's plan approval change the board (done, a drift note, build tasks): tell the open dashboards.
+      if (accepted && prepared.some((e) => e.type === "branch_in_base" || e.type === "plan_decision" || (e.type === "task_status" && (e.payload || {}).state === "done"))) (store as any).publish({ kind: "board", project_id: projectId });
       return json(200, { accepted, duplicates, rejected, received: raw.length });
     }
 

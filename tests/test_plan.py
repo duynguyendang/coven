@@ -51,3 +51,46 @@ def test_a_stage_whose_witch_is_not_here_is_skipped_and_said(repo, monkeypatch):
 def test_ok_is_acceptance_anything_else_is_an_objection():
     assert host.objections_of("OK") is None and host.objections_of("ok.\nfine") is None
     assert host.objections_of("Breaks refunds") == "Breaks refunds"
+
+
+# ------------------------------------------------------------ an autonomous host: the Chair approves a consensus plan
+
+
+def test_an_autonomous_host_has_the_chair_approve_a_plan_the_black_hat_accepts(repo, monkeypatch):  # noqa: F811
+    cloud = FakeCloud().install(monkeypatch)
+    runner = Runner({"elder-witch": lambda cwd, p: (PLAN, None), "black-hat": lambda cwd, p: ("OK", None)})
+    result = host.execute_plan(repo, JOB, runner, None, "evt_req", autonomous=True)
+    assert result["approved"] and result["rounds"] == 1
+    (plan,) = cloud.plans
+    assert cloud.decisions == [{"plan": "council#r1-1", "reasons": "consensus: Black Hat Witch — Red Team raised no P0 or P1 objection after 1 round(s)"}]
+    said = " ".join(a[3] for a in cloud.answers)
+    assert "approved the plan on this autonomous host" in said and "COVEN_AUTONOMOUS_PLANS" in said
+    assert "Nothing is built until a person approves" not in said
+
+
+def test_p2_objections_do_not_hold_a_plan_but_p0_and_p1_do_for_three_rounds(repo, monkeypatch):  # noqa: F811
+    cloud = FakeCloud().install(monkeypatch)
+    minor = Runner({"elder-witch": lambda cwd, p: (PLAN, None), "black-hat": lambda cwd, p: ("P2: the name could be clearer", None)})
+    assert host.execute_plan(repo, JOB, minor, None, "evt_req", autonomous=True)["approved"]
+    assert sum(1 for c in minor.calls if c["agent"] == "elder-witch") == 1, "a P2 is not worth another round"
+    cloud.decisions.clear()
+    serious = Runner({"elder-witch": lambda cwd, p: (PLAN, None), "black-hat": lambda cwd, p: ("P2: naming\nP1: total() ignores refunds", None)})
+    result = host.execute_plan(repo, JOB, serious, None, "evt_req2", autonomous=True)
+    assert result["rounds"] == 3 and result["objections"] and not result["approved"], "a deadlock after three rounds is a person's call"
+    assert cloud.decisions == []
+    assert "still objects" in " ".join(a[3] for a in cloud.answers if a[0] == "evt_req2")
+
+
+def test_the_chair_never_approves_an_unchallenged_plan_or_on_a_manual_host(repo, monkeypatch):  # noqa: F811
+    cloud = FakeCloud().install(monkeypatch)
+    ok = Runner({"elder-witch": lambda cwd, p: (PLAN, None), "black-hat": lambda cwd, p: ("OK", None)})
+    assert not host.execute_plan(repo, JOB, ok, None, "evt_req")["approved"], "not autonomous: a person approves"
+    (repo / ".kiro" / "agents" / "black-hat.json").unlink()
+    result = host.execute_plan(repo, JOB, Runner({"elder-witch": lambda cwd, p: (PLAN, None)}), None, "evt_req3", autonomous=True)
+    assert not result["approved"] and cloud.decisions == []
+    assert "Held for a person: the plan was not challenged" in cloud.notes[-1]["note"]
+
+
+def test_only_unmarked_or_p0_p1_objections_block():
+    assert not host.blocking(None) and not host.blocking("P2: naming\n- [P2] wording")
+    assert host.blocking("Breaks refunds") and host.blocking("P2 naming\nP0 data loss")

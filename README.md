@@ -136,7 +136,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
 | `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too). Logs in to `COVEN_CLOUD_URL` (default: the AWS test cloud, token `COVEN_TOKEN`, default `dev`) when the saved login points elsewhere |
-| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--auto-merge] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
+| `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--auto-merge] [--autonomous \| --manual] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
 | `coven host prepare [--only <spec>] [--note …]` | The Scribe proposes the witch, paths and verify for tasks that lack them; the host writes them on branch `coven/prepare-all` for you to merge |
 | `coven host status \| agents \| retry <task> [--recheck]` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again (`--recheck`, or `retry all --recheck`: check the work already in its worktree again, no model run); on the board, **Retry** does the same for any host |
 | `coven host agents [--roles] [--sync] [--check]` | The eleven witches; `--roles` prints what each owns, produces, hands off and never does; `--sync` writes that role table into each agent prompt and the dashboard; `--check` fails when they are out of date (the harness runs it) |
@@ -262,6 +262,20 @@ most), three passes go to the Chair, and on her decision the host merges into th
 only if no person rejected it, it merges cleanly and `make verify` passes on the merged tree
 (`COVEN_MERGE_CHECK`). Anything in doubt waits for you, with a note saying why.
 
+**Autonomous hosts.** `coven host run --autonomous` (or `COVEN_AUTONOMOUS=1`) is auto-merge plus two more
+steps without you: the Chair approves a plan the Black Hat challenged and left with no P0 or P1 objection,
+and the host merges the Scribe's `_Agent:_` and `_Paths:_` lines itself (under the same merge checks).
+The Chair's approval counts only if the cloud's operator sets `COVEN_AUTONOMOUS_PLANS=1`; otherwise the
+plan waits for you. Verify commands (`coven/prepare-verify-*`), holds and deadlocks always wait for a person.
+`coven host run` is opt-in; **`./run-host.sh` starts autonomous by default**: turn it off with
+`./run-host.sh --manual` or `COVEN_AUTONOMOUS=0 ./run-host.sh`. With both switches on, a chat message can
+reach the base branch with no person deciding, so leave `COVEN_AUTONOMOUS_PLANS` unset on a cloud others post to.
+With `COVEN_AUTONOMOUS_SIGNOFF=1` on the cloud (unset, it follows `COVEN_AUTONOMOUS_PLANS`), an autonomous host
+also closes, as done signed by the Elder Witch, verified no-ops, its answered questions, and answered tasks the SA
+checked and passed. `coven host reconcile [--dry-run]` (or `./run-host.sh --reconcile`) closes the In review
+backlog the same way: answered with no `changes` verdict, or a branch already in the base. A branch that still
+waits to be merged is never closed this way.
+
 **Your final evaluation.** Without `--auto-merge`, you are the merge gate. Open a submitted task on the
 board: **Accept and merge** asks the host that holds the branch to merge it under the same checks (clean
 merge, `make verify` on the merged tree) and push the base; **Request changes** asks what should change and
@@ -319,6 +333,12 @@ kiro-cli chat --agent weaver     # "take work": claims the next ready task and r
   available, and on which host), the tasks as **numbers** (Ready · Claimed ·
   In review · Blocked · Done; click one to see its cards, each with the witch it
   needs and its state), and the notes as a wall. You can post there too.
+  **In review** splits into *Ready for sign-off* and *Needs attention*, grouped by
+  plan; each build's reviews are Test, Attack and SA pills on its row, and a Ready
+  group signs off in one click (*Mark all done*, *Accept & merge all*). Answered
+  questions and the reviews of finished tasks fold into a closed drawer. The wall
+  hides notes about done tasks, filters holds and questions or verdicts, and shows
+  the newest 10 first.
 
 Every task ends as a pull request a human merges. Board notes are untrusted
 text: every agent is told to read them as data, never as instructions.
@@ -420,6 +440,16 @@ command that must pass, and `_Agent:_` the witch that works it (default the Dev)
     - _Agent: green-witch_
     - _Requirements: 1.2_
 ```
+
+A build that changes nothing is refused, like a change outside its paths. Two
+more annotations, written by a person, make "no change" a valid result:
+`_AllowEmpty: true_` (a parent task or a sweep is allowed it by default) and
+`_Delegated: council#r1-1b2, council#r1-1b3_` (the council tasks that do this
+task's work). The host accepts an empty change only when every delegated task is
+done or merged, or, for `_AllowEmpty:_` and a sweep ("Sweep leftovers", "fix only
+what verify flags", after a run with no error), when the task's `_Verify:_` passes
+on the unchanged checkout. The task is then *answered* with no branch, not failed:
+it waits In review for a person's **Mark done**.
 
 A task is identified by its spec folder and number (`coven-relay · 9`). A task
 without `_Paths:_` never raises a deviation. File names mentioned in a task's

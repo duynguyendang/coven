@@ -278,6 +278,11 @@ def cmd_member(args: argparse.Namespace) -> int:
     return 0
 
 
+def autonomous_mode(flag: bool, manual: bool, env) -> bool:
+    """`coven host run` is opt-in: autonomous only with --autonomous or COVEN_AUTONOMOUS=1, and never with --manual."""
+    return not manual and (bool(flag) or env.get("COVEN_AUTONOMOUS") == "1")
+
+
 def cmd_host(args: argparse.Namespace) -> int:
     from . import agents, board, host
 
@@ -319,6 +324,18 @@ def cmd_host(args: argparse.Namespace) -> int:
             print(f"coven host retry: {exc}", file=sys.stderr)
             return 1
         return 0
+    if command == "reconcile":
+        try:
+            done = host.reconcile(root, dry_run=args.dry_run)
+        except (host.HostError, board.BoardError) as exc:
+            print(f"coven host reconcile: {exc}", file=sys.stderr)
+            return 1
+        if done.get("dry_run"):
+            print(f"reconcile: {done['candidates']} In review task(s) would be closed: {', '.join(done['tasks']) or 'none'}")
+        else:
+            print(f"reconcile: closed {done['reconciled']} of {done['candidates']} In review task(s)"
+                  + (f"; {done['refused']} refused by the cloud: {'; '.join(done.get('problems') or [])}" if done.get("refused") else ""))
+        return 1 if done.get("refused") else 0
     if command == "prepare":
         try:
             print(json.dumps(host.prepare(root, only=args.only, guidance=args.note), indent=2))
@@ -360,9 +377,10 @@ def cmd_host(args: argparse.Namespace) -> int:
         print(f"coven host run: unknown agent(s) {", ".join(unknown) or args.agents}; run `coven host agents` for the names", file=sys.stderr)
         return 2
     try:
+        autonomous = autonomous_mode(args.autonomous, args.manual, os.environ)
         runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=lambda line: print(line, flush=True),
                            kiro_web=args.kiro_web or os.environ.get("COVEN_KIRO_WEB_REPO"),
-                           auto_merge=args.auto_merge or os.environ.get("COVEN_AUTO_MERGE") == "1")
+                           auto_merge=args.auto_merge or os.environ.get("COVEN_AUTO_MERGE") == "1", autonomous=autonomous)
     except host.HostError as exc:
         print(f"coven host run: {exc}", file=sys.stderr)
         return 2
@@ -383,6 +401,12 @@ def cmd_host(args: argparse.Namespace) -> int:
             pass
     print(f"host: {board.member(root)} runs {', '.join(runner.can_run) or 'no agents'} in {runner.slots} slot(s) for project "
           f"{config.project_id(root)!r}{'' if args.once else ' (Ctrl-C to stop)'}", flush=True)
+    if runner.autonomous:
+        print("host: autonomous: auto-merge on; the Chair approves plans the Black Hat left with no P0 or P1 objection (when the cloud "
+              "allows it: COVEN_AUTONOMOUS_PLANS=1); witch-and-paths prep branches merge here; verify commands, holds and deadlocks go to a person. "
+              "Turn it off with --manual or COVEN_AUTONOMOUS=0.", flush=True)
+    elif runner.auto_merge:
+        print("host: auto-merge on: the host merges and pushes branches all three reviewers passed and the Chair decided to merge.", flush=True)
     try:
         result = runner.run(once=args.once, interval=args.interval)
     except KeyboardInterrupt:
@@ -708,9 +732,16 @@ def build_parser() -> argparse.ArgumentParser:
     host_run.add_argument("--agents", help="comma-separated agents this host may run (default: every installed agent)")
     host_run.add_argument("--kiro-web", metavar="OWNER/NAME", help="run the build tasks a person dispatched to Kiro Web (cloud sessions on this GitHub repository) (or set COVEN_KIRO_WEB_REPO)")
     host_run.add_argument("--auto-merge", action="store_true", help="act on reviewers' verdicts: rework, or merge and push the base branch when White Hat, Black Hat and the Elder Witch pass and the Chair decides (or set COVEN_AUTO_MERGE=1)")
+    host_run.add_argument("--autonomous", action="store_true", help="auto-merge, plus: the Chair approves plans the Black Hat left with no P0 or P1 objection "
+                          "(the cloud must allow it), and the host merges the Scribe's witch-and-paths branches; verify commands, holds and deadlocks "
+                          "still go to a person (or set COVEN_AUTONOMOUS=1)")
+    host_run.add_argument("--manual", action="store_true", help="not autonomous, even when COVEN_AUTONOMOUS=1 (as ./run-host.sh sets by default)")
     host_run.add_argument("--interval", type=float, default=15.0)
     host_run.add_argument("--once", action="store_true", help="one pass, wait for the agents it started, then exit")
     host_sub.add_parser("status", help="this host's agents and the tasks it runs")
+    host_reconcile = host_sub.add_parser("reconcile", help="close the In review backlog by the Elder Witch's sign-off: answered with no changes "
+                                         "verdict, or the branch already in the base (the cloud must allow it: COVEN_AUTONOMOUS_SIGNOFF)")
+    host_reconcile.add_argument("--dry-run", action="store_true", help="list what would be closed; send nothing")
     host_prepare = host_sub.add_parser("prepare", help="the Scribe proposes the witch, paths and verify for tasks that lack them, on a branch to merge")
     host_prepare.add_argument("--only", help="one spec, or one <spec>#<task>")
     host_prepare.add_argument("--note", help="guidance for the Scribe")

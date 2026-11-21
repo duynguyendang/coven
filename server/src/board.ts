@@ -183,6 +183,8 @@ export class Board {
     } else if (event.type === "task_status" && typeof p.task === "string" && PEOPLE_STATES.has(p.state)) {
       const all = this.statuses.get(project) ?? new Map<string, Json>();
       const known = all.get(p.task);
+      // A host's sign-off never closes a branch that waits to be merged: only a merge, the branch in the base, or a person does.
+      if (p.state === "done" && event.source !== "web" && known?.state === "submitted" && !/\bin base\b/.test(String(p.detail ?? ""))) return;
       if (!known || (event.ts || "") >= known.ts) {
         all.set(p.task, {
           state: p.state, ts: event.ts, host: event.member ?? null, agent: typeof p.agent === "string" ? p.agent : null,
@@ -221,6 +223,10 @@ export class Board {
       this.plans.set(project, all);
     } else if (event.type === "plan_decision" && typeof p.plan === "string" && PLAN_STATES.has(p.state)) {
       const plan = this.plans.get(project)?.get(p.plan);
+      // A person decides through the web. A relay's decision is an autonomous host's Chair approving (the handler let it in only
+      // when the operator allows it): it counts only as an approval by grey-witch from the very host that proposed the plan.
+      const byHost = event.source !== "web";
+      if (byHost && (!plan || p.state !== "approved" || p.author !== "grey-witch" || !event.member || event.member !== plan.proposed_by)) return;
       if (plan && plan.state === "proposed") {
         Object.assign(plan, { state: p.state, decided_by: String(p.author ?? "someone").slice(0, 40), decided_at: event.ts,
           reasons: typeof p.reasons === "string" ? p.reasons.slice(0, 300) : null });  // why, read by the next planning round

@@ -364,6 +364,47 @@ def plan_propose(root: Path, plan: str, tasks: list[dict], summary: str, source:
     return _member_event(root, "plan_proposed", payload)
 
 
+def plan_decide(root: Path, plan: str, reasons: str | None = None) -> dict:
+    """The Chair's approval of a plan, from an autonomous host: the board makes its build tasks as for a person's approval.
+
+    The cloud takes it only when its operator set COVEN_AUTONOMOUS_PLANS=1, only as an approval by grey-witch, and only from the
+    host that proposed the plan. Elsewhere it is refused and the plan waits for a person, as before."""
+    payload = {"plan": plan, "state": "approved", "author": "grey-witch"}
+    if reasons:
+        payload["reasons"] = " ".join(str(reasons).split())[:300]
+    return _member_event(root, "plan_decision", payload)
+
+
+SIGNOFF_TAGS = ("autonomous-signoff", "sa-approved")
+
+
+def signoff(root: Path, items: list[tuple[str, str]]) -> dict:
+    """An autonomous host closes tasks as done, signed by the Elder Witch (SA): [(ref, detail)], each detail starting with
+    `autonomous-signoff` or `sa-approved`. Sent straight to the cloud (not through the relay) so the host learns at once
+    whether it took them: the cloud refuses a doer's done unless its operator set COVEN_AUTONOMOUS_SIGNOFF (default:
+    COVEN_AUTONOMOUS_PLANS). Returns {accepted, rejected: [{task, problems}]}."""
+    if not items:
+        return {"accepted": 0, "rejected": []}
+    _url, _token, project = _cloud(root)
+    run_id = f"member_{member(root)}"[:120]
+    made = []
+    for ref, detail in items[:200]:
+        detail = " ".join(str(detail).split())[:200]
+        if not detail.startswith(SIGNOFF_TAGS):
+            raise ValueError(f"a sign-off detail starts with {' or '.join(SIGNOFF_TAGS)}")
+        event = events.make_event(project_id=project, run_id=run_id, type="task_status", source="coven-cli",
+                                  payload_extra={"task": ref, "state": "done", "agent": "elder-witch", "detail": detail, "host_id": config.host_id(root)})
+        event["member"] = member(root)
+        made.append(redact_event(event))
+    status, body = _call(root, "POST", "/v1/events", {"project_id": project, "run_id": run_id, "events": made},
+                         key=idempotency_key("signoff", *(e["event_id"] for e in made))[:128])
+    if status != 200:
+        raise BoardError(f"sign-off refused ({status}): {body.get('detail') or body}", status, body)
+    by_id = {e["event_id"]: e["payload"]["task"] for e in made}
+    rejected = [{"task": by_id.get(r.get("event_id"), r.get("event_id")), "problems": r.get("problems") or []} for r in body.get("rejected") or []]
+    return {"accepted": int(body.get("accepted") or 0), "rejected": rejected}
+
+
 def host_online(root: Path, agents: list[str], slots: int, running: list[str] | None = None, cloud: list[str] | None = None,
                 free_slots: int | None = None, process: str | None = None, runs: list[dict] | None = None) -> dict:
     """Tell the coven this host is up: the agents it can run and how many at once (sent every minute).

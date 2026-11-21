@@ -61,7 +61,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 
 | Id | Requirement | Pri | Status |
 | :--- | :--- | :--- | :--- |
-| FR-S1 | `tasks.md` is read in Kiro's own format, plus three annotation bullets: `_Paths:_` (what a task may change), `_Verify:_` (one shell command), `_Agent:_` (the witch that does it). A sub-task inherits its parent's. | Must | Built |
+| FR-S1 | `tasks.md` is read in Kiro's own format, plus three annotation bullets: `_Paths:_` (what a task may change), `_Verify:_` (one shell command), `_Agent:_` (the witch that does it). A sub-task inherits its parent's. Two more, written by a person, say a build may finish with no change: `_AllowEmpty: true_` (default true for a parent task and a sweep, false otherwise; an explicit value wins) and `_Delegated:_` (the council tasks that do the task's work). | Must | Built |
 | FR-S2 | A write outside the current task's declared paths raises `spec_deviation` (severity *possible*); a person can dismiss it. Unknown paths raise nothing. | Must | Built |
 | FR-S3 | An opt-in pre-write gate (`PreToolUse`, exit 2) blocks writes outside declared paths and writes in a task a person paused or skipped. Ambiguity always allows. | Could | Planned |
 | FR-S4 | People pause, resume or skip a task from the dashboard; relays apply it through a control feed. | Could | Planned |
@@ -82,11 +82,11 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | :--- | :--- | :--- | :--- |
 | FR-D1 | Show the fleet: projects, specs, runs, their health, stage, current task, last event age and credit burn, updating live. | Must | Built |
 | FR-D2 | Show a run's timeline ordered by `ts` then `seq`, with paths and line counts, never contents or diffs. | Must | Built |
-| FR-D3 | Show the board as number tiles (Ready · Claimed · In review · Blocked · Done) that open a list and a task's details on click. | Must | Built |
+| FR-D3 | Show the board as number tiles (Ready · Claimed · In review · Blocked · Done) that open a list and a task's details on click. In review splits into Ready for sign-off and Needs attention, grouped by plan; review jobs are pills on their task; answered Q&A and the reviews of done tasks fold into a closed drawer. The whiteboard hides notes about done tasks by default, filters holds and questions or verdicts, and shows the newest 10 notes first. | Must | Built |
 | FR-D4 | Show the eleven witches with their state: Working, Available, Waiting for a slot, Not available. | Must | Built |
 | FR-D5 | Mark a ready task whose witch no online host runs, and say how to start one. | Should | Built |
 | FR-D6 | Provide the council chat (§4.7): the thread scrolls to the newest message, Enter sends, a witch's steps group into one bubble. | Must | Built |
-| FR-D7 | Let a person accept a task's result (*Mark done*). | Must | Built |
+| FR-D7 | Let a person accept a task's result (*Mark done*), one task or a Ready for sign-off group at once (*Mark all done*, *Accept & merge all*: one request at a time, stopping at the first failure). Mark done also closes the task's open review jobs. | Must | Built |
 | FR-D8 | Work in light and dark schemes and at phone width; usable by keyboard; accessible names on controls. | Must | Built |
 | P-FUN-03 | A first-time visitor with an empty council chat sees a five-line scripted exchange, in this order: Elf, Black Hat (citing `coven-relay#14`), Chair guard, Green, Herald. It is client-only (drawn by `web/index.html`, nothing sent to the cloud), shown under the DEMO DATA bar, never stored, and never read by agents. It is never presented as a live council. | Could | Planned |
 
@@ -99,7 +99,8 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H3 | A task runs as the witch its `_Agent:_` names; without one, the Dev (Green Witch). A host that lacks the witch leaves the task for one that has it. | Must | Built |
 | FR-H4 | A claim is held by host plus witch, with a lease; the cloud refuses a claim on a held task or on paths that overlap a held task. | Must | Built |
 | FR-H5 | A headless run trusts only the tools its kind needs: build (write and shell), inspect (read and shell), think (read only). The shell is trusted under both engine names (`run_command` for v3, `execute_bash` for v2). | Must | Built (probed on kiro-cli 3.2.1) |
-| FR-H6 | The Dev builds in her own git worktree on `coven/<spec>-<task>`. The **host**, not the model, refuses changes outside `_Paths:_` or a failing `_Verify:_`, ticks the task on the branch and commits locally. It never pushes or merges and never touches the main checkout. | Must | Built |
+| FR-H6 | The Dev builds in her own git worktree on `coven/<spec>-<task>`. The **host**, not the model, refuses an empty change, changes outside `_Paths:_` or a failing `_Verify:_`, ticks the task on the branch and commits locally. It never pushes or merges and never touches the main checkout. | Must | Built |
+| FR-H20 | A first build that changes nothing is a valid result, not a failure, when every `_Delegated:_` task is done or merged; or, with no delegates, when the task allows it (`_AllowEmpty:_`, FR-S1) or is a sweep (its title says "sweep leftovers" or "fix only what verify flags", and the run reported no error), and its `_Verify:_` passes on the unchanged checkout. The host then commits nothing, asks for no review, removes the branch, posts a note and reports `answered`; a person's Mark done finishes it, or, on an autonomous host with the cloud's consent, the Elder Witch's sign-off (FR-ST2). A rework that changes nothing, and any other empty build, stays refused. | Must | Built |
 | FR-H7 | Inspect and think witches answer read-only; the answer is posted as a board note under the witch's name. | Must | Built |
 | FR-H8 | People's rejection or feedback on a submitted task sends the same witch back to the same branch with that feedback. | Must | Built |
 | FR-H9 | A failed run (error, 30 min timeout, refused twice) posts why, releases the claim and is not retried by that host until a person says so. | Must | Built |
@@ -119,7 +120,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | Id | Requirement | Pri | Status |
 | :--- | :--- | :--- | :--- |
 | FR-ST1 | The doer reports `working`, `submitted` (with branch and commit), `answered` or `failed` (with the reason); the board follows the latest. | Must | Built |
-| FR-ST2 | Only people say `done`: *Mark done*, or the task's tick reaching the base branch. The cloud refuses `done` from any doer; a `task_merged` from an auto-merge host (FR-AM5) or from a person's Accept (FR-AC1) also counts. | Must | Built |
+| FR-ST2 | Only people say `done`: *Mark done*, or the task's tick reaching the base branch. The cloud refuses `done` from any doer; a `task_merged` from an auto-merge host (FR-AM5) or from a person's Accept (FR-AC1) also counts. One exception needs two people's choices: on a host started `--autonomous`, when the cloud's operator sets `COVEN_AUTONOMOUS_SIGNOFF=1` (unset, it follows `COVEN_AUTONOMOUS_PLANS`), the Elder Witch's sign-off closes verified no-ops, the host's answered Q&A jobs, and answered tasks she checked and passed; `coven host reconcile` closes the backlog the same way. It never closes a branch that waits to be merged. | Must | Built (fake runner and a local cloud) |
 | FR-ST3 | A task marked done is released by its host and skipped by readiness. | Must | Built |
 | FR-ST4 | Every task has a derived `task_key` and every run an `attempt_id`; claims, statuses, notes and jobs carry them, the same in Python and Node; a job is created once per key. | Must | Built |
 
@@ -137,7 +138,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-CH6 | Messages to one witch (not Do it), or everything when no host runs the Chair, are answered by the listener (`coven council listen`) in that witch's voice. | Should | Built |
 | FR-CH7 | A Reject is binding: it fails the task's review and sends submitted work back. | Must | Built |
 | FR-CH8 | A request for a change becomes a planning job for the Elder Witch: she proposes at most five build tasks, each with narrow paths and one verify command, which the host checks and puts on the board as a plan. | Should | Built (not yet run with a real model) |
-| FR-CH9 | Only a person's approval of a plan (dashboard, `POST /v1/board/plan`) makes build tasks; the Dev builds each on its own branch and the host checks and commits it as for a spec task. The plan's tasks run in order: each waits until the earlier ones are done. | Must | Built |
+| FR-CH9 | Only a person's approval of a plan (dashboard, `POST /v1/board/plan`) makes build tasks; the Dev builds each on its own branch and the host checks and commits it as for a spec task. The plan's tasks run in order: each waits until the earlier ones are done. One exception needs two people's choices: on a host started `--autonomous` (FR-AM3), when the cloud's operator sets `COVEN_AUTONOMOUS_PLANS=1`, the Chair approves a plan the Black Hat challenged and left with no P0 or P1 objection (`plan_decision` from `/v1/events`, `approved` by `grey-witch`, taken only from the host that proposed it). Anything else waits for a person. | Must | Built (autonomous approval tested with a fake runner and a local cloud) |
 | FR-CH10 | A plan task's submitted branch gets review jobs (now for every build: FR-AM1) for White Hat and Black Hat, run in a checkout of that branch; people read them and merge or reject. Reviews of "what I have" see the working copy's uncommitted changes. | Should | Built |
 | FR-CH11 | One voice per message: the listener claims the message (`chat#<id>`) before it answers, as a host's Chair does, so only one answers. | Should | Built |
 
@@ -146,7 +147,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | Id | Requirement | Pri | Status |
 | :--- | :--- | :--- | :--- |
 | FR-P1 | The Scribe proposes missing `_Agent:_`, `_Paths:_` and `_Verify:_` lines (`coven host prepare`, a Do it, or a Chair's job). | Should | Built |
-| FR-P2 | The host validates every proposal (only asked-about tasks, never overwrite a declared value, known witch, repo-relative paths, a one-line verify) and writes it on a `coven/prepare-*` branch for people to merge. | Must | Built |
+| FR-P2 | The host validates every proposal (only asked-about tasks, never overwrite a declared value, known witch, repo-relative paths, a one-line verify) and writes it on a `coven/prepare-*` branch for people to merge. On an autonomous host, `_Agent:_` and `_Paths:_` go on `coven/prepare-<x>`, which the host merges under the FR-AM4 checks (a conflict or failed check holds it for a person), and `_Verify:_` lines go on `coven/prepare-verify-<x>`, which always waits for a person. | Must | Built |
 
 ### 4.9 Flow and review
 
@@ -163,7 +164,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | :--- | :--- | :--- | :--- |
 | FR-AM1 | Every submitted build (spec task or approved plan task) gets review jobs for White Hat (tests), Black Hat (attack) and the Elder Witch (design), on its branch; a rework starts the next round. | Must | Built |
 | FR-AM2 | Each reviewer ends with `VERDICT: pass` or `VERDICT: changes — <what>`; the verdict is on the job's status and the reasons on the task. | Must | Built |
-| FR-AM3 | Auto-merge is opt-in per host (`coven host run --auto-merge` or `COVEN_AUTO_MERGE=1`); without it people decide on the verdicts. | Must | Built |
+| FR-AM3 | Auto-merge is opt-in per host (`coven host run --auto-merge` or `COVEN_AUTO_MERGE=1`); without it people decide on the verdicts. `--autonomous` (or `COVEN_AUTONOMOUS=1`) implies it and adds the Chair's plan approval (FR-CH9) and the merge of witch-and-paths prep branches (FR-P2). `coven host run` is opt-in; `./run-host.sh` starts autonomous unless given `--manual` or `COVEN_AUTONOMOUS=0`. | Must | Built |
 | FR-AM4 | On an auto-merge host: changes go back to the Dev with the reasons, at most two reworks; three passes go to the Chair (Senior Kiro), who decides `merge` or `hold`; on `merge` the host merges only if no person rejected or suggested a change, the branch merges cleanly, and `make verify` (`COVEN_MERGE_CHECK`) passes on the merged tree; then it pushes the base (never forced) and deletes the branch here and on origin. | Must | Built (tested with a fake runner and a local origin) |
 | FR-AM5 | The host records the merge (`task_merged`: commit, base, reviewers, the Chair) and the board shows the task done with it. | Must | Built |
 | FR-AM7 | Reviewers judge by one rule set: a pre-check (paths, verify, acceptance), findings with an id and a severity (P0, P1, P2), and one verdict rule (any P0 or P1 is `changes`). Their claims list `rules_read`. | Should | Built |
@@ -202,7 +203,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-CO3 | A delivery outside a witch's role is a `warning` (`role_mismatch`), never a refusal. | Should | Built (report only) |
 | FR-CO4 | A witch may ask another witch one question through the host: depth at most 2, at most three per task, only the owner of the question; the answerer runs read-only and both are notes on the task. | Must | Built |
 | FR-CO5 | The Dev answers questions about the code read-only (a job with `expects: answer`); the Chair asks the Elder Witch first on a design question and answers with her words, or says it waits. | Should | Built |
-| FR-CO6 | A planning session runs in stages: the Elf's alternative, the Elder Witch's plan, the Black Hat's challenge (up to three rounds), the Scribe's rules; a person decides, and the decision's reasons are read by the next round. | Should | Built (the Scribe's rules are the host's check, not a model run) |
+| FR-CO6 | A planning session runs in stages: the Elf's alternative, the Elder Witch's plan, the Black Hat's challenge (up to three rounds; each objection carries a severity, and only P0 and P1 send the plan back), the Scribe's rules; a person decides (or, on an autonomous host with the cloud's consent, the Chair approves a consensus plan: FR-CH9), and the decision's reasons are read by the next round. | Should | Built (the Scribe's rules are the host's check, not a model run) |
 | FR-CO7 | Jobs are typed handoffs (`from`, `expects`, `reply_to`, `depth`); a task's conversation is one thread (`GET /v1/board/thread`); a job shows its delivery: requested, claimed, answered, failed or expired. | Should | Built |
 | FR-CO8 | Every witch prompt carries a short, redacted project brief (specs, open tasks, recent plan decisions) as data. | Could | Built |
 
@@ -254,7 +255,7 @@ bind nothing, and no id above may be read as scope.
 | NFR-SEC3 | Tokens live only in the relay's credentials (mode 0600); hooks and models never see them; the bearer token is compared in constant time; `?token=` is accepted only on the SSE stream. | Built |
 | NFR-SEC4 | Board notes and chat messages are untrusted; every prompt that includes them says they are data, not instructions. | Built |
 | NFR-SEC5 | No secrets in events, notes, prompts, commits or logs; credential files are git-ignored. | Built |
-| NFR-SEC6 | No witch approves or marks done her own work; no agent pushes, merges, pauses or skips. | Built |
+| NFR-SEC6 | No witch approves or marks done her own work; no agent pushes, merges, pauses or skips. A host merges and pushes only when a person started it `--auto-merge` or `--autonomous`, and its Chair approves a plan only when the cloud's operator also allows it (FR-CH9). | Built |
 | NFR-SEC7 | Separate read, ingest and admin scopes. | Built: `COVEN_ADMIN_TOKEN` gates people's decisions (done, accept, plan, retry, push, dispatch; a reader gets 403); without it they take the read scope. Dismissing a deviation still takes any token |
 
 ### 5.2 Reliability

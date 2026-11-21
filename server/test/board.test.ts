@@ -298,6 +298,68 @@ describe("council jobs: the Chair turns a request into tasks on the board", () =
     } finally { await s.close(); }
   });
 
+  test("an autonomous host's Chair approves a plan only when the cloud allows it, only as grey-witch, only from the host that proposed it", async () => {
+    const tasks = [{ task_id: "r2-1b1", title: "Cart totals", detail: "sum", paths: ["src/cart/"], verify: "true" }];
+    const by = (who: string, type: string, payload: Json): Json => ({ event_id: `evt_ap_${Math.random().toString(16).slice(2, 12)}`, project_id: "shop", run_id: `member_${who}`,
+      type, ts: new Date().toISOString(), source: "coven-cli", member: who, payload });
+    const sendAs = (who: string, events: Json[], base: string) => postJson(base, "/v1/events", { project_id: "shop", run_id: `member_${who}`, events }, auth("dev"));
+    const plans = async (base: string) => (await getJson(base, "/v1/board?project_id=shop")).body;
+    const approve = (extra: Json = {}) => ({ plan: "council#r2-1", state: "approved", author: "grey-witch", reasons: "consensus", ...extra });
+    // without the operator's flag: refused, as before
+    const off = await startServer();
+    try {
+      await sendAs("wsl-1", [by("wsl-1", "plan_proposed", { plan: "council#r2-1", summary: "One task.", tasks })], off.base);
+      assert.equal((await sendAs("wsl-1", [by("wsl-1", "plan_decision", approve())], off.base)).body.accepted, 0, "only people approve unless the cloud allows hosts");
+      assert.equal((await plans(off.base)).plans[0].state, "proposed");
+    } finally { await off.close(); }
+    const on = await startServer({ env: { COVEN_AUTONOMOUS_PLANS: "1" } });
+    try {
+      await sendAs("wsl-1", [by("wsl-1", "plan_proposed", { plan: "council#r2-1", summary: "One task.", tasks })], on.base);
+      const refused = await sendAs("wsl-1", [by("wsl-1", "plan_decision", approve({ state: "rejected" })), by("wsl-1", "plan_decision", approve({ author: "duy" }))], on.base);
+      assert.equal(refused.body.accepted, 0, "a host never rejects, and never decides as anyone but the Chair");
+      await sendAs("wsl-2", [by("wsl-2", "plan_decision", approve())], on.base);
+      assert.equal((await plans(on.base)).plans[0].state, "proposed", "another host cannot approve a plan it did not propose");
+      assert.equal((await sendAs("wsl-1", [by("wsl-1", "plan_decision", approve())], on.base)).body.accepted, 1);
+      const after = await plans(on.base);
+      assert.deepEqual([after.plans[0].state, after.plans[0].decided_by, after.plans[0].reasons], ["approved", "grey-witch", "consensus"]);
+      const build = after.specs.find((s: Json) => s.spec === "council").tasks.find((t: Json) => t.task_id === "r2-1b1");
+      assert.deepEqual([build.agent, build.from_plan, build.approved_by], ["green-witch", "council#r2-1", "grey-witch"], "the same build tasks as a person's approval");
+      assert.equal((await postJson(on.base, "/v1/board/plan", { project_id: "shop", plan: "council#r2-1", state: "rejected" }, auth("dev"))).status, 409, "decided once");
+    } finally { await on.close(); }
+  });
+
+  test("an autonomous host's Elder Witch closes tasks as done only when the cloud allows it, and never a waiting branch", async () => {
+    const by = (type: string, payload: Json): Json => ({ event_id: `evt_so_${Math.random().toString(16).slice(2, 12)}`, project_id: "shop", run_id: "member_wsl-1",
+      type, ts: new Date().toISOString(), source: "coven-cli", member: "wsl-1", payload });
+    const done = (task: string, extra: Json = {}) => by("task_status", { task, state: "done", agent: "elder-witch", detail: "autonomous-signoff: answered", ...extra });
+    const state = async (base: string, id: string) => (await getJson(base, "/v1/board?project_id=shop")).body.specs
+      .find((s: Json) => s.spec === "council").tasks.find((t: Json) => t.task_id === id)?.doer_state;
+    const setup = async (base: string) => {
+      await send([created("council#q1", "elf", { expects: "answer" }), created("council#q2", "elf", { expects: "answer" }), created("council#b1", "white-hat")], base);
+      await send([by("task_status", { task: "council#q1", state: "answered", agent: "elf" }), by("task_status", { task: "council#q2", state: "answered", agent: "elf" }),
+        by("task_status", { task: "council#b1", state: "submitted", agent: "white-hat", branch: "coven/council-b1", branch_host: "h_0000eeee", host_id: "h_0000eeee" })], base);
+    };
+    for (const env of [{}, { COVEN_AUTONOMOUS_PLANS: "1", COVEN_AUTONOMOUS_SIGNOFF: "0" }]) {
+      const off = await startServer({ env });
+      try {
+        await setup(off.base);
+        assert.equal((await send([done("council#q1")], off.base)).body.accepted, 0, `done stays people's word (${JSON.stringify(env)})`);
+      } finally { await off.close(); }
+    }
+    const on = await startServer({ env: { COVEN_AUTONOMOUS_PLANS: "1" } }); // the sign-off follows the plans switch when it is not set
+    try {
+      await setup(on.base);
+      const refused = await send([done("council#q1", { agent: "grey-witch" }), done("council#q1", { detail: "looks fine" })], on.base);
+      assert.equal(refused.body.accepted, 0, "only the Elder Witch, and only a tagged sign-off");
+      assert.equal((await send([done("council#q1"), done("council#q2", { detail: "sa-approved: signed off" })], on.base)).body.accepted, 2);
+      assert.deepEqual([await state(on.base, "q1"), await state(on.base, "q2")], ["done", "done"]);
+      await send([done("council#b1", { detail: "autonomous-signoff: reconciled" })], on.base);
+      assert.equal(await state(on.base, "b1"), "submitted", "a branch that waits to be merged is never closed by a sign-off");
+      await send([done("council#b1", { detail: "autonomous-signoff: reconciled, coven/council-b1 is in base main" })], on.base);
+      assert.equal(await state(on.base, "b1"), "done", "unless its branch is already in the base");
+    } finally { await on.close(); }
+  });
+
   test("a person requests and cancels; a relay cannot", async () => {
     const s = await startServer();
     try {

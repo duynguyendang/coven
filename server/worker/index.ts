@@ -31,6 +31,10 @@ interface Env {
   COVEN_ADMIN_TOKEN?: string;
   /** Days to keep events; unset or invalid gives 30, 0 or less keeps them forever. */
   COVEN_TTL_DAYS?: string;
+  /** "1": an autonomous host's Chair may approve a plan (FR-CH9); unset, only people approve plans. */
+  COVEN_AUTONOMOUS_PLANS?: string;
+  /** "1": an autonomous host's Elder Witch may close tasks as done (FR-ST2); unset, it follows COVEN_AUTONOMOUS_PLANS. */
+  COVEN_AUTONOMOUS_SIGNOFF?: string;
 }
 
 const ttlDays = (value: string | undefined): number => {
@@ -40,7 +44,7 @@ const ttlDays = (value: string | undefined): number => {
 
 const tokenEnv = (env: Env): TokenEnv => ({
   COVEN_TOKENS: env.COVEN_TOKENS, COVEN_INGEST_TOKEN: env.COVEN_INGEST_TOKEN, COVEN_READ_TOKEN: env.COVEN_READ_TOKEN,
-  COVEN_ADMIN_TOKEN: env.COVEN_ADMIN_TOKEN,
+  COVEN_ADMIN_TOKEN: env.COVEN_ADMIN_TOKEN, COVEN_AUTONOMOUS_PLANS: env.COVEN_AUTONOMOUS_PLANS, COVEN_AUTONOMOUS_SIGNOFF: env.COVEN_AUTONOMOUS_SIGNOFF,
 });
 
 const VERSION_HEADER = "x-coven-version";
