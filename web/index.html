@@ -170,8 +170,8 @@
   }
   @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 
-  main { width: 100%; max-width: 1180px; margin: 0 auto; padding: 18px 24px 24px; flex: 1; }
-  footer { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px 32px; color: var(--muted); font-size: 0.75rem; }
+  main { width: 100%; margin: 0; padding: 18px 24px 24px; flex: 1; } /* the whole width beside the sidebar */
+  footer { width: 100%; margin: 0; padding: 0 24px 32px; color: var(--muted); font-size: 0.75rem; }
   @media (max-width: 640px) { main { padding: 14px 14px 20px; } footer { padding: 0 14px 28px; } }
 
   /* page header */
@@ -427,7 +427,7 @@
   .lane > h4 { margin: 4px 0 6px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   .lane > h4 .n { font-family: var(--mono); font-weight: 400; letter-spacing: 0; }
   .tgroup > summary .batch { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 6px; }
-  .tgroup.drawer { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .tgroup.tdrawer { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
   .trow .rpills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
   .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   /* Notes are neutral cards; only the kind tag carries colour (colour means kind, never failure). */
@@ -1934,7 +1934,7 @@
     const lane = (key, title, groups) => groups.length
       ? `<section class="lane" data-lane="${key}" aria-label="${esc(title)}"><h4>${esc(title)}<span class="n">${groups.reduce((n, g) => n + g.items.length, 0)}</span></h4><div class="tgroups">${groups.map((g) => group(key, g)).join("")}</div></section>` : "";
     const d = lanes.drawer;
-    const drawer = d.length ? `<details class="tgroup drawer" data-group="review:drawer"${openGroups.get("review:drawer") ? " open" : ""}><summary><span>Answered Q&amp;A &amp; closed reviews</span><span class="n">${d.length}</span>
+    const drawer = d.length ? `<details class="tgroup tdrawer" data-group="review:drawer"${openGroups.get("review:drawer") ? " open" : ""}><summary><span>Answered Q&amp;A &amp; closed reviews</span><span class="n">${d.length}</span>
         <span class="batch">${batchButton("done", d.map((t) => t.ref), "review:drawer", `Mark all done (${d.length})`)}</span></summary><ul class="tlist">${d.map((t) => taskRow(t)).join("")}</ul></details>` : "";
     const none = !lanes.count ? `<p class="hint p-1">${d.length ? "Nothing here needs a person: only answered questions and the reviews of finished tasks." : "Nothing waits for review: every branch has been judged."}</p>` : "";
     return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">

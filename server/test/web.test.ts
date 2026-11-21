@@ -1210,8 +1210,9 @@ describe("session screen", () => {
     assert.match(inLane("attention", "bs#3")!.textContent!, /Test changes.*Attack pending.*SA pending.*a reviewer asked for changes/s);
     assert.equal(inLane("ready", "bs#1")!.querySelector("[data-review-pills]")!.textContent!.replace(/\s+/g, " "), "Test passAttack passSA pass");
     for (const job of ["b1-t", "b1-x", "b1-d", "b3-t"]) assert.equal(doc().querySelector(`[data-key="row-council#${job}"]`), null, `${job} is a pill, not a row`);
-    const drawer = doc().querySelector('details.drawer[data-group="review:drawer"]') as HTMLDetailsElement;
+    const drawer = doc().querySelector('details.tdrawer[data-group="review:drawer"]') as HTMLDetailsElement;
     assert.ok(drawer && !drawer.open, "the drawer is closed by default");
+    assert.ok(!drawer.classList.contains("drawer"), "not the fixed side panel (.drawer): it folds in the list, it is not a column on the right");
     assert.match(drawer.querySelector("summary")!.textContent!.replace(/\s+/g, " "), /Answered Q&A & closed reviews\s*1/);
     assert.ok(drawer.querySelector('[data-key="row-council#q1"]'));
     assert.match(doc().querySelector('[data-lane="ready"] details.tgroup > summary')!.textContent!, /Ungrouped \/ Spec tasks/);

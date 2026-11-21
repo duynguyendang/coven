@@ -113,7 +113,7 @@ spacing:
   lg: 18px
   xl: 24px
   sidebar: 248px
-  content-max: 1180px
+  content-max: 100%
   breakpoint-phone: 640px
   breakpoint-tablet: 900px
 components:
@@ -326,7 +326,7 @@ Two families from Astryx: **Figtree** (UI, falls back to the system sans) and **
 ## Layout
 
 A **Linear-style app shell**: a 248 px sidebar (projects, specs, pages, counts) and a workspace with a
-sticky top bar. Content is centred, max 1180 px, padding 18–24 px (14 px on phones).
+sticky top bar. Content fills the whole width beside the sidebar (no max width), padding 18–24 px (14 px on phones); `.drawer` is reserved for the fixed side panel, so an in-list fold never uses that class.
 
 - **Spacing:** 4 px steps (4 · 8 · 12 · 18 · 24); dense, but every group has air around it.
 - **Grids:** stat tiles in 5 columns (2 below 760 px); the board's task tiles in an auto-fill row
