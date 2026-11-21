@@ -767,6 +767,31 @@ describe("session screen", () => {
     closeTask();
     await go("#/");
   });
+  test("board and chat: a witch whose host dropped is said plainly, with the host and how long ago, and the online count change", async () => {
+    const hostEv = (member: string, agents: string[], secs: number) =>
+      ({ ...ev(`member_${member}`, "drop", "host_online", { agents, slots: 1, running: [] }, secs), member });
+    await send("drop", "member_a1", [hostEv("a1", ["elf"], 5)]);
+    await send("drop", "member_g1", [hostEv("g1", ["green-witch", "elf"], 600)]);
+    await go("#/board/drop", 600);
+    const lines = () => [...doc().querySelectorAll(".host-drop li")].map((li) => li.textContent!.trim());
+    assert.deepEqual(lines(), ["Green Witch has no online host (host g1 last seen 10 min ago)"], "only the witch no online host lists");
+    assert.doesNotMatch(text(), /Elf has no online host/);
+    const box = doc().querySelector(".host-drop") as HTMLElement;
+    assert.equal(box.querySelector("svg, img, .glow") , null, "plain text: no icon, no glow");
+    await go("#/chat/drop", 600);
+    assert.deepEqual(lines(), ["Green Witch has no online host (host g1 last seen 10 min ago)"], "the chat says the same");
+    // a second host drops: the count change shows, since this page saw two online hosts before
+    await send("drop", "member_g2", [hostEv("g2", ["green-witch"], 1)]);
+    await go("#/board/drop", 600);
+    assert.equal(lines().some((l) => /Green Witch has no online host/.test(l)), false);
+    assert.ok(lines().includes("Online hosts: 2, was 1"), "the count change is stated");
+    await go("#/");
+  });
+  test("board: a project with every host online shows no host line", async () => {
+    await go("#/board/lab", 600);
+    assert.equal(doc().querySelector(".host-drop"), null);
+    await go("#/");
+  });
   test("board: a plan shows every task with its paths and verify; a person approves it and the Dev's tasks appear", async () => {
     await send("shop", "member_wsl-8", [{ ...ev("member_wsl-8", "shop", "task_created", { task: "council#rp1-1", title: "Plan the cart total", agent: "elder-witch", plan: true }, 3), member: "wsl-8" },
       { ...ev("member_wsl-8", "shop", "plan_proposed", { plan: "council#rp1-1", summary: "Two small steps.", tasks: [
