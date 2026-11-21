@@ -13,7 +13,7 @@ import { JSDOM, VirtualConsole } from "jsdom";
 
 import type { Json } from "../src/events.ts";
 import { RUN_IDS, batches, build } from "../src/seed.ts";
-import { getJson, postJson, startServer, type TestServer } from "./helpers.ts";
+import { auth, getJson, postJson, startServer, type TestServer } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDir = join(here, "..", "..", "web");
@@ -846,6 +846,32 @@ describe("session screen", () => {
     const build = openTask("council#rp1-1b1").textContent!.replace(/\s+/g, " ");
     closeTask();
     assert.match(build, /Cart total.*Green Witch.*from plan council#rp1-1, approved by/);
+    await go("#/");
+  });
+  test("board: when task 1 is in the base by repo fact its dependent is ready; a refused word shows a drift marker", async () => {
+    const member = (type: string, payload: Json, secondsAgo: number) => ({ ...ev("member_wsl-9", "unblock", type, payload, secondsAgo), member: "wsl-9" });
+    const tasks = ["b1", "b2", "b3"].map((b) => ({ task_id: `ru-1${b}`, title: `Step ${b}`, paths: [`src/${b}/`], verify: "true" }));
+    await send("unblock", "member_wsl-9", [member("task_created", { task: "council#ru-1", title: "Plan", agent: "elder-witch", plan: true }, 9),
+      member("plan_proposed", { plan: "council#ru-1", tasks }, 8)]);
+    assert.equal((await postJson(s.base, "/v1/board/plan", { project_id: "unblock", plan: "council#ru-1", state: "approved", author: "duy" }, auth("dev"))).status, 201);
+    const sub = { agent: "green-witch", branch: "coven/council-ru-1b1", branch_host: "h_0000000a", host_id: "h_0000000a", tip: "abcdef1" };
+    await send("unblock", "member_wsl-9", [member("task_status", { task: "council#ru-1b1", state: "submitted", ...sub }, 6)]);
+    // another host's word is refused: the page marks the task and nothing is unblocked
+    await send("unblock", "member_evil", [{ ...ev("member_evil", "unblock", "branch_in_base", { task: "council#ru-1b1", branch: sub.branch, tip: "abcdef1", base: "main" }, 5), member: "evil" }]);
+    await go("#/board/unblock", 600);
+    openColumn("review");
+    assert.ok(doc().querySelector('[data-key="row-council#ru-1b1"] [data-drift]'), "the drift marker shows on the task");
+    assert.match(doc().querySelector('[data-key="row-council#ru-1b1"] [data-drift]')!.getAttribute("title")!, /branch_in_base ignored.*did not come from the host that submitted/);
+    openColumn("ready");
+    assert.match(doc().querySelector('[data-key="row-council#ru-1b2"]')!.textContent!, /waits for ru-1b1/);
+    // the submitting host's word is taken: task 1 is done, the marker is gone, task 2 no longer waits
+    await send("unblock", "member_wsl-9", [member("branch_in_base", { task: "council#ru-1b1", branch: sub.branch, tip: "abcdef1", base: "main" }, 1)]);
+    await go("#/", 300);
+    await go("#/board/unblock", 600);
+    openColumn("ready");
+    assert.equal(doc().querySelector("[data-drift]"), null, "no drift once the board agrees with the repo");
+    assert.doesNotMatch(doc().querySelector('[data-key="row-council#ru-1b2"]')!.textContent!, /waits for/);
+    assert.match(doc().querySelector('[data-key="row-council#ru-1b3"]')!.textContent!, /waits for ru-1b2/, "the next one still waits its turn");
     await go("#/");
   });
   test("board: the witches are what is shown: who works, who is available, who is not; hosts are only where", async () => {

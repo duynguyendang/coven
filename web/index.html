@@ -1537,7 +1537,7 @@
         if (t.wave != null) return leaves.filter((o) => o.wave != null && o.wave < t.wave && o.status !== "completed").map((o) => o.task_id)[0] || null;
         // An approved plan's tasks go in order: each waits until the one before it is done (merged).
         if (t.from_plan) {
-          const before = leaves.slice(0, leaves.indexOf(t)).filter((o) => o.from_plan === t.from_plan && o.status !== "completed" && o.doer_state !== "done");
+          const before = leaves.slice(0, leaves.indexOf(t)).filter((o) => o.from_plan === t.from_plan && o.status !== "completed" && o.doer_state !== "done" && !o.merged);
           return before.length ? before[0].task_id : null;
         }
         if (!t.parent) return null;
@@ -1548,6 +1548,8 @@
         if (!t.leaf) continue;
         const ref = `${spec.spec}#${t.task_id}`;
         const card = { ...t, spec: spec.spec, ref, waits_for: leaves.includes(t) ? waitsFor(t) : null,
+          // the board and the repo disagree: a host's "branch is in the base" was refused, so the task is not done by the board's rule
+          drift: t.doer_state === "done" || t.merged ? null : ((b.notes || []).find((n) => n.task === ref && n.kind === "note" && /^branch_in_base ignored/.test(n.note || "")) || {}).note || null,
           notes: (b.notes || []).filter((n) => n.task === ref && n.kind !== "review-wanted").length };
         if (t.status === "completed" || t.doer_state === "done") cols.done.push(card);
         else if (t.doer_state === "failed" && !t.claimed_by) cols.failed.push(card);
@@ -1883,6 +1885,7 @@
       : t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
       ? `<span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>`
       : stuck ? '<span class="badge warn">Needs a host</span>' : t.waits_for && !t.claimed_by ? `<span class="hint">waits for ${esc(t.waits_for)}</span>` : "";
+    const drift = t.drift ? `<span class="badge warn" data-drift title="${esc(t.drift)}">Drift: repo and board disagree</span>` : "";
     const s = opts.pills ? t.signoff || null : null;
     const pills = s && s.pills ? `<span class="rpills" data-review-pills>${s.pills.map((p) => `<span class="badge ${PILL_TONE[p.state]}" data-pill="${esc(p.agent)}" title="${esc(agentName(p.agent))}: ${esc(p.state)}">${esc(p.label)} ${esc(p.state)}</span>`).join("")}</span>` : "";
     const chips = (t.chips || []).filter((c) => !(s && s.pills && c.review));
@@ -1890,7 +1893,7 @@
     const line = pills || chips.length || why ? `<span class="flow-chips" data-flow-chips>${pills}${chips.map((c) => `<span class="badge ${esc(c.tone)}">${esc(c.label)}</span>`).join("")}${why}</span>` : "";
     return `<li><button class="trow ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" type="button" data-task-open="${esc(t.ref)}" data-key="row-${esc(t.ref)}"
       command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span class="id">${esc(t.ref)}</span><span class="tt">${esc(t.title || "")}</span>
-      <span class="who-row">${avatar(holder)}<span>${esc(agentName(holder))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : ""}</span>${status}</span>${line}</button></li>`;
+      <span class="who-row">${avatar(holder)}<span>${esc(agentName(holder))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : ""}</span>${status}${drift}</span>${line}</button></li>`;
   }
   const PILL_TONE = { pass: "accept", changes: "reject", failed: "reject", pending: "grey" };
   /** A person's Mark done (POST /v1/board/done), and the same for the task's review jobs that are still open. */
