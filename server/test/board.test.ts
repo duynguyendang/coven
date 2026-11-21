@@ -849,3 +849,44 @@ describe("branch_in_base (FR-H19)", () => {
     } finally { await s.close(); }
   });
 });
+
+describe("a merged first task unblocks its dependents (council plan tasks)", () => {
+  const ev = (type: string, payload: Json, member = "wsl-1"): Json => ({
+    event_id: `evt_ub_${Math.random().toString(16).slice(2, 12)}`, project_id: "shop", run_id: `member_${member}`, type, ts: new Date().toISOString(), source: "coven-cli", member, payload,
+  });
+  const send = (base: string, events: Json[], member = "wsl-1") => postJson(base, "/v1/events", { project_id: "shop", run_id: `member_${member}`, events }, auth());
+  const plan = async (base: string) => {
+    const tasks = ["b1", "b2", "b3"].map((b) => ({ task_id: `r9-1${b}`, title: `Step ${b}`, paths: [`src/${b}/`], verify: "true" }));
+    await send(base, [ev("task_created", { task: "council#r9-1", title: "Plan", agent: "elder-witch", plan: true }), ev("plan_proposed", { plan: "council#r9-1", tasks })]);
+    assert.equal((await postJson(base, "/v1/board/plan", { project_id: "shop", plan: "council#r9-1", state: "approved", author: "duy" }, auth("dev"))).status, 201);
+  };
+  const tasks = async (base: string) => (await getJson(base, "/v1/board?project_id=shop")).body.specs.find((x: Json) => x.spec === "council").tasks as Json[];
+
+  test("the repo's word that task 1 is in the base marks it done with merged.in_base; its dependents stay open tasks of the same plan", async () => {
+    const s = await startServer();
+    try {
+      await plan(s.base);
+      await send(s.base, [ev("task_status", { task: "council#r9-1b1", state: "submitted", agent: "green-witch", branch: "coven/council-r9-1b1", branch_host: "h_0000000a", host_id: "h_0000000a", tip: "abcdef1" })]);
+      await send(s.base, [ev("branch_in_base", { task: "council#r9-1b1", branch: "coven/council-r9-1b1", tip: "abcdef1", base: "main" })]);
+      const list = await tasks(s.base);
+      const by = (id: string) => list.find((t) => t.task_id === id)!;
+      assert.deepEqual([by("r9-1b1").doer_state, by("r9-1b1").merged.in_base], ["done", true]);
+      for (const id of ["r9-1b2", "r9-1b3"]) {
+        assert.deepEqual([by(id).doer_state, by(id).from_plan, by(id).claimed_by], [null, "council#r9-1", null], `${id} can be claimed`);
+      }
+    } finally { await s.close(); }
+  });
+
+  test("a refused word leaves task 1 not done and leaves a drift note the page marks", async () => {
+    const s = await startServer();
+    try {
+      await plan(s.base);
+      await send(s.base, [ev("task_status", { task: "council#r9-1b1", state: "submitted", agent: "green-witch", branch: "coven/council-r9-1b1", branch_host: "h_0000000a", host_id: "h_0000000a", tip: "abcdef1" })]);
+      await send(s.base, [ev("branch_in_base", { task: "council#r9-1b1", branch: "coven/council-r9-1b1", tip: "abcdef1", base: "main" }, "evil-host")], "evil-host");
+      const b = (await getJson(s.base, "/v1/board?project_id=shop")).body;
+      const t = b.specs.find((x: Json) => x.spec === "council").tasks.find((x: Json) => x.task_id === "r9-1b1");
+      assert.equal(t.doer_state, "submitted");
+      assert.equal(b.notes.filter((n: Json) => n.task === "council#r9-1b1" && n.note.startsWith("branch_in_base ignored")).length, 1);
+    } finally { await s.close(); }
+  });
+});
