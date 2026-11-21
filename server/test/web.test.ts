@@ -124,6 +124,10 @@ before(async () => {
   await send("quiet", "member_wsl-7", [{ ...ev("member_wsl-7", "quiet", "spec_artifact_updated", { artifact: "tasks", spec: "quiet", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [
     { task_id: "Q1", title: "Sit still", status: "not_started", paths: ["quiet/"] }] }, 21), member: "wsl-7" }]);
 
+  // 5e. a project whose only task is done: Ready and Claimed are empty
+  await send("settled", "member_wsl-7", [{ ...ev("member_wsl-7", "settled", "spec_artifact_updated", { artifact: "tasks", spec: "settled", total: 1, done: 1, in_progress: 0, queued: 0, optional: 0, tasks: [
+    { task_id: "S1", title: "All done", status: "completed", paths: ["settled/"] }] }, 22), member: "wsl-7" }]);
+
   // 6. the seeded demo fleet, including the council
   for (const b of batches(build())) await send(b.projectId, b.runId, b.events);
   await beat("coven-demo", RUN_IDS["coven-live"]);
@@ -1321,6 +1325,19 @@ describe("session screen", () => {
       assert.ok(ok, `box-shadow must be flat or a token: ${v}`);
     }
     assert.ok(!/\p{Emoji_Presentation}|\uFE0F/u.test(src), "no emoji; use the ghost icons and text");
+  });
+
+  test("board: empty Ready and Claimed columns say the witches are waiting for a plan", async () => {
+    await go("#/board/settled", 400);
+    for (const col of ["ready", "claimed"]) {
+      openColumn(col);
+      const detail = doc().querySelector("#col-detail")!;
+      assert.match(detail.querySelector("h3")!.textContent!, /0 tasks/);
+      assert.equal(detail.querySelector(".hint")!.textContent, "Nothing claimed yet — the witches are waiting for a plan.");
+    }
+    openColumn("done");
+    assert.doesNotMatch(doc().querySelector("#col-detail")!.textContent!, /waiting for a plan/, "Done keeps its own line");
+    await go("#/");
   });
 
   test("board: no task list is a voiced, still empty state", async () => {
