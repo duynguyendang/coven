@@ -997,6 +997,9 @@ describe("session screen", () => {
     openColumn("review");
     assert.match(doc().querySelector('[data-key="row-wp#1"]')!.textContent!, /Needs you: accept/);
     assert.doesNotMatch(doc().querySelector('[data-key="row-wr#1"]')!.textContent!, /Needs you/);
+    assert.match(doc().querySelector('[data-key="row-wp#1"] [data-flow-chips]')!.textContent!, /White Hat Witch pass/, "the row keeps its needs-you badge and shows the review");
+    assert.match(doc().querySelector('[data-key="row-wc#1"] [data-flow-chips]')!.textContent!, /White Hat Witch changes/);
+    assert.match(doc().querySelector('[data-key="row-wr#1"] [data-flow-chips]')!.textContent!, /White Hat Witch running/);
     assert.match(openTask("wc#1").textContent!.replace(/\s+/g, " "), /Needs you: decide.*asked for changes/);
     closeTask();
     await go("#/");
@@ -1011,6 +1014,10 @@ describe("session screen", () => {
     await go("#/board/am", 600);
     openColumn("done");
     assert.match(doc().querySelector('[data-key="row-s#1"]')!.textContent!, /Merged/);
+    const chips = doc().querySelector('[data-key="row-s#1"] [data-flow-chips]')!.textContent!.replace(/\s+/g, " ");
+    assert.match(chips, /White Hat Witch pass/);
+    assert.match(chips, /merged/);
+    assert.equal((doc().getElementById("task-dialog") as HTMLDialogElement).open, false, "chips show without the dialog open");
     const merged = openTask("s#1").textContent!.replace(/\s+/g, " ");
     assert.match(merged, /Merged into main at abc1234 · passed by White Hat Witch, Black Hat Witch, Elder Witch · decided by Grey Witch/);
     closeTask();

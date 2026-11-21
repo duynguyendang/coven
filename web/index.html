@@ -389,6 +389,8 @@
   .trow .tt { overflow-wrap: anywhere; }
   .trow .who-row { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); flex-wrap: wrap; justify-content: end; }
   .trow .who-row .av { inline-size: 18px; block-size: 18px; margin: 0; }
+  .trow .flow-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 0.75rem; }
+  .trow .flow-chips .badge.working { color: var(--info-ink); border-color: var(--info-line); background: var(--info-bg); }
   .trow.waiting { opacity: 0.6; }
   .trow.stuck { background: var(--warn-soft); }
   @media (max-width: 640px) { .trow { grid-template-columns: max-content minmax(0, 1fr); padding: 6px 10px; } .trow .who-row { grid-column: 1 / -1; justify-content: start; } }
@@ -1536,7 +1538,7 @@
     cols.ready.sort((a, b) => (a.waits_for ? 1 : 0) - (b.waits_for ? 1 : 0)); // what can start now comes first
     const everyTask = (b.specs || []).flatMap((spec) => spec.tasks.map((t) => ({ ...t, ref: `${spec.spec}#${t.task_id}` })));
     for (const card of [...cols.review, ...cols.failed]) card.needs = needsYou(card, everyTask, b.notes || []);
-    for (const col of Object.values(cols)) for (const card of col) card.flow = flowState(card, everyTask, b.notes || []);
+    for (const col of Object.values(cols)) for (const card of col) { card.flow = flowState(card, everyTask, b.notes || []); card.chips = flowChips(card, everyTask); }
     return cols;
   }
   /** Where a task stands in review, accept and merge, for any card.
@@ -1557,6 +1559,21 @@
     const needs = merged ? null : needsYou(t, all || [], notes || []);
     const actions = !needs ? [] : needs.kind === "failed" ? ["retry", "done"] : ["accept", "changes"];
     return { reviews, accept, merge: merged ? "merged" : null, held, actions };
+  }
+  /** Where a task stands in review, accept and merge: [{label, tone}] for the chips on its row. */
+  function flowChips(t, all) {
+    const chips = [];
+    for (const r of all.filter((x) => x.review_of === t.ref)) {
+      const name = agentName(r.agent || "white-hat");
+      if (r.doer_verdict === "pass") chips.push({ label: `${name} pass`, tone: "accept" });
+      else if (r.doer_verdict === "changes") chips.push({ label: `${name} changes`, tone: "reject" });
+      else if (r.doer_state === "failed") chips.push({ label: `${name} failed`, tone: "reject" });
+      else chips.push({ label: `${name} running`, tone: "working" });
+    }
+    const a = t.accept;
+    if (a && a.state === "requested") chips.push(a.decision === "accept" ? { label: "accept requested", tone: "warn" } : { label: "changes requested", tone: "warn" });
+    if (t.merged || (a && a.state === "merged")) chips.push({ label: "merged", tone: "accept" });
+    return chips;
   }
   /** What a task waits for from a PERSON, if anything: null when the witches and hosts are still on it.
       {kind, label, why, accept}: `label` is the short badge, `why` says what to do and what happens next. */
@@ -1773,7 +1790,7 @@
       : stuck ? '<span class="badge warn">Needs a host</span>' : t.waits_for && !t.claimed_by ? `<span class="hint">waits for ${esc(t.waits_for)}</span>` : "";
     return `<li><button class="trow ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" type="button" data-task-open="${esc(t.ref)}" data-key="row-${esc(t.ref)}"
       command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span class="id">${esc(t.ref)}</span><span class="tt">${esc(t.title || "")}</span>
-      <span class="who-row">${avatar(holder)}<span>${esc(agentName(holder))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : ""}</span>${status}</span></button></li>`;
+      <span class="who-row">${avatar(holder)}<span>${esc(agentName(holder))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : ""}</span>${status}</span>${(t.chips || []).length ? `<span class="flow-chips" data-flow-chips>${t.chips.map((c) => `<span class="badge ${esc(c.tone)}">${esc(c.label)}</span>`).join("")}</span>` : ""}</button></li>`;
   }
   /** The task a person selected, as the board knows it now (null when it left the board). */
   function selectedTask() {
