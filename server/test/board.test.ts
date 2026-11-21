@@ -268,6 +268,19 @@ describe("council jobs: the Chair turns a request into tasks on the board", () =
     } finally { await s.close(); }
   });
 
+  test("a person's done stays done against later host statuses", async () => {
+    const s = await startServer();
+    try {
+      await send([created("council#rq2-1", "white-hat")], s.base);
+      assert.equal((await postJson(s.base, "/v1/board/done", { project_id: "shop", task: "council#rq2-1", author: "duy" }, auth("dev"))).status, 201);
+      const later = (state: string): Json => ({ event_id: `evt_late_${state}`, project_id: "shop", run_id: "member_wsl-1", type: "task_status",
+        ts: new Date(Date.now() + 5000).toISOString(), source: "coven-cli", member: "wsl-1", payload: { task: "council#rq2-1", state, agent: "white-hat" } });
+      await send([later("working"), later("submitted"), later("answered"), later("failed")], s.base);
+      const task = async () => (await getJson(s.base, "/v1/board?project_id=shop")).body.specs[0].tasks[0];
+      assert.equal((await task()).doer_state, "done");
+    } finally { await s.close(); }
+  });
+
   test("the Elder Witch proposes a plan; only a person's approval makes build tasks, once", async () => {
     const s = await startServer();
     try {

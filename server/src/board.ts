@@ -185,8 +185,11 @@ export class Board {
       const known = all.get(p.task);
       // A host's sign-off never closes a branch that waits to be merged: only a merge, the branch in the base, or a person does.
       if (p.state === "done" && event.source !== "web" && known?.state === "submitted" && !/\bin base\b/.test(String(p.detail ?? ""))) return;
+      // A person's done stays done against later host statuses: only a person's queued (retry) reopens it.
+      if (known?.by_web === true && known.state === "done" && !(event.source === "web" && p.state === "queued")) return;
       if (!known || (event.ts || "") >= known.ts) {
         all.set(p.task, {
+          by_web: event.source === "web",
           state: p.state, ts: event.ts, host: event.member ?? null, agent: typeof p.agent === "string" ? p.agent : null,
           detail: typeof p.detail === "string" ? p.detail.slice(0, 200) : null,
           task_key: this.keyFor(project, p, p.task), attempt_id: attemptOf(p),
