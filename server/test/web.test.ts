@@ -908,8 +908,11 @@ describe("session screen", () => {
     const held = openTask("lab#L1").textContent!.replace(/\s+/g, " ");
     assert.match(held, /Elf on wsl-7/);
     assert.match(held, /Answered.*Try a materialised view/);
+    const realConfirm = dom.window.confirm;
+    (dom.window as any).confirm = () => true; // claimed by wsl-7: Mark done asks first
     (doc().querySelector('[data-key="done-lab#L1"]') as HTMLButtonElement).click();
     await wait(900);
+    (dom.window as any).confirm = realConfirm;
     closeTask();
     assert.equal(label("review"), "In review: 0 tasks", "accepted by a person: it leaves review");
     assert.equal(label("done"), "Done: 1 task");
@@ -1365,6 +1368,43 @@ describe("session screen", () => {
     closeTask();
     assert.deepEqual(rec.calls.map((c) => c.body.task), ["bs#3", "council#b3-t"]);
     dom.window.localStorage.removeItem("coven_author");
+    await go("#/");
+  });
+
+  test("board: Mark done is offered on every open task, and asks first when a host has claimed it", async () => {
+    const m = (e: Json) => ({ ...e, member: "wsl-md" });
+    const tasks = [1, 2, 3].map((i) => ({ task_id: String(i), title: `Open ${i}`, status: "not_started", paths: [`m${i}/`], agent: "elf" }));
+    await send("md", "member_md", [
+      m(ev("member_md", "md", "spec_artifact_updated", { artifact: "tasks", spec: "md", total: 3, done: 0, in_progress: 0, queued: 0, optional: 0, tasks }, 30)),
+      m(ev("member_md", "md", "task_status", { task: "md#2", state: "working", agent: "elf" }, 20))]);
+    assert.equal((await postJson(s.base, "/v1/claims", { project_id: "md", member: "wsl-md", agent: "elf", spec: "md", task_id: "2", paths: ["m2/"] })).status, 201);
+    await go("#/board/md", 600);
+    const done = (ref: string) => { openColumn(ref === "md#2" ? "claimed" : "ready"); return openTask(ref).querySelector(`[data-key="done-${ref}"]`) as HTMLButtonElement | null; };
+    assert.ok(done("md#1"), "an unstarted task can be marked done");
+    assert.equal(done("md#1")!.hasAttribute("data-claimed"), false);
+    assert.ok(done("md#2"), "a claimed task can be marked done");
+    assert.equal(done("md#2")!.dataset.claimed, "wsl-md");
+    // claimed: a no sends nothing; a yes sends the task
+    const confirm = dom.window.confirm;
+    const asked: string[] = [];
+    let rec = recordDecisions();
+    (dom.window as any).confirm = (q: string) => { asked.push(q); return false; };
+    done("md#2")!.click(); await wait(300);
+    assert.equal(rec.calls.length, 0, "a person said no");
+    assert.equal(asked.length, 1);
+    assert.match(asked[0]!, /md#2.*wsl-md/);
+    (dom.window as any).confirm = () => true;
+    done("md#2")!.click(); await wait(700);
+    assert.deepEqual(rec.calls.map((c) => c.body.task), ["md#2"]);
+    // unclaimed: no question
+    (dom.window as any).confirm = (q: string) => { asked.push(q); return false; };
+    asked.length = 0;
+    done("md#1")!.click(); await wait(700);
+    rec.restore();
+    (dom.window as any).confirm = confirm;
+    assert.equal(asked.length, 0, "no question on an unclaimed task");
+    assert.deepEqual(rec.calls.map((c) => c.body.task), ["md#2", "md#1"]);
+    closeTask();
     await go("#/");
   });
 
