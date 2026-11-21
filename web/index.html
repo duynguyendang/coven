@@ -1936,8 +1936,8 @@
       </li>`;
     };
     const twice = rows.filter((r) => r.duplicate).length;
-    return `<h2>Monitor <span class="hint">· ${rows.length ? `${plural(rows.length, "run")} going${twice ? `, <b class="bad">${twice} on the same work</b>` : ""}` : "observe only"}</span></h2>
-      ${rows.length ? `<ol class="monitor" aria-label="Runs going now">${rows.map(row).join("")}</ol>`
+    return `<h2>Monitor <span class="hint">· every active run on every host, read only</span></h2>
+      ${rows.length ? `<p class="hint mon-count">${plural(rows.length, "run")} going${twice ? `, <b class="bad">${twice} on the same work</b>` : ""}</p><ol class="monitor" aria-label="Runs going now">${rows.map(row).join("")}</ol>`
         : '<p class="hint mon-empty">No witch is working right now.</p>'}`;
   }
   /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
@@ -1989,12 +1989,12 @@
       ${picker ? `<div class="picker-row">${picker}</div>` : ""}
       ${hostDropHtml(b.hosts || b.members, project)}
       ${waitingForYou(cols)}
+      ${monitorHtml(b)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : voice("No task list yet.", "It appears when a member's Kiro starts or finishes a spec task.", "grey-witch", true)}
       ${decidedList(decidedPlans, b)}
       ${stageHtml(members)}
-      ${monitorHtml(b)}
       <h2>Whiteboard</h2>${compose}
       ${wallHtml(b, cols)}`;
   }

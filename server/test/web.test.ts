@@ -1238,6 +1238,17 @@ describe("keyboard, safety and states", () => {
     assert.match(first, /Elf.*shop#1.*p_00000001.*started.*2 min \d+ s/);
     assert.match(first, /claimed/);
     assert.match(text(), /2 runs going, 2 on the same work/);
+    // E-02: the monitor has its own h2 and hint, and sits right after "Waiting for you" (before Plans and Tasks)
+    const heads = [...doc().querySelectorAll("h2")];
+    const mon = heads.find((h) => h.textContent!.trim().startsWith("Monitor"))!;
+    assert.ok(mon, "an h2 Monitor");
+    assert.match(mon.querySelector(".hint")!.textContent!, /every active run on every host, read only/);
+    const tasksH = heads.find((h) => h.textContent!.trim() === "Tasks")!;
+    assert.ok(mon.compareDocumentPosition(tasksH) & 4, "Monitor comes before Tasks");
+    const needs = doc().querySelector('section.needs[aria-label="Waiting for you"]');
+    if (needs) assert.ok(needs.compareDocumentPosition(mon) & 4, "Monitor comes after Waiting for you");
+    const prev = mon.previousElementSibling;
+    assert.ok(!needs || prev === needs, "Monitor follows Waiting for you directly");
     await go("#/");
   });
 
