@@ -304,7 +304,10 @@
   .plan-body p { margin: 0 0 6px; } .plan-body ol { margin: 0; padding-left: 1.2rem; }
   @media (max-width: 640px) { .plan-row > summary { grid-template-columns: auto minmax(0, 1fr); } .plan-row .sum { grid-column: 1 / -1; white-space: normal; } }
   .stage-box { margin: 0 0 14px; }
-  .stage-box > summary { cursor: pointer; padding: 8px 12px; min-block-size: var(--target-size); color: var(--muted); font-size: 0.8125rem; border: 1px dashed var(--line-strong); border-radius: var(--radius-element); }
+  .stage-box > summary { cursor: pointer; padding: 8px 12px; min-block-size: var(--target-size); color: var(--muted); font-size: 0.8125rem; border: 1px dashed var(--line-strong); border-radius: var(--radius-element);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage-box > summary .stage-now { color: var(--text); }
+  .stage-box[open] > summary .stage-now { display: none; }
   /* The Stage: a real 3D scene in CSS (no script, no WebGL). A tilted floor with a grid, five raised platforms, and witches standing upright
      on it with a contact shadow. --tilt is the floor's angle; each witch undoes it so she stands, and her shadow redoes it so it lies flat. */
   .stage { --tilt: 54deg; position: relative; perspective: 900px; perspective-origin: 50% 12%; padding: 0; overflow: hidden; min-block-size: 250px;
@@ -2110,7 +2113,10 @@
     const nudge = members.idle.length && roster ? `<p class="hint">${members.idle.length <= 3 ? `${members.idle.map((x) => esc(agentName(x.slug))).join(", ")} ${members.idle.length === 1 ? "is" : "are"} not on any host`
       : `${members.idle.length} witches are not on any host`}${members.idle.some((x) => x.slug === "green-witch") ? ": nothing gets built until a host runs her (<code>./run-host.sh</code>)" : ""}.</p>` : "";
     const counts = roster ? ` <span class="hint">· ${members.available} available, ${members.working} working</span>` : "";
-    return `<details class="stage-box" data-key="stage"${state.ui.stage !== false ? " open" : ""}><summary>Witches${counts}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
+    // Closed, the summary says who works now (a live run or a fresh claim, as the roster counts it), on one ellipsized line.
+    const busyNames = (roster || []).filter((x) => x.state === "working").map((x) => agentName(x.slug));
+    const now = `<span class="stage-now">· ${busyNames.length ? `Working now: ${esc(busyNames.join(", "))}` : "No one is working now"}</span>`;
+    return `<details class="stage-box" data-key="stage"${state.ui.stage !== false ? " open" : ""}><summary>Witches${counts} ${now}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
   }
   /** Each witch's line in her own voice: copy, not a rule (her rules are WITCH_ROLES). */
   const WITCH_MOTTO = { "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
