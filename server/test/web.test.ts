@@ -1040,6 +1040,26 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: the closed Stage says on one line who is working now: none, one, several", async () => {
+    const m = (e: Json) => ({ ...e, member: "wsl-n" });
+    const tasks = [{ task_id: "1", title: "Idea", status: "not_started", paths: ["a/"], agent: "elf" }, { task_id: "2", title: "Watch", status: "not_started", paths: ["b/"], agent: "raven" }];
+    const put = async (p: string, runs: Json[]) => send(p, `member_${p}`, [
+      m(ev(`member_${p}`, p, "spec_artifact_updated", { artifact: "tasks", spec: p, total: 2, done: 0, in_progress: 0, queued: 0, optional: 0, tasks }, 30)),
+      m(ev(`member_${p}`, p, "host_online", { agents: ["elf", "raven"], slots: 2, running: runs.map((r) => r.ref), process: "p_0000bbbb", runs }, 2))]);
+    const now = () => doc().querySelector(".stage-box > summary .stage-now")!.textContent!;
+    await put("wn0", []);
+    await go("#/board/wn0", 600);
+    assert.equal(now(), "· No one is working now");
+    await put("wn1", [{ ref: "wn1#2", started_at: at(4), agent: "raven" }]);
+    await go("#/board/wn1", 600);
+    assert.equal(now(), "· Working now: Raven");
+    await put("wn2", [{ ref: "wn2#1", started_at: at(5), agent: "elf" }, { ref: "wn2#2", started_at: at(4), agent: "raven" }]);
+    await go("#/board/wn2", 600);
+    assert.match(now(), /^· Working now: (Elf, Raven|Raven, Elf)$/);
+    assert.equal(doc().querySelectorAll(".stage-box > summary .stage-now").length, 1, "one line");
+    await go("#/");
+  });
+
   test("board: the Stage is open on a first visit, and a close is remembered across a reload", async () => {
     const stageBox = (d: Document = doc()) => d.querySelector("details.stage-box") as HTMLDetailsElement;
     const uiSaved = () => JSON.parse(dom.window.localStorage.getItem("coven_ui") || "{}");
