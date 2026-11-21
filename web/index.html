@@ -490,6 +490,7 @@
   .msg .meta { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 0.75rem; color: var(--muted); margin-bottom: 2px; }
   .msg .meta b { color: var(--text); font-weight: 600; }
   .msg .meta .badge { align-self: center; }
+  .msg.seed .chip.example { align-self: center; border-style: dashed; border-color: var(--line-strong); color: var(--muted); background: transparent; }
   .msg .body { font-size: 0.875rem; line-height: 1.5; white-space: pre-wrap; }
   .msg ol.steps { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; line-height: 1.5; }
   .msg .re { font-size: 0.75rem; color: var(--muted); margin: 0 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2291,6 +2292,19 @@
       ${m.kind === "reject" ? '<div class="status">Binding: the guard of this task\'s flow rejects until new work comes after it.</div>' : ""}
       ${m.kind === "do" ? requestStatus(m, ctx) : waiting.has(m.message_id) ? waitLine(m, ctx) : ""}</li>`;
   }
+  /** An example exchange for an empty chat: five witches, one task. It is a picture of the council at work, never stored or sent. */
+  const SEED_CHAT = [
+    { who: "elf", say: "Before we build the retry: could the relay drop duplicate events instead? That would need no new state." },
+    { who: "black-hat", say: "Dropping needs a stable event id. coven-relay#14 already shows ids repeat after a restart, so a retry with a cap is safer." },
+    { who: "grey-witch", say: "Decision: retry, capped at three tries. Green Witch builds it, White Hat checks it." },
+    { who: "green-witch", say: "On it. I will keep to src/coven/relay.py and tests/test_relay.py, and leave a diff claim." },
+    { who: "herald", say: "Reporting: retry with a cap of three is under way on coven-relay#14. Review follows." },
+  ];
+  function seedChatHtml() {
+    return SEED_CHAT.map((m, i) => `<li class="msg council seed" data-key="seed-${i}">${avatar(m.who)}
+        <div class="meta"><b>${esc(agentName(m.who))}</b><span class="chip example">example</span></div>
+        <div class="body">${esc(m.say)}</div></li>`).join("");
+  }
   function chatView() {
     const project = defaultBoardProject();
     const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Council chat" }];
@@ -3262,7 +3276,7 @@
   window.addEventListener("hashchange", onRoute);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) { loadFleet(); if (state.route.view === "session") loadSession().then(() => render({ keepScroll: true })); } });
 
-  window.__coven = { flowState, boardColumns, reviewLanes, wallNotes }; // read-only handles for the tests
+  window.__coven = { flowState, boardColumns, reviewLanes, wallNotes, seedChatHtml }; // read-only handles for the tests
   start();
 })();
 </script>
