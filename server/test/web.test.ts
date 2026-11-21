@@ -1979,6 +1979,24 @@ describe("signing out", () => {
   });
 });
 
+describe("seedChatHtml", () => {
+  test("draws five example lines in order, each with an avatar and an example chip", () => {
+    const html = (dom.window as any).__coven.seedChatHtml() as string;
+    const host = doc().createElement("ul");
+    host.innerHTML = html;
+    const lines = [...host.querySelectorAll("li.msg")];
+    assert.equal(lines.length, 5);
+    assert.deepEqual(lines.map((l) => l.querySelector(".meta b")!.textContent),
+      ["Elf", "Black Hat Witch", "Grey Witch", "Green Witch", "Herald"]);
+    for (const l of lines) {
+      assert.ok(l.querySelector("svg.av"), "avatar");
+      assert.equal(l.querySelector(".chip")!.textContent, "example");
+    }
+    assert.match(lines[1].querySelector(".body")!.textContent!, /coven-relay#14/);
+    assert.ok(!/<script|onerror=/i.test(html));
+  });
+});
+
 describe("flowState", () => {
   const flowState = (t: Json, all: Json[], notes: Json[] = []) => (dom.window as any).__coven.flowState(t, all, notes);
   const task: Json = { ref: "s#1", doer_state: "submitted", branch_host: "h_1" };
