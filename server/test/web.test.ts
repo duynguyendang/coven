@@ -201,6 +201,21 @@ describe("sessions screen", () => {
     assert.match(await css.text(), /--color-background-body: light-dark\(/);
   });
 
+  test("shortcut hints: one kbd '/' beside the search box, aria-keyshortcuts on it and on the composer", async () => {
+    await go("#/");
+    const q = doc().getElementById("q") as HTMLInputElement;
+    assert.ok(!/\(\s*\/\s*\)/.test(q.placeholder), "the placeholder no longer carries ( / )");
+    assert.equal(q.getAttribute("aria-keyshortcuts"), "/");
+    const hints = [...doc().querySelectorAll(".toolbar kbd.kbd")].filter((k) => k.textContent === "/");
+    assert.equal(hints.length, 1, "the hint shows once");
+    assert.ok(doc().querySelector(".toolbar .search-wrap")!.contains(hints[0]), "beside the search box");
+    assert.match(dom.window.document.querySelector("style")!.textContent!, /@media \(max-width: 760px\) \{ \.toolbar \.search-wrap \.kbd \{ display: none; \} \}/);
+    await go("#/chat/shop", 400);
+    assert.equal(doc().getElementById("chat-text")!.getAttribute("aria-keyshortcuts"), "Enter");
+    assert.ok(doc().querySelector("#chat-keys kbd.kbd"), "the composer has a kbd hint");
+    await go("#/");
+  });
+
   test("the theme toggle sets <meta color-scheme>; an override equal to the system scheme is cleared, not stored", () => {
     const doc = dom.window.document;
     const meta = () => doc.querySelector('meta[name="color-scheme"]')?.getAttribute("content");
