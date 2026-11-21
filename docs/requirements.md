@@ -232,6 +232,14 @@ elements they cover is unknown. `web/index.html` and `server/test/web.test.ts` a
 purpose. A person writes the two Requirement cells above (what is shown, which board fields it
 reads, how it is checked); the task is then built from that text.
 
+Blocked: the E-01 and E-02 task (ux-v2 task 3) was tried by the Dev and not built. The Requirement
+cells for E-01 and E-02 above, and the same cells in `.kiro/specs/ux-v2/requirements.md`, are still
+empty, and no other file in the repository defines them. Which event types, board fields or UI elements
+they cover is unknown, so `web/index.html`, `server/src/events.ts`, `server/test/web.test.ts` and
+`docs/ADD.md` are unchanged on purpose and the status of both ids stays Proposed. A person writes the two
+Requirement cells (what is shown, which existing events or fields it reads, how it is checked); the
+task is then built from that text on the same render path as S-01 and S-02.
+
 Constraints ("the donts") from the Part 8 brief: _to be copied in by a person._ Until then they
 bind nothing, and no id above may be read as scope.
 
