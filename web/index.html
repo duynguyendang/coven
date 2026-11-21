@@ -1588,6 +1588,34 @@
     }
     return out;
   }
+  /** Plain lines about hosts that dropped, from `last_seen` and `agents` only: a witch that some host listed and no online host lists,
+      with the host that had her seen most recently; and the online-host count when it changed while this page was open. Static text. */
+  function hostDropLines(list, project) {
+    const hosts = (list || []).filter((h) => h && typeof h.host === "string");
+    const isOn = (h) => (typeof h.online === "boolean" ? h.online : (secondsSince(h.last_seen) !== null && secondsSince(h.last_seen) < ONLINE_SECONDS));
+    const listed = (h) => ((h.agents || []).length ? h.agents : ["green-witch"]); // a host from before hosts can run the Dev
+    const onlineNow = new Set(hosts.filter(isOn).flatMap(listed));
+    const lastSeen = new Map();
+    for (const h of hosts.filter((x) => !isOn(x))) {
+      const age = secondsSince(h.last_seen);
+      if (age === null) continue;
+      for (const a of listed(h)) if (!onlineNow.has(a) && WITCHES[a] && (!lastSeen.has(a) || age < lastSeen.get(a).age)) lastSeen.set(a, { host: h.host, age });
+    }
+    const ago = (s) => { const m = Math.floor(s / 60); return m < 1 ? "under 1 min ago" : m < 180 ? `${m} min ago` : m < 2880 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} days ago`; };
+    const lines = [...lastSeen].map(([slug, v]) => `${AGENT_NAME[slug]} has no online host (host ${v.host} last seen ${ago(v.age)})`);
+    const shown = lines.slice(0, 4);
+    if (lines.length > shown.length) shown.push(`${lines.length - shown.length} more witches have no online host`);
+    const now = hosts.filter(isOn).length;
+    const seen = state.hostCount && state.hostCount.project === project ? state.hostCount : null;
+    if (!seen || seen.now !== now) state.hostCount = { project, now, was: seen ? seen.now : null };
+    const c = state.hostCount;
+    if (c.was !== null && c.was !== now) shown.push(`Online hosts: ${now}, was ${c.was}`);
+    return shown;
+  }
+  function hostDropHtml(list, project) {
+    const lines = hostDropLines(list, project);
+    return lines.length ? `<section class="host-drop" aria-label="Hosts"><ul class="hint">${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></section>` : "";
+  }
   /** A plan the Elder Witch proposed: every task with its paths and verify command, so a person sees what would run before approving. */
   /** Decided plans, folded: one line each (its decision, its summary, how far its tasks got); open one to read it. */
   function decidedList(plans, b) {
@@ -1942,6 +1970,7 @@
     return `${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Coven board · ${project}`,
         lede: "Hosts run agents. A task asks for the agent it needs; a host with that agent and a free slot takes it and runs it as that persona." })}
       ${picker ? `<div class="picker-row">${picker}</div>` : ""}
+      ${hostDropHtml(b.hosts || b.members, project)}
       ${waitingForYou(cols)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
@@ -2082,6 +2111,7 @@
         lede: "You decide; the council advises and dispatches. Everyone signed in speaks as Human; a rejection is the one message that binds." })}
       <div class="chat-head">${status}<span class="spacer"></span>${picker}
         <button class="act quiet" type="button" data-new-chat data-key="new-chat"${real.length ? "" : " disabled"} title="Start a fresh conversation: the Chair forgets this one">${icon("plus")}<span>New chat</span></button></div>
+      ${hostDropHtml(c.hosts, project)}
       <div class="thread" id="chat-thread">${thread}</div>${compose}</div>`;
   }
 
