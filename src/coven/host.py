@@ -562,6 +562,30 @@ def _lease_lost(root: Path, ref: str) -> dict | None:
     return {"action": "failed", "task": ref, "agent": (load(root).get(ref) or {}).get("agent") or agents.DEFAULT, "error": reason}
 
 
+def marked_done(root: Path, ref: str) -> bool:
+    """True when a person marked `ref` done on the board (a fresh read; an unreachable board says False)."""
+    try:
+        view = board.read(root) or {}
+    except Exception:  # noqa: BLE001
+        return False
+    return any(f"{s.get('spec')}#{t.get('task_id')}" == ref and t.get("doer_state") == "done"
+               for s in view.get("specs") or [] for t in s.get("tasks") or [])
+
+
+def _stop_done(root: Path, task: dict, agent: str, branch: str, path: Path | None = None) -> dict:
+    """A person marked the task done while the host worked: no submit, the claim is released, the branch stays (never deleted)."""
+    ref = f"{task['spec']}#{task['task_id']}"
+    try:
+        tip = work._git(path or root, "rev-parse", "--short", branch)
+    except Exception:  # noqa: BLE001
+        tip = "no commit yet"
+    work._release_quietly(root, ref, "marked done")
+    _note(root, f"{ref} was marked done, so nothing was submitted. Local branch {branch} is kept at {tip} (not pushed, not deleted)."[:400],
+          agent, ref, kind="question", host_says=True)
+    _update(root, ref, state="submitted", branch=branch, error=None)
+    return {"action": "skipped", "task": ref, "agent": agent, "branch": branch, "commit": tip, "reason": "marked done"}
+
+
 def _fail(root: Path, ref: str, agent: str, reason: str) -> dict:
     """The agent could not finish: say so on the board, let go of the task, keep the record so it is not retried blindly.
 
@@ -772,6 +796,8 @@ def submit_checked(root: Path, task: dict, agent: str, host: str, path: Path, br
     lost = _lease_lost(root, ref)
     if lost:
         return lost, None
+    if marked_done(root, ref):
+        return _stop_done(root, task, agent, branch, path), None
     record = load(root).get(ref) or {}
     rounds = len(record.get("commits") or []) + 1
     title = f"coven: {ref} {task.get('title') or ''}".strip() + ("" if rounds == 1 else f" (rework {rounds - 1})")
@@ -853,6 +879,8 @@ def _build_cloud(root: Path, task: dict, agent: str, host: str, base: str, runne
     lost = _lease_lost(root, ref)
     if lost:
         return lost
+    if marked_done(root, ref):
+        return _stop_done(root, task, agent, branch, path)
     sha = work._git(path, "rev-parse", "--short", "HEAD")
     _update(root, ref, state="submitted", worktree=str(path), submitted_at=events.now_iso(), commits=[*(record.get("commits") or []), sha], error=None)
     _status(root, ref, "submitted", agent, f"{branch} at {sha} from Kiro Web, {len(files)} file(s), verify passed", branch=branch)
@@ -2316,6 +2344,8 @@ class Host:
             cloud = ref in dispatched and agents.kind(agent) == "build"
             if cloud and not self.cloud_runner:
                 continue  # a person chose Kiro Web: wait for a host that is set up for it, never run it here instead
+            if marked_done(self.root, ref):
+                continue  # a person marked it done since the view was read
             try:
                 self._claim(ref, task, agent)
             except board.BoardError as exc:

@@ -276,6 +276,23 @@ def test_merged_work_is_released_and_its_worktree_removed(repo, monkeypatch):
     assert not host.worktree_dir(repo, "shop-1").exists()
 
 
+def test_a_task_marked_done_during_the_run_is_not_submitted_and_its_branch_stays(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    board.claim(repo, task_one(repo), agent="green-witch")
+
+    def builds_then_a_person_marks_it_done(cwd, prompt):
+        cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "done"}]}]
+        return builds_cart(cwd, prompt)
+
+    result = host.execute(repo, task_one(repo), "green-witch", Runner({"green-witch": builds_then_a_person_marks_it_done}))
+    assert result["action"] == "skipped" and result["branch"] == "coven/shop-1"
+    assert not [n for n in cloud.notes if n.get("kind") == "review-wanted"]
+    assert any("marked done" in n["note"] and "coven/shop-1" in n["note"] for n in cloud.notes)
+    assert any(reason == "marked done" for _, reason in cloud.released)
+    assert git(repo, "rev-parse", "--verify", "coven/shop-1"), "the branch is never deleted"
+    assert not host.load(repo)["shop#1"].get("commits"), "no commit was made"
+
+
 def test_people_who_reject_a_submission_send_the_same_agent_back_to_the_same_branch(repo, monkeypatch):
     cloud = FakeCloud().install(monkeypatch)
     host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"]).run(once=True)
