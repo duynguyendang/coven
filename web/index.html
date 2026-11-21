@@ -944,6 +944,7 @@
   const EMPTY = {
     chat: { say: "The council is listening — say something.", then: "Ask it something, or choose Do it and say what you want done. The Chair answers and hands the work to the witches.", who: "grey-witch" },
     firstRun: { say: "No sessions yet — they appear with your first Kiro run.", then: "Start the relay on this machine:", cmd: "coven relay up" },
+    waiting: { say: "Nothing claimed yet — the witches are waiting for a plan." },
   };
   const empty = (key) => { const e = EMPTY[key]; return voice(esc(e.say), esc(e.then) + (e.cmd ? ` <code>${esc(e.cmd)}</code>` : ""), e.who); };
   const cls = (v) => String(v || "unknown").toLowerCase().replace(/[^a-z-]/g, "");
@@ -1837,7 +1838,7 @@
   const openGroups = new Map(); // "column:spec" -> open or not, as the person left it
   function columnDetail(key, label, list) {
     const head = `<h3>${esc(label)} · ${plural(list.length, "task")}</h3>`;
-    const quiet = { ready: "Nothing is ready: the witches are waiting for a plan or a task in tasks.md.", claimed: "Nothing claimed yet: no witch has picked up a task.",
+    const quiet = { ready: EMPTY.waiting.say, claimed: EMPTY.waiting.say,
       review: "Nothing waits for review: every branch has been judged.", failed: "Nothing is blocked.", done: "Nothing is done yet: the first merge lands here." };
     if (!list.length) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<div class="hint p-1">${esc(quiet[key] || "No tasks here.")}</div></section>`;
     if (list.length <= LONG_COLUMN) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<ul class="tlist">${list.map(taskRow).join("")}</ul></section>`;
