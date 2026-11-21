@@ -185,6 +185,11 @@
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 12px; }
   .toolbar input[type="search"], .toolbar select { padding: 6px 10px; }
   .toolbar input[type="search"] { flex: 1 1 100%; min-width: 0; max-width: none; padding: 8px 12px; font-size: 0.875rem; }
+  .toolbar .search-wrap { position: relative; flex: 1 1 100%; display: flex; min-width: 0; }
+  .toolbar .search-wrap input[type="search"] { padding-inline-end: 40px; }
+  .toolbar .search-wrap .kbd { position: absolute; inset-inline-end: 10px; inset-block-start: 50%; translate: 0 -50%; pointer-events: none; }
+  .kbd { font-family: var(--mono); font-size: 0.75rem; line-height: 1; color: var(--muted); background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-inner); padding: 2px 6px; white-space: nowrap; }
+  @media (max-width: 760px) { .toolbar .search-wrap .kbd { display: none; } }
   .toolbar input::placeholder { color: var(--faint); }
   .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 0.8125rem; cursor: pointer; min-block-size: var(--target-size); padding-inline: 4px; }
   .toolbar .result-n { margin-left: auto; }
@@ -940,6 +945,8 @@
   /** An empty state with a voice: one sentence that sounds like the coven, what to do next, and a ghost peeking over the edge. */
   const voice = (say, then, who = "coven", still = false) => `<div class="empty voice${still ? " still" : ""}"><span class="peek" aria-hidden="true">${avatar(who)}</span><span class="say">${say}</span><span class="then">${then}</span></div>`;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  /** The one table of keyboard shortcuts: the key handlers read it, and the hints and aria-keyshortcuts are drawn from it. */
+  const SHORTCUTS = { search: "/", nav: "[", send: "Enter" };
   /** Voice lines for empty states: plain text (and an optional plain command); empty() escapes both and wraps cmd in <code>. */
   const EMPTY = {
     chat: { say: "The council is listening — say something.", then: "Ask it something, or choose Do it and say what you want done. The Chair answers and hands the work to the witches.", who: "grey-witch" },
@@ -1458,7 +1465,7 @@
       ? `<label class="chk"><input type="checkbox" id="group" data-key="group" ${state.ui.group ? "checked" : ""}/> Group by project</label>` : "";
     const toolbar = `<div class="toolbar" role="search">
         <label class="sr" for="q">Search sessions</label>
-        <input id="q" data-key="search" type="search" placeholder="Search intent, session, task, program…   ( / )" value="${esc(state.query)}" autocomplete="off" />
+        <span class="search-wrap"><input id="q" data-key="search" type="search" placeholder="Search intent, session, task, program…" value="${esc(state.query)}" autocomplete="off" aria-keyshortcuts="${esc(SHORTCUTS.search)}" /><kbd class="kbd" aria-hidden="true">${esc(SHORTCUTS.search)}</kbd></span>
         <div class="seg" role="group" aria-label="Show">
           ${Object.keys(STATUS_LABEL).map((key) => `<button class="filter" type="button" data-filter="${key}" data-key="filter-${key}" aria-pressed="${r.filter === key}">${STATUS_LABEL[key]}</button>`).join("")}
         </div>
@@ -2315,13 +2322,13 @@
           <span class="pick">as <button class="link" type="button" data-edit-name>${esc(localStorage.getItem("coven_author") || "someone")}</button></span>
         </div>
         <div class="write">
-          <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="20000" required aria-describedby="chat-keys" rows="1" placeholder="Ask, or say what you want done…"></textarea>
+          <label class="sr" for="chat-text">Message</label><textarea id="chat-text" data-key="chat-text" maxlength="20000" required aria-describedby="chat-keys" aria-keyshortcuts="${esc(SHORTCUTS.send)}" rows="1" placeholder="Ask, or say what you want done…"></textarea>
           <input type="file" id="chat-file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden />
           <button class="act quiet" type="button" id="chat-attach" aria-label="Attach a Markdown file" title="Attach a .md or .txt file (up to 20,000 characters): its text is added to your message">${icon("plus")}</button>
           <button class="send" type="submit" aria-label="Send" title="Send (Enter)">${icon("send")}</button>
         </div>
         <div class="foot"><span id="chat-error" role="alert">${esc(state.chatError)}</span>
-          <button class="act quiet bad" type="button" id="chat-reject" data-key="chat-reject" title="A binding decision: the guard of this task's flow rejects until new work comes after it">${icon("undo")}<span>Reject this task</span></button><span class="keys" id="chat-keys">Enter to send · Shift+Enter for a new line</span><span class="spacer"></span><span id="chat-count" aria-hidden="true"></span></div>
+          <button class="act quiet bad" type="button" id="chat-reject" data-key="chat-reject" title="A binding decision: the guard of this task's flow rejects until new work comes after it">${icon("undo")}<span>Reject this task</span></button><span class="keys" id="chat-keys"><kbd class="kbd">${esc(SHORTCUTS.send)}</kbd> to send · <kbd class="kbd">Shift+${esc(SHORTCUTS.send)}</kbd> for a new line</span><span class="spacer"></span><span id="chat-count" aria-hidden="true"></span></div>
       </form>`;
     return `<div class="chat-page">${demoBanner(seededProject(project))}${pageHeader({ crumbs, title: `Council chat · ${project}`,
         lede: "You decide; the council advises and dispatches. Everyone signed in speaks as Human; a rejection is the one message that binds." })}
@@ -3002,7 +3009,7 @@
     }));
     root.querySelectorAll("#chat-text").forEach((box) => box.addEventListener("keydown", (ev) => {
       // Enter sends; Shift+Enter is a new line; Enter while an input method is composing a character is left to it.
-      if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return;
+      if (ev.key !== SHORTCUTS.send || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return;
       ev.preventDefault();
       const form = box.form;
       if (!form || form.dataset.sending) return;
@@ -3213,8 +3220,8 @@
     const active = document.activeElement;
     const tag = (active && active.tagName) || "";
     const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(tag);
-    if (ev.key === "/" && !typing && $("q")) { ev.preventDefault(); $("q").focus(); return; }
-    if (ev.key === "[" && !typing && !ev.ctrlKey && !ev.metaKey) { toggleNav(); return; }
+    if (ev.key === SHORTCUTS.search && !typing && $("q")) { ev.preventDefault(); $("q").focus(); return; }
+    if (ev.key === SHORTCUTS.nav && !typing && !ev.ctrlKey && !ev.metaKey) { toggleNav(); return; }
     if (ev.key !== "Escape") return;
     if ($("task-dialog").open) return; // the native dialog handles its own Esc
     if (narrow() && $("app").classList.contains("nav-open")) { closeNav(); return; }
