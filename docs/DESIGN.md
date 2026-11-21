@@ -377,7 +377,7 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
   that apply: *Run in Kiro Web*, *Ask host to push*, *Mark done* (in review), *Retry* (blocked), and the
   task's **Conversation**, open by default. Yellow tint and a how-to line when no online host runs its
   witch. It follows live updates without closing.
-- **Board order:** plans that wait for you, then Tasks (a column is always open: the person's choice, else the most urgent with tasks), then Witches (cards only for those working, available or waiting for a slot; the rest fold behind one row of their ghosts), then the Whiteboard.
+- **Board order:** what waits for you, then the Monitor (its own heading, *every active run on every host, read only*), then plans that wait for you, then Tasks (a column is always open: the person's choice, else the most urgent with tasks), then Witches (cards only for those working, available or waiting for a slot; the rest fold behind one row of their ghosts), then the Whiteboard.
 - **Plans:** only plans that wait for a person are cards (above Tasks). Decided plans fold below the task list into one line each: the decision, the plan, its summary, how many of its tasks are done, who and when; opening one shows the reasons and its tasks.
 - **Long columns:** more than 8 tasks are grouped by spec (newest first), each group a fold with its count; Done folds by default, other columns stay open; a filter above the list finds a task by id, title or witch and opens its group.
 - **In review** has its own layout, at any length, built from `GET /v1/board` fields only:
