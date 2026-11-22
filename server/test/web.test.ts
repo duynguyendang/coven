@@ -2022,6 +2022,24 @@ describe("chat example exchange: when it shows, when it never does, what it neve
     assert.equal(dom.window.localStorage.getItem(SEEN), null, "looking at it does not set the flag");
   });
 
+  test("hidden history keeps the example away: c.earlier after New chat, and state.chatEarlier while earlier chats are shown", async () => {
+    await postJson(s.base, "/v1/chat", { project_id: "edge-hist", kind: "ask", message: "old question", author: "ana" });
+    await postJson(s.base, "/v1/chat", { project_id: "edge-hist", kind: "new", message: "New chat", author: "ana" });
+    dom.window.localStorage.removeItem(SEEN);
+    await go("#/chat/edge-hist");
+    assert.equal(seedList(), null, "after_new=1 hides the old chat; the example must not sit above it");
+    assert.equal(banner(), null, "no DEMO DATA without the example");
+    assert.ok(doc().querySelector("[data-chat-earlier]"), "the way to the earlier chats is offered");
+    assert.ok((doc().querySelector("[data-new-chat]") as HTMLButtonElement).disabled, "New chat stays disabled");
+    doc().querySelector<HTMLElement>("[data-chat-earlier]")!.click();
+    await wait(600);
+    assert.equal(seedList(), null, "with earlier chats shown, still no example");
+    assert.ok(text().includes("old question"), "the earlier message is shown");
+    doc().querySelector<HTMLElement>("[data-chat-earlier]")!.click();
+    await wait(600);
+    assert.equal(dom.window.localStorage.getItem(SEEN), null);
+  });
+
   test("once the flag is set, an empty chat shows the quiet voice, not the example", async () => {
     dom.window.localStorage.setItem(SEEN, "1");
     await go("#/chat/edge-flagged");
