@@ -2367,7 +2367,8 @@
     const more = `${hidden ? `<button class="act quiet" type="button" data-chat-more data-key="chat-more">Show ${Math.min(hidden, 60)} earlier of ${plural(hidden, "message")}</button>` : ""}`
       + `${c.earlier || state.chatEarlier ? `<button class="act quiet" type="button" data-chat-earlier data-key="chat-earlier" aria-pressed="${state.chatEarlier}">${state.chatEarlier ? "Hide earlier chats" : `Earlier chats (${plural(c.earlier, "message")})`}</button>` : ""}`;
     // a first-time visitor to an empty chat sees an example exchange (drawn only, never in state.chat or sent) until she first sends
-    const showSeed = !real.length && !localStorage.getItem("coven_chat_seen");
+    // never above hidden history: after_new=1 hides earlier chats, so c.earlier / state.chatEarlier mean the chat is not really empty
+    const showSeed = !real.length && !c.earlier && !state.chatEarlier && !localStorage.getItem("coven_chat_seen");
     const thread = (more ? `<div class="chat-more">${more}</div>` : "") + (real.length
       ? `<ol class="chat" aria-label="Conversation" aria-live="polite">${groups.slice(-state.chatShown).map((m) => chatMessage(m, byId, waiting, ctx)).join("")}</ol>`
       : showSeed ? `<ol class="chat seed-chat" aria-label="Example conversation">${seedChatHtml()}</ol>`
