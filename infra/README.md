@@ -18,8 +18,9 @@ relay / host / browser --HTTPS--> Caddy :443 --> coven :8080 --> /data/coven.db 
    `<static-ip-with-dashes>.sslip.io` resolves to the VM and gets a certificate).
 4. `cd /opt/coven/infra/lightsail && sudo docker compose up -d --build`.
 5. Check `https://$COVEN_DOMAIN/healthz`, then point relays at it with `coven project link
-   --cloud-url https://$COVEN_DOMAIN`. To update: copy the new tree and run step 4 again; the
-   database stays on the `coven-data` volume.
+   --cloud-url https://$COVEN_DOMAIN`. To update: `make deploy` (`scripts/deploy-lightsail.sh`, `--dry-run` to preview). It copies the cloud's files, takes a database
+   copy, runs step 4 and waits for `/healthz`; the `.env` and the `coven-data` volume are never touched. Host, key and URL come from
+   `COVEN_DEPLOY_HOST`, `COVEN_DEPLOY_KEY` and `COVEN_DEPLOY_URL`.
 
 Backups are the daily instance snapshots (up to a day of history at risk if the disk is lost).
 For a copy on demand: `sudo docker compose exec coven node -e "new (require('node:sqlite').DatabaseSync)('/data/coven.db').exec(\"VACUUM INTO '/data/backup.db'\")"`.

@@ -48,7 +48,8 @@ make check       # tsc --noEmit
 make cloud       # a local cloud on :8787 (dev token `dev`), then `make seed`
 make host        # run this machine as a host (./run-host.sh)
 make hooks       # write hook commands that need no `coven` on PATH
-make deploy      # Cloudflare (only when asked)
+make deploy      # the Lightsail VM (scripts/deploy-lightsail.sh; only when asked)
+make deploy-cloudflare   # the Cloudflare Worker (only when asked)
 ```
 
 ## Rules for changes

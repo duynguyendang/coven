@@ -1,4 +1,4 @@
-.PHONY: install test test-relay test-cloud test-e2e harness verify check relay cloud seed seed-watch doctor host deploy hooks
+.PHONY: install test test-relay test-cloud test-e2e harness verify check relay cloud seed seed-watch doctor host deploy deploy-cloudflare hooks
 
 # The Python used by every recipe; run-host.sh reads it as COVEN_PY.
 PY ?= python3
@@ -49,7 +49,12 @@ seed-watch:
 	cd server && node src/seed.ts --url http://127.0.0.1:8787 --token dev --keep-alive 300
 
 # Coven Cloud on Cloudflare Workers (needs `npx wrangler login` once; see infra/README.md).
+# The cloud people use: the Lightsail VM (infra/README.md). Only when asked.
 deploy:
+	scripts/deploy-lightsail.sh
+
+# The Cloudflare Worker (a test cloud).
+deploy-cloudflare:
 	cd server/worker && npx wrangler deploy
 
 doctor:
