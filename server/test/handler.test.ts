@@ -1,0 +1,43 @@
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+
+import { event, getJson, startServer, type TestServer } from "./helpers.ts";
+
+// FR-REL-02: the session detail view answers in under 3 s, even for a large session.
+const RUN = "run_large";
+const EVENTS = 5000;
+const LIMIT_MS = 3000;
+
+let s: TestServer;
+before(async () => {
+  s = await startServer();
+  const base = Date.parse("2026-01-01T00:00:00Z");
+  const items = Array.from({ length: EVENTS }, (_, i) =>
+    event(`evt_large_${i}`, "tool_call", { run_id: RUN, seq: i + 1, ts: new Date(base + i * 1000).toISOString() }),
+  );
+  // Seed straight into the memory store; the batch limits of POST /v1/events are not what is measured.
+  for (let i = 0; i < items.length; i += 500) await s.store.ingest("coven", RUN, items.slice(i, i + 500));
+  // A second, unrelated run, so a per-request scan of every event would show.
+  await s.store.ingest("coven", "run_other", Array.from({ length: EVENTS }, (_, i) =>
+    event(`evt_other_${i}`, "tool_call", { run_id: "run_other", seq: i + 1 })));
+});
+after(async () => { await s.close(); });
+
+test(`session detail with ${EVENTS} events answers under ${LIMIT_MS} ms`, async () => {
+  const started = performance.now();
+  const r = await getJson(s.base, `/v1/runs/${RUN}`);
+  const elapsed = performance.now() - started;
+  assert.equal(r.status, 200);
+  assert.equal(r.body.run.run_id, RUN);
+  assert.equal(r.body.events.length, EVENTS);
+  assert.ok(elapsed < LIMIT_MS, `took ${elapsed.toFixed(0)} ms`);
+});
+
+test(`session events with ${EVENTS} events answer under ${LIMIT_MS} ms`, async () => {
+  const started = performance.now();
+  const r = await getJson(s.base, `/v1/runs/${RUN}/events`);
+  const elapsed = performance.now() - started;
+  assert.equal(r.status, 200);
+  assert.equal(r.body.events.length, EVENTS);
+  assert.ok(elapsed < LIMIT_MS, `took ${elapsed.toFixed(0)} ms`);
+});
