@@ -326,6 +326,11 @@
   .stage .sprites { display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-end; gap: 2px 0; transform-style: preserve-3d; }
   .stage .stage-witch { position: relative; display: block; appearance: none; background: none; border: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; padding-block-end: 8px; transform-style: preserve-3d; transform: rotateX(calc(var(--tilt) * -1)); transform-origin: 50% 100%; }
   .stage .stage-witch .av { inline-size: 44px; block-size: 50px; display: block; }
+  .stage .stage-witch .rig { position: relative; display: block; inline-size: 44px; block-size: 50px; transform-style: preserve-3d; }
+  .stage .stage-witch .rig .av { position: relative; }
+  .stage .stage-witch .lyr { position: absolute; pointer-events: none; display: block; }
+  .stage .stage-witch .lyr-back { inset-inline: 18% ; inset-block: 30% 4%; background: var(--rig-body); border-radius: 40% 40% 12% 12%; opacity: 0.55; transform: translateZ(-4px); }
+  .stage .stage-witch .lyr-brim { inset-inline: 14%; inset-block-start: 20%; block-size: 6%; background: var(--rig-brim); border-radius: 50%; opacity: 0.35; transform: translateZ(4px); }
   .stage .stage-witch::before { content: ""; position: absolute; inset-inline: 12% ; inset-block-end: 2px; block-size: 12px; border-radius: 50%; background: var(--line-strong);
     transform: rotateX(var(--tilt)); transform-origin: 50% 50%; }
   .stage .stage-witch.working { animation: stage-bob 1.8s ease-in-out 3; }
@@ -955,6 +960,13 @@
     const o = OUTFIT[ROLE_SLUG[key] || key];
     if (!o) return "";
     return `<svg class="av ${cls}" viewBox="-1 -5 34 38" aria-hidden="true" focusable="false"><g transform="translate(0 3)"><path d="M16 3C9.2 3 6 8 6 14.5V28l3.6-3 3.2 3 3.2-3 3.2 3 3.2-3 3.6 3V14.5C26 8 22.8 3 16 3Z" fill="${o.body}" stroke="#7c5cd6" stroke-width="1.2" stroke-linejoin="round"/><ellipse cx="12.4" cy="14" rx="1.7" ry="2.4" fill="${o.eye}"/><ellipse cx="19.6" cy="14" rx="1.7" ry="2.4" fill="${o.eye}"/></g><g transform="translate(0 3)">${o.art}</g></svg>`;
+  }
+  /** A stage witch: the one svg plus CSS-only depth layers (brim, cloak back), coloured from OUTFIT through custom properties. */
+  function rig(key) {
+    const o = OUTFIT[ROLE_SLUG[key] || key];
+    if (!o) return "";
+    const brim = (/fill="(#[0-9a-fA-F]{3,8})"/.exec(o.art) || [])[1] || o.body;
+    return `<span class="rig" style="--rig-body:${o.body};--rig-brim:${brim}"><span class="lyr lyr-back" aria-hidden="true"></span>${avatar(key)}<span class="lyr lyr-brim" aria-hidden="true"></span></span>`;
   }
   const agentName = (slug) => AGENT_NAME[slug] || AGENT_NAME[ROLE_SLUG[slug]] || String(slug || "");
   const COUNCIL_TYPES = new Set(["council_opened", "claim_proposed", "claim_challenged", "test_result", "verify_result", "chair_summary", "chair_proposal", "guard_verdict", "council_closed"]);
@@ -2163,7 +2175,7 @@
       const busy = here.some((slug) => stateOf[slug] === "working");
       return `<div class="station${busy ? " has-work" : ""}" data-station="${id}"><div class="pad">${label}</div><div class="sprites">${here.map((slug) =>
         `<button type="button" class="stage-witch${stateOf[slug] === "working" ? " working" : ""}${stateOf[slug] === "offline" ? " off" : ""}${slug === picked ? " picked" : ""}" data-stage-pick="${slug}" data-witch="${slug}"
-          aria-pressed="${slug === picked}" title="${esc(agentName(slug))}">${avatar(slug)}<span class="sr">${esc(agentName(slug))}</span></button>`).join("")}</div></div>`;
+          aria-pressed="${slug === picked}" title="${esc(agentName(slug))}">${rig(slug)}<span class="sr">${esc(agentName(slug))}</span></button>`).join("")}</div></div>`;
     }).join("");
     // Her card (where she runs, what she never does, her duties) is one click on her; one card, not eleven.
     const w = picked && roster ? roster.find((x) => x.slug === picked) : null;

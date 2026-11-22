@@ -736,6 +736,8 @@ describe("session screen", () => {
     assert.equal(doc().querySelectorAll(".witch").length, 1);
     assert.equal(doc().querySelector("#main")!.textContent!.includes("Members"), false);
     assert.equal(doc().querySelectorAll(".stage .stage-witch svg").length, 11, "the stage shows all eleven witches");
+    assert.equal(doc().querySelectorAll(".stage .stage-witch > .rig").length, 11, "each stage witch sits in a .rig");
+    assert.equal(doc().querySelectorAll(".stage .rig > svg").length, 11, "one svg per rig");
     // `.sprite` is the zero-size icon sheet (width 0, overflow hidden): a witch given that class is there but cannot be seen.
     assert.equal(doc().querySelectorAll(".sprite").length, 1, "only the icon sheet uses .sprite");
     assert.equal(doc().querySelectorAll(".stage .station").length, 5);
