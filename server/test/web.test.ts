@@ -2304,4 +2304,13 @@ describe("loading states of session detail and the thread box", () => {
     assert.match(main, skeleton);
     assert.doesNotMatch(main, /class="empty">Loading/);
   });
+
+  test("the skeleton is styled: bars, an indeterminate progress bar, tokens only, and a reduced-motion fallback", () => {
+    assert.match(html, /\.skel \.bar \{[^}]*background: var\(--line\)/);
+    assert.match(html, /\.skel progress:indeterminate \{[^}]*animation: pulse/);
+    assert.match(html, /@keyframes pulse/);
+    assert.match(html, /prefers-reduced-motion: reduce\) \{ \.skel \.bar, \.skel progress:indeterminate \{ animation: none; \}/);
+    const css = html.split("\n").filter((l) => /^\s*\.skel/.test(l)).join("\n");
+    assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|rgb\(/i, "colours are Astryx tokens only");
+  });
 });

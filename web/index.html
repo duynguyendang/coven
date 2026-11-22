@@ -532,9 +532,10 @@
   .skel .bar { block-size: 12px; border-radius: 6px; background: var(--line); animation: pulse 1.8s ease-in-out infinite; }
   .skel .bar:nth-child(2) { inline-size: 80%; }
   .skel .bar:nth-child(3) { inline-size: 55%; }
-  .skel progress { inline-size: 100%; block-size: 6px; }
+  .skel progress { inline-size: 100%; block-size: 6px; accent-color: var(--color-accent); }
+  .skel progress:indeterminate { animation: pulse 1.8s ease-in-out infinite; }
   li.skel { list-style: none; padding: 6px 0; }
-  @media (prefers-reduced-motion: reduce) { .skel .bar { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .skel .bar, .skel progress:indeterminate { animation: none; } }
   .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
   .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 0.75rem; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 
