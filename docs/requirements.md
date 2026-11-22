@@ -88,7 +88,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-D6 | Provide the council chat (§4.7): the thread scrolls to the newest message, Enter sends, a witch's steps group into one bubble. | Must | Built |
 | FR-D7 | Let a person accept a task's result (*Mark done*), one task or a Ready for sign-off group at once (*Mark all done*, *Accept & merge all*: one request at a time, stopping at the first failure). Mark done also closes the task's open review jobs. | Must | Built |
 | FR-D8 | Work in light and dark schemes and at phone width; usable by keyboard; accessible names on controls. | Must | Built |
-| P-FUN-03 | A first-time visitor with an empty council chat sees a five-line scripted exchange, in this order: Elf, Black Hat (citing `coven-relay#14`), Chair guard, Green, Herald. It is client-only (drawn by `web/index.html`, nothing sent to the cloud), shown under the DEMO DATA bar, never stored, and never read by agents. It is never presented as a live council. | Could | Planned |
+| P-FUN-03 | A first-time visitor with an empty council chat sees a five-line scripted exchange, in this order: Elf, Black Hat (citing `coven-relay#14`), Chair guard, Green, Herald. It is client-only (drawn by `web/index.html`, nothing sent to the cloud), shown under the DEMO DATA bar, never stored, and never read by agents. It is never presented as a live council. | Could | Built |
 
 ### 4.5 Hosts and witches
 

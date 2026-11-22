@@ -212,6 +212,11 @@ quiet (one voice per message). Inspect witches on a chat request or a council jo
 throw-away checkout that carries the working copy's uncommitted changes, so "review what I have"
 reviews what the person has.
 
+**Empty-chat seed (P-FUN-03).** A first-time visitor with an empty council chat sees a five-line scripted exchange
+(Elf, Black Hat citing `coven-relay#14`, Chair guard, Green, Herald). `web/index.html` draws it alone: nothing is
+sent to the cloud or stored, agents never read it, and it sits under the DEMO DATA bar. It adds no event type or
+endpoint, so §6 does not change.
+
 ### 4.3.1 From a request to code: plan, approve, build, review (FR-CH8–CH10)
 
 ```mermaid

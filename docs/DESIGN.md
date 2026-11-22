@@ -280,6 +280,8 @@ motion minimal and functional. The front door is where the play is (see "The loo
   ghost (each witch is the Kiro ghost in her outfit) acts as a character.
 - **Honesty is a visual rule:** seeded, estimated or unproven data is labelled as such, in the UI,
   never hidden by styling.
+  The scripted exchange in an empty council chat is drawn client-side under the DEMO DATA bar and is never
+  presented as a live council.
 - **Both schemes are first-class.** The page follows the system scheme unless the reader picks one
   (a single toggle sets `<meta name="color-scheme">`, which CSS maps to `color-scheme` with `:has()`; no stored value means System); every token is a `light-dark()` pair.
 
