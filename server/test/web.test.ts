@@ -1959,6 +1959,103 @@ describe("council chat", () => {
   });
 });
 
+describe("chat example exchange: when it shows, when it never does, what it never touches", () => {
+  const SEEN = "coven_chat_seen";
+  const banner = () => doc().querySelector("#main .banner.demo");
+  const seedList = () => doc().querySelector("#chat-thread .seed-chat");
+  const type = (id: string, value: string) => { (doc().getElementById(id) as HTMLInputElement).value = value; };
+  const submit = async () => { doc().getElementById("chat-form")!.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true })); await wait(500); };
+  /** Record every write the page makes while a test runs, passing all calls through to the test cloud. */
+  const recordWrites = () => {
+    const writes: string[] = [];
+    const real = (dom.window as any).fetch;
+    (dom.window as any).fetch = (url: string, init?: RequestInit) => {
+      if (init?.method && init.method !== "GET") writes.push(`${init.method} ${String(url)}`);
+      return real(url, init);
+    };
+    return { writes, restore: () => { (dom.window as any).fetch = real; } };
+  };
+  const chatOf = async (project: string) => (await getJson(s.base, `/v1/chat?project_id=${project}`)).body.messages as Json[];
+
+  test("a real message already in the chat hides the example, even when this browser has not seen the chat", async () => {
+    await postJson(s.base, "/v1/chat", { project_id: "edge-real", kind: "ask", message: "someone else asked first", author: "ana" });
+    dom.window.localStorage.removeItem(SEEN);
+    await go("#/chat/edge-real");
+    assert.equal(seedList(), null, "no example transcript");
+    assert.equal(doc().querySelector("#main .chat-page .banner.demo"), null, "and no DEMO DATA with it");
+    assert.ok(text().includes("someone else asked first"), "the real message is shown");
+    assert.equal(doc().querySelectorAll(".chat .msg.seed").length, 0, "no example line among the real ones");
+    assert.equal(dom.window.localStorage.getItem(SEEN), null, "looking at it does not set the flag");
+  });
+
+  test("once the flag is set, an empty chat shows the quiet voice, not the example", async () => {
+    dom.window.localStorage.setItem(SEEN, "1");
+    await go("#/chat/edge-flagged");
+    assert.equal(seedList(), null);
+    assert.equal(banner(), null, "no DEMO DATA without the example");
+    assert.ok(text().includes("The council is gathered and quiet"));
+  });
+
+  test("the example shows and carries DEMO DATA together, and writes nothing", async () => {
+    dom.window.localStorage.removeItem(SEEN);
+    const spy = recordWrites();
+    try {
+      await go("#/chat/edge-seed");
+      assert.ok(seedList(), "the example is drawn");
+      assert.ok(doc().querySelector("#main .chat-page .banner.demo"), "DEMO DATA appears with it");
+      await go("#/chat/edge-seed");
+      assert.deepEqual(spy.writes, [], "no POST /v1/chat, no write of any kind from looking");
+    } finally { spy.restore(); }
+    assert.deepEqual(await chatOf("edge-seed"), [], "nothing reached the store");
+    assert.equal(dom.window.localStorage.getItem(SEEN), null, "the flag is set only by sending");
+  });
+
+  test("sending sets the flag; after New chat the example does not come back", async () => {
+    dom.window.localStorage.removeItem(SEEN);
+    await go("#/chat/edge-new");
+    assert.ok(seedList(), "first visit: the example");
+    type("chat-text", "a real question");
+    await submit();
+    assert.equal(dom.window.localStorage.getItem(SEEN), "1", "a send sets the flag");
+    assert.equal(seedList(), null, "the example is gone after the first send");
+    assert.equal(banner(), null);
+    (doc().querySelector("[data-new-chat]") as HTMLButtonElement).click();
+    await wait(700);
+    const marker = (await chatOf("edge-new")).filter((m) => m.kind === "new");
+    assert.equal(marker.length, 1, "New chat is one marker message");
+    assert.equal(seedList(), null, "after New chat: no example");
+    assert.equal(banner(), null, "after New chat: no DEMO DATA");
+    assert.ok(text().includes("The council is gathered and quiet"));
+    assert.equal((doc().querySelector("[data-new-chat]") as HTMLButtonElement).disabled, true, "nothing to start over from");
+  });
+
+  test("the other pages of a real project show no DEMO DATA, whether or not the chat was seen", async () => {
+    for (const seen of [false, true]) {
+      if (seen) dom.window.localStorage.setItem(SEEN, "1"); else dom.window.localStorage.removeItem(SEEN);
+      for (const hash of ["#/p/atlas", "#/p/shop", "#/board/shop", "#/chat/shop"]) {
+        if (!seen && hash === "#/chat/shop") continue; // an empty unseen chat legitimately shows the example under DEMO DATA
+        await go(hash);
+        assert.equal(banner(), null, `${hash} (chat seen: ${seen}) shows no demo banner`);
+      }
+    }
+  });
+
+  test("message text is escaped, in the thread and in the example's neighbours", async () => {
+    dom.window.localStorage.removeItem(SEEN);
+    await go("#/chat/edge-esc");
+    const hostile = `<img src=x onerror="window.__pwned=1"> & <b>bold</b>`;
+    type("chat-text", hostile);
+    await submit();
+    const mine = [...doc().querySelectorAll(".chat .msg")].find((el) => el.textContent!.includes("onerror"))!;
+    assert.ok(mine, "the message is shown as text");
+    assert.ok(mine.textContent!.includes(hostile), "verbatim, markup and all");
+    assert.equal(doc().querySelector(".chat img[src='x']"), null, "no element was made from it");
+    assert.ok(![...mine.querySelectorAll("b")].some((b) => b.textContent === "bold"), "no bold either: " + mine.innerHTML);
+    assert.equal((dom.window as any).__pwned, undefined, "nothing ran");
+    dom.window.localStorage.setItem(SEEN, "1");
+  });
+});
+
 describe("demo data is labelled only where it is shown", () => {
   const banner = () => doc().querySelector("#main .banner.demo");
 
