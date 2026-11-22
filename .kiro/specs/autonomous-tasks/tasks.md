@@ -104,7 +104,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_specmap.py`_
   - _Requirements: R4.1_
 
-- [ ] 9. The readiness gate
+- [x] 9. The readiness gate
   - Goal: `ready.check` says, with no model, whether a subtask can be given to the Dev, and names what is missing.
   - Context: requirements R4.1, R4.2, R4.5; design "The readiness gate". Verify failing on the base is what stops already-done work.
   - Read first: `src/coven/specmap.py` (`paths_overlap`, `covers`), `src/coven/verify.py` (`run`), `src/coven/agents.py` (`installed`), `src/coven/host.py` (`prepare_worktree`, `remove_worktree`).
