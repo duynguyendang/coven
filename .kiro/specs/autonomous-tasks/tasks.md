@@ -128,7 +128,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_ready_gate.py tests/test_host.py tests/test_auto_merge.py`_
   - _Requirements: R4.2, R4.5_
 
-- [ ] 11. The dry read for subtasks the Scribe wrote
+- [x] 11. The dry read for subtasks the Scribe wrote
   - Goal: a subtask the Scribe wrote or changed is read once by the Elder Witch, who says READY or lists questions.
   - Context: requirement R4.3; a person's subtask gets the code gate only.
   - Read first: `src/coven/host.py` (`prepare`, `_scribe_answers`, `ask_witch`), `src/coven/agents.py` (`kind`), `docs/ADD.md` §4.4.
