@@ -396,6 +396,9 @@ The task view follows two rules (requirements S-04 and S-05, shown in `docs/DESI
 flow, with the same row chips and the same dialog order wherever it appears, and an empty or error
 state always names its next action. Both are planned; the dashboard does not fully follow them yet.
 
+While a session detail or a task's Conversation loads, the dashboard shows a skeleton (pulsing bars and a
+progress bar) instead of a bare "Loading". The session detail view answers in under 3 s (FR-REL-02).
+
 ## Talking to the council
 
 Open **Council chat** on the dashboard (`#/chat/<project>`). Type what you want, press
