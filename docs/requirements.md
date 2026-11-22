@@ -271,6 +271,7 @@ bind nothing, and no id above may be read as scope.
 | NFR-REL2 | Claims are leased; a host that stops loses its claims when the lease ends, and a restarted host frees what it was running. | Built |
 | NFR-REL3 | The cloud is a single instance (the Durable Object on Cloudflare); scale-out is not claimed. | Built (stated limit) |
 | NFR-REL4 | Board writes are safe to retry: an `Idempotency-Key` replays the first answer for 24 hours (`COVEN_IDEMPOTENCY_TTL`), scoped to the token; the host retries keyed writes after a network failure. | Built |
+| FR-REL-02 | The session detail view (`GET /v1/runs/<run_id>` and `/v1/runs/<run_id>/events`) answers in under 3 s. | Built. Measured by `server/test/handler.test.ts`: a 5,000-event session next to another 5,000-event run in the memory store answered in about 140 ms (detail) and 90 ms (events) on a WSL dev machine. The handler reads only the run's own ordered event ids, with no full scan and no N+1, so no fix was needed |
 
 ### 5.3 Performance
 
