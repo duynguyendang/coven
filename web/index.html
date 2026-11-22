@@ -1149,6 +1149,9 @@
   function defaultBoardProject() {
     if ((state.route.view === "board" || state.route.view === "chat") && state.route.project) return state.route.project;
     if (state.boardProject) return state.boardProject;
+    let saved = null;
+    try { saved = localStorage.getItem("coven_project"); } catch { /* storage may be blocked */ }
+    if (saved && state.projects.some((p) => p.project_id === saved)) return saved; // the project picked last time, not the first by name
     const named = state.projects.map((p) => p.project_id).filter((p) => p !== "unlinked");
     return named[0] || null;
   }
@@ -2988,8 +2991,8 @@
     root.querySelectorAll("[data-copy]").forEach((el) => el.addEventListener("click", async () => {
       try { await navigator.clipboard.writeText(el.dataset.copy); el.textContent = "copied"; } catch { el.textContent = "copy failed"; }
     }));
-    root.querySelectorAll("[data-board-project]").forEach((el) => el.addEventListener("change", () => { state.boardProject = el.value; go(`#/board/${encodeURIComponent(el.value)}`); }));
-    root.querySelectorAll("[data-chat-project]").forEach((el) => el.addEventListener("change", () => { state.boardProject = el.value; go(`#/chat/${encodeURIComponent(el.value)}`); }));
+    root.querySelectorAll("[data-board-project]").forEach((el) => el.addEventListener("change", () => { state.boardProject = el.value; try { localStorage.setItem("coven_project", el.value); } catch { /* ignore */ } go(`#/board/${encodeURIComponent(el.value)}`); }));
+    root.querySelectorAll("[data-chat-project]").forEach((el) => el.addEventListener("change", () => { state.boardProject = el.value; try { localStorage.setItem("coven_project", el.value); } catch { /* ignore */ } go(`#/chat/${encodeURIComponent(el.value)}`); }));
     root.querySelectorAll("#chat-text").forEach((box) => {
       const grow = () => {
         if (!(typeof CSS !== "undefined" && CSS.supports("field-sizing", "content"))) { // fallback: grow with the content, up to nine lines

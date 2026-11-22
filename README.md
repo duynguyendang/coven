@@ -125,6 +125,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 
 | Command | Purpose |
 | :--- | :--- |
+| `coven init [path] [--project NAME] [--telemetry-only] [--from CHECKOUT] [--portable] [--merge-check CMD] [--base-branch B] [--remote R]` | Connect any repository in one step: link the project, register it with the machine relay, install the hooks, copy the witches, the flow recipe and the `coven` skill it lacks (never overwrites), and make git ignore `.coven/`. Lists what it wrote |
 | `coven login --cloud-url URL --token TOKEN` | Store the cloud endpoint and token (`.coven/credentials.json`, mode 0600) |
 | `coven project link <id> [--cloud-url URL] [--token TOKEN]` | Bind this repo to a cloud project (`.coven/config.json`, mode 0600) |
 | `coven relay up` / `down` / `status` `[--machine]` | Manage the relay. `--machine`: one relay for every repo on this machine, instead of one per repo |
@@ -135,7 +136,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
-| `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too). Logs in to `COVEN_CLOUD_URL` (default: the AWS test cloud, token `COVEN_TOKEN`, default `dev`) when the saved login points elsewhere |
+| `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too). `--root PATH` hosts another repository. Logs in to `COVEN_CLOUD_URL` (token `COVEN_TOKEN`, default `dev`) when it differs from the saved login; with no `COVEN_CLOUD_URL` it keeps a saved login, and only with none at all uses the default test cloud |
 | `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--auto-merge] [--autonomous \| --manual] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
 | `coven host prepare [--only <spec>] [--note …]` | The Scribe proposes the witch, paths and verify for tasks that lack them; the host writes them on branch `coven/prepare-all` for you to merge |
 | `coven host status \| agents \| retry <task> [--recheck]` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again (`--recheck`, or `retry all --recheck`: check the work already in its worktree again, no model run); on the board, **Retry** does the same for any host |
@@ -149,6 +150,33 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven flow-stats [--json]` | Read-only report from the local event log, per task: rejections, rework loops, time from branch to first review verdict |
 | `coven flow lint` | Check `.kiro/agents/*.json` and the flow recipe (calls `kiro-cli agent validate` when installed) |
 | `coven flow run-step <verify\|guard\|close>` | A model-free flow step; Kiro runs it from the recipe, reading stdin |
+
+## Using Coven on another repository
+
+```bash
+coven login --cloud-url <url> --token <token>   # once per machine
+coven relay up --machine                        # once per machine; serves every repo below
+cd ~/code/atlas-api
+coven init --merge-check 'pytest -q'            # project name = folder name; --project to choose
+coven doctor                                    # then start a new Kiro session in this repo
+```
+
+`coven init` lists every file it wrote (`.kiro/hooks/telemetry.json`, `.kiro/agents/*.json`, the flow recipe,
+`.kiro/skills/coven`); review and commit them, except the hook commands unless you used `--portable`.
+It copies from a Coven checkout (the one it runs from, `--from PATH`, or `COVEN_TEMPLATES`). `--telemetry-only` skips the witches.
+Witches and the flow need `.kiro/agents` **on the base branch**, because a host builds in worktrees of it.
+
+What a host does in another repository is set in `.coven/config.json` (an environment variable, where there is one, wins):
+
+| Key | Meaning | Default |
+| :--- | :--- | :--- |
+| `merge_check` (`COVEN_MERGE_CHECK`) | command that must pass on the merged tree before a host merges | `make verify` if the repo has that target; **otherwise none, and the host will not merge** |
+| `base_branch` (`COVEN_BASE_BRANCH`) | branch builds start from and merges go to | the checked-out branch |
+| `remote` (`COVEN_REMOTE`) | git remote it fetches from and pushes to | `origin` |
+| `dependency_dirs` | installed-dependency folders linked into worktrees | the untracked ones found: `node_modules`, `.venv`, `venv`, `vendor/bundle`, `<folder>/node_modules` |
+
+One host per repository: run `./run-host.sh --root ~/code/atlas-api` (or `COVEN_ROOT=… coven host run`) for each, all sharing the machine relay.
+On a shared cloud, a token sees every project unless the cloud sets `COVEN_PROJECT_TOKENS="tokenA=atlas-api,tokenB=web|docs"` (the token must also be one of the cloud's real tokens): it then reads, ingests and decides only in the listed projects (ADD §7.1).
 
 ## Several projects
 
@@ -478,8 +506,9 @@ neither set the app uses `dev` and prints a warning at start-up; a persistent
 store (`COVEN_STORE=sqlite` or `dynamo`) refuses to start with the development token. Tokens
 are compared in constant time. The bearer header is accepted everywhere; the
 `?token=` query parameter is accepted only on `/v1/stream`, because a browser
-cannot set headers on an event stream. There is no user model and no per-project
-permission: one token sees the whole fleet.
+cannot set headers on an event stream. There is no user model. By default one token
+sees the whole fleet; `COVEN_PROJECT_TOKENS="tokenA=atlas-api,tokenB=web|docs"` limits a token to
+the listed projects (it still has to be one of the tokens above; `*` means all).
 
 ## Deploy
 

@@ -53,6 +53,16 @@ def current_branch(root: Path) -> str:
     return name
 
 
+def base_branch(root: Path) -> str:
+    """The branch builds start from and merges go to: the repo's `base_branch` when it names a branch that exists here, else the checked-out one."""
+    named = config.base_branch(root)
+    if named:
+        if _git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{named}", check=False):
+            return named
+        raise WorkError(f"base_branch {named!r} (in .coven/config.json or COVEN_BASE_BRANCH) is not a branch of this repository")
+    return current_branch(root)
+
+
 def dirty(root: Path) -> dict[str, str]:
     """Uncommitted paths (relative, `/` separated) and a fingerprint of each one's content."""
     done = subprocess.run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd=root,

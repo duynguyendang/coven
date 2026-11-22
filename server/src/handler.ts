@@ -13,7 +13,7 @@
  * boundary, not an unfinished feature.
  */
 
-import { authorised, type Env, type Scope } from "./auth.ts";
+import { authorised, projectScope, type Env, type Scope } from "./auth.ts";
 import { chatProblems, MAX_HUMAN_CHAT_CHARS, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES, WEB_ONLY_TYPES } from "./events.ts";
 import { IDEMPOTENT_PATHS, DEFAULT_TTL_SECONDS, KEY_PATTERN, bodyHash, idemId, scopeOf, type IdemEntry } from "./idempotency.ts";
 import { presented } from "./auth.ts";
@@ -166,7 +166,7 @@ function optionalString(body: Json, name: string): string | null {
  * The live stream. A browser that falls more than MAX_STREAM_BACKLOG behind is dropped
  * rather than buffered for: the queue is counted in bytes and checked before every write.
  */
-function eventStream(store: MemoryStore): Response {
+function eventStream(store: MemoryStore, allowed: Set<string> | null = null): Response {
   let cleanup = (): void => undefined;
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -179,6 +179,10 @@ function eventStream(store: MemoryStore): Response {
       write(": connected\n\n");
       const unsubscribe = store.subscribe((message) => {
         if (behind()) { stop(); return false; }
+        if (allowed) { // a limited token gets only its projects' messages (a dismissal names no project, so it gets none)
+          const project = message.project_id ?? message.event?.project_id ?? message.run?.project_id;
+          if (!project || !allowed.has(project)) return true;
+        }
         write(`event: ${message.kind}\ndata: ${JSON.stringify(message)}\n\n`);
         return true;
       });
@@ -245,12 +249,25 @@ export function createHandler(options: HandlerOptions): Handler {
     }
     if (seg[0] !== "v1") return null;
 
+    // A token limited to some projects (COVEN_PROJECT_TOKENS) sees and changes only those. Every route that names a project,
+    // a run, a claim, a council or a flow goes through `permit`; lists are filtered with `visible`.
+    const allowed = projectScope(presented(request.headers.get("authorization"), url, seg[1] === "stream"), env);
+    const permit = (projectId: string | null | undefined): void => {
+      if (allowed && (!projectId || !allowed.has(projectId))) throw new HttpError(403, "this token has no access to that project");
+    };
+    const visible = (projectId: string | null | undefined): boolean => !allowed || (!!projectId && allowed.has(projectId));
+    const scopedProject = (body: Json): string => {
+      const id = idField(body, "project_id");
+      permit(id);
+      return id;
+    };
+
     // ---- ingest
     if (method === "POST" && path === "/v1/events") {
       need(request, url, "ingest");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const runId = idField(body, "run_id");
       const raw = body.events ?? [];
       if (!Array.isArray(raw)) throw validation("events", "must be a list");
@@ -301,8 +318,9 @@ export function createHandler(options: HandlerOptions): Handler {
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const runId = idField(body, "run_id");
-      idField(body, "project_id");
+      scopedProject(body);
       if (!store.runs.has(runId)) throw new HttpError(404, "unknown run; send events before heartbeats");
+      permit(store.runs.get(runId)!.project_id);
       await store.heartbeat({
         run_id: runId,
         status: optionalString(body, "status"),
@@ -316,7 +334,7 @@ export function createHandler(options: HandlerOptions): Handler {
     // ---- reads
     if (method === "GET" && path === "/v1/projects") {
       need(request, url, "read");
-      const projects = await store.listProjects();
+      const projects = (await store.listProjects()).filter((project) => visible(project.project_id));
       // `?runs=0` is the light form the dashboard polls: no per-run detail.
       if (url.searchParams.get("runs") !== "0") {
         for (const project of projects) {
@@ -330,26 +348,31 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const projectId = url.searchParams.get("project_id");
       if (projectId && projectId.length > 128) throw validation("project_id", "too long");
-      return json(200, { runs: (await store.listRuns(projectId)).map((run) => decorate(run)) });
+      if (projectId) permit(projectId);
+      return json(200, { runs: (await store.listRuns(projectId)).filter((run) => visible(run.project_id)).map((run) => decorate(run)) });
     }
 
     if (method === "GET" && seg[1] === "runs" && seg.length === 3) {
       need(request, url, "read");
       const run = store.runs.get(seg[2]);
       if (!run) throw new HttpError(404, "unknown run");
+      permit(run.project_id);
       return json(200, { run: decorate(run), events: await store.runEvents(seg[2]) });
     }
 
     if (method === "GET" && seg[1] === "runs" && seg.length === 4 && seg[3] === "events") {
       need(request, url, "read");
       if (!store.runs.has(seg[2])) throw new HttpError(404, "unknown run");
+      permit(store.runs.get(seg[2])!.project_id);
       return json(200, { run_id: seg[2], events: await store.runEvents(seg[2]) });
     }
 
     if (method === "GET" && path === "/v1/councils") {
       need(request, url, "read");
+      const asked = url.searchParams.get("project_id");
+      if (asked) permit(asked);
       return json(200, {
-        councils: await store.listCouncils(url.searchParams.get("project_id"), url.searchParams.get("task_id")),
+        councils: (await store.listCouncils(asked, url.searchParams.get("task_id"))).filter((council) => visible(council.project_id)),
       });
     }
 
@@ -357,6 +380,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const council = store.councils.get(seg[2]);
       if (!council) throw new HttpError(404, "unknown council");
+      permit(council.project_id);
       return json(200, { council: { ...council }, events: await store.councilEvents(seg[2]) });
     }
 
@@ -365,7 +389,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "ingest");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const member = idField(body, "member");
       const taskId = idField(body, "task_id");
       if (body.paths !== undefined && (!Array.isArray(body.paths) || body.paths.length > 50 || !body.paths.every((p: unknown) => typeof p === "string" && p.length <= 300))) {
@@ -384,6 +408,7 @@ export function createHandler(options: HandlerOptions): Handler {
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const member = idField(body, "member");
+      if (allowed) permit(store.board.claims.get(seg[2])?.project_id);
       const result = seg[3] === "renew"
         ? await store.renewClaim(seg[2], member, body.lease_seconds, optionalString(body, "host_id"))
         : await store.releaseClaim(seg[2], member, optionalString(body, "reason") ?? "released", optionalString(body, "host_id"));
@@ -394,6 +419,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const projectId = url.searchParams.get("project_id");
       if (!projectId || projectId.length > 128) throw validation("project_id", "required");
+      permit(projectId);
       return json(200, store.boardView(projectId));
     }
 
@@ -402,6 +428,7 @@ export function createHandler(options: HandlerOptions): Handler {
       const projectId = url.searchParams.get("project_id");
       const task = url.searchParams.get("task") ?? "";
       if (!projectId || projectId.length > 128) throw validation("project_id", "required");
+      permit(projectId);
       if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
       return json(200, { project_id: projectId, task, items: store.thread(projectId, task) });
     }
@@ -411,7 +438,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const payload = { task: optionalString(body, "task") ?? "", state: "done", detail: `accepted by ${(optionalString(body, "author") ?? "someone").slice(0, 40)}` };
       const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_status", ts: now(), payload });
       if (problems.length) throw validation("task", problems.join("; "));
@@ -424,7 +451,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const payload = { task: optionalString(body, "task") ?? "", state: "queued", detail: `queued again by ${(optionalString(body, "author") ?? "someone").slice(0, 40)}` };
       const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_status", ts: now(), payload });
       if (problems.length) throw validation("task", problems.join("; "));
@@ -438,7 +465,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const payload = { task: optionalString(body, "task") ?? "", via: optionalString(body, "via") ?? "kiro-web",
         state: optionalString(body, "state") ?? "requested", author: (optionalString(body, "author") ?? "someone").slice(0, 40) };
       const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_dispatch", ts: now(), payload });
@@ -452,7 +479,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const task = optionalString(body, "task") ?? "";
       if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
       const event = await store.postWebPushRequest(projectId, task, (optionalString(body, "author") ?? "someone").slice(0, 40));
@@ -466,7 +493,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const task = optionalString(body, "task") ?? "";
       if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
       const decision = optionalString(body, "decision") ?? "";
@@ -485,7 +512,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "decide");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const reasons = optionalString(body, "reasons");
       const payload: Json = { plan: optionalString(body, "plan") ?? "", state: optionalString(body, "state") ?? "",
         author: (optionalString(body, "author") ?? "someone").slice(0, 40), ...(reasons ? { reasons: reasons.trim().slice(0, 300) } : {}) };
@@ -502,7 +529,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const payload = { note: optionalString(body, "note") ?? optionalString(body, "text") ?? "", kind: optionalString(body, "kind") ?? "note",
         task: optionalString(body, "task") ?? undefined, reply_to: optionalString(body, "reply_to") ?? undefined,
         author: (optionalString(body, "author") ?? "someone").slice(0, 40) };
@@ -518,7 +545,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       const payload: Json = {
         role: "human", kind: optionalString(body, "kind") ?? "ask", message: (optionalString(body, "message") ?? "").trim(),
         task: optionalString(body, "task") || undefined, to: optionalString(body, "to") || undefined,
@@ -537,6 +564,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const projectId = url.searchParams.get("project_id");
       if (!projectId || projectId.length > 128) throw validation("project_id", "required");
+      permit(projectId);
       return json(200, store.chatView(projectId, url.searchParams.get("after_new") === "1"));
     }
 
@@ -544,7 +572,8 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "read");
       const projectId = url.searchParams.get("project_id");
       if (projectId && projectId.length > 128) throw validation("project_id", "too long");
-      return json(200, { flows: await store.listFlows(projectId) });
+      if (projectId) permit(projectId);
+      return json(200, { flows: (await store.listFlows(projectId)).filter((flow) => visible(flow.project_id)) });
     }
 
     if (method === "GET" && seg[1] === "flows" && seg.length === 3) {
@@ -552,12 +581,13 @@ export function createHandler(options: HandlerOptions): Handler {
       const events = await store.flowEvents(seg[2]);
       if (!events) throw new HttpError(404, "unknown flow");
       const [flow] = (await store.listFlows()).filter((f) => f.flow_id === seg[2]);
+      permit(flow?.project_id);
       return json(200, { flow, events });
     }
 
     if (method === "GET" && path === "/v1/deviations") {
       need(request, url, "read");
-      return json(200, { deviations: await store.listDeviations() });
+      return json(200, { deviations: (await store.listDeviations()).filter((event) => visible(event.project_id)) });
     }
 
     if (method === "POST" && path === "/v1/seed/purge") {
@@ -566,7 +596,7 @@ export function createHandler(options: HandlerOptions): Handler {
       need(request, url, "ingest");
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
-      const projectId = idField(body, "project_id");
+      const projectId = scopedProject(body);
       let removed: number;
       try {
         removed = await store.purgeSeeded(projectId);
@@ -578,13 +608,14 @@ export function createHandler(options: HandlerOptions): Handler {
 
     if (method === "POST" && seg[1] === "events" && seg.length === 4 && seg[3] === "dismiss") {
       need(request, url, "any");
+      if (allowed) throw new HttpError(403, "a token limited to some projects cannot dismiss deviations");
       if (!(await store.dismiss(seg[2]))) throw new HttpError(404, "unknown event");
       return json(200, { event_id: seg[2], dismissed: true });
     }
 
     if (method === "GET" && path === "/v1/stream") {
       need(request, url, "read", true); // the only place the query-string token is accepted
-      return eventStream(store);
+      return eventStream(store, allowed);
     }
 
     throw new HttpError(404, "Not Found");

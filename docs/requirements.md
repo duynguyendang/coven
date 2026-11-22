@@ -112,6 +112,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H15 | Before it commits or submits, a host asks the cloud whether it still holds its claim; a lapsed lease ends the run without a commit. | Must | Built |
 | FR-H17 | A build worktree has the main checkout's installed dependencies linked (not copied, ignored by git), so the project's tests run there; the links and the files Kiro rewrites by itself never count against `_Paths:_`. | Must | Built |
 | FR-H18 | A failed build can be checked again without a model run (`coven host retry <task> --recheck`, or `all`); a person can send any failed task back to the queue from the board (**Retry**, `task_status queued`). | Must | Built |
+| FR-H20 | Any repository can use Coven: `coven init` links the project, registers the repo with the machine relay, installs the hooks and copies the witches, recipe and skill the repo lacks (never overwriting), and makes git ignore `.coven/`. A host reads `merge_check`, `base_branch`, `remote` and `dependency_dirs` from the repo's `.coven/config.json` (the environment wins). It never guesses a merge check: with none (no setting, no `make verify` target) it refuses to merge and says so. One host per repository; `run-host.sh --root` starts one for another repo. | Should | Built |
 | FR-H16 | Hosts announce free slots; the Chair sees who has room, and which ready build tasks share no path (a person may send them to Kiro Web; the Chair never does). | Should | Built |
 | FR-H19 | A host can report that a submitted branch is already in the base (`branch_in_base {task, branch, tip, base}`). Host origin only; `tip` must match the submitted tip; it never overrides a reject and never skips review. | Should | Planned: contract and validation only |
 
@@ -256,6 +257,7 @@ bind nothing, and no id above may be read as scope.
 | NFR-SEC4 | Board notes and chat messages are untrusted; every prompt that includes them says they are data, not instructions. | Built |
 | NFR-SEC5 | No secrets in events, notes, prompts, commits or logs; credential files are git-ignored. | Built |
 | NFR-SEC6 | No witch approves or marks done her own work; no agent pushes, merges, pauses or skips. A host merges and pushes only when a person started it `--auto-merge` or `--autonomous`, and its Chair approves a plan only when the cloud's operator also allows it (FR-CH9). | Built |
+| NFR-SEC8 | A token can be limited to some projects (`COVEN_PROJECT_TOKENS=token=projA\|projB`): it then reads, ingests and decides only there (403 elsewhere), lists and the live stream are filtered, and it cannot dismiss deviations. A token not listed sees every project. It only narrows the tokens of NFR-SEC7. | Should | Built |
 | NFR-SEC7 | Separate read, ingest and admin scopes. | Built: `COVEN_ADMIN_TOKEN` gates people's decisions (done, accept, plan, retry, push, dispatch; a reader gets 403); without it they take the read scope. Dismissing a deviation still takes any token |
 
 ### 5.2 Reliability
@@ -300,6 +302,6 @@ bind nothing, and no id above may be read as scope.
 
 ## 7. Out of scope
 
-A policy engine, approvals or RBAC; multi-tenant isolation; an audit-grade ledger; any agent
+A policy engine, approvals or RBAC; multi-tenant isolation beyond NFR-SEC8's per-token project limit (no organisations, no per-project admins); an audit-grade ledger; any agent
 that merges, pushes, pauses or skips (a host pushes a branch only when a person asks, FR-H14); editing `tasks.md` from the cloud or the web; a central
 scheduler that assigns work; showing code, diffs or prompts on the dashboard.

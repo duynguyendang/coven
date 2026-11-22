@@ -86,6 +86,35 @@ def project_id(root: Path | None = None) -> str:
     return load_config(root).get("project_id") or "unlinked"
 
 
+# Per-repo settings a host reads from `.coven/config.json` (an environment variable, where there is one, wins).
+#   merge_check       the command that must pass on a merged tree before a host merges (default: `make verify` when the repo has that target)
+#   dependency_dirs   installed-dependency folders a worktree links from the main checkout (default: found by looking)
+#   base_branch       the branch builds start from and merges go to (default: the branch that is checked out)
+#   remote            the git remote a host fetches from and pushes to (default: origin)
+DEFAULT_REMOTE = "origin"
+
+
+def repo_setting(root: Path | None, key: str):
+    value = load_config(root).get(key)
+    return value if value not in (None, "", []) else None
+
+
+def merge_check(root: Path | None = None) -> str | None:
+    """The check a host runs on a merged tree: `COVEN_MERGE_CHECK`, else `merge_check` of the repo's config, else None."""
+    value = os.environ.get("COVEN_MERGE_CHECK") or repo_setting(root, "merge_check")
+    return str(value) if value else None
+
+
+def remote(root: Path | None = None) -> str:
+    value = os.environ.get("COVEN_REMOTE") or repo_setting(root, "remote")
+    return str(value) if value else DEFAULT_REMOTE
+
+
+def base_branch(root: Path | None = None) -> str | None:
+    value = os.environ.get("COVEN_BASE_BRANCH") or repo_setting(root, "base_branch")
+    return str(value) if value else None
+
+
 def _socket_marker(root: Path | None = None) -> Path:
     return coven_dir(root) / "socket_path"
 

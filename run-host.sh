@@ -8,6 +8,7 @@
 #   ./run-host.sh --slots 3 --once        any other `coven host run` option goes through
 #   ./run-host.sh --manual                not autonomous (as is COVEN_AUTONOMOUS=0 ./run-host.sh)
 #   ./run-host.sh --reconcile             close the In review backlog by the SA's sign-off once, then exit
+#   ./run-host.sh --root ~/code/app       host another repository (it needs `coven init` first; set its merge check there)
 #
 # This script starts the host AUTONOMOUS by default (COVEN_AUTONOMOUS=1; `coven host run` itself is opt-in): auto-merge,
 # the Chair approves plans the Black Hat left with no P0 or P1 objection (only if the cloud sets COVEN_AUTONOMOUS_PLANS=1),
@@ -28,15 +29,6 @@ coven() { "${py[@]}" -m coven.cli "$@"; }
 
 command -v kiro-cli >/dev/null || { echo "run-host: kiro-cli is not on PATH" >&2; exit 1; }
 command -v "${py[0]}" >/dev/null || { echo "run-host: ${py[0]} is not on PATH" >&2; exit 1; }
-# The host runs the cloud's TypeScript natively in its checks (type stripping): Node 22.18 or newer.
-command -v node >/dev/null || { echo "run-host: node is not on PATH (Coven needs Node 22.18 or newer)" >&2; exit 1; }
-node_version="$(node -p 'process.versions.node' 2>/dev/null || echo 0.0.0)"
-IFS=. read -r node_major node_minor _ <<<"$node_version"
-if [ "${node_major:-0}" -lt 22 ] || { [ "$node_major" -eq 22 ] && [ "${node_minor:-0}" -lt 18 ]; }; then
-  echo "run-host: node $node_version is too old: Coven needs Node 22.18 or newer (see server/package.json engines)" >&2
-  exit 1
-fi
-
 agents=""; all=0; extra=(); reconcile=0
 # Autonomous unless the person says otherwise (COVEN_AUTONOMOUS=0, or --manual below).
 export COVEN_AUTONOMOUS="${COVEN_AUTONOMOUS:-1}"
@@ -46,14 +38,27 @@ while [ $# -gt 0 ]; do
     --agents) agents="${2:?--agents needs a list}"; shift ;;
     --manual) COVEN_AUTONOMOUS=0 ;;
     --reconcile) reconcile=1 ;;
+    --root) COVEN_ROOT="$(cd "${2:?--root needs a repository folder}" && pwd)" || exit 1; export COVEN_ROOT; shift ;;
     *) extra+=("$1") ;;
   esac
   shift
 done
 
+# Coven's own checks run the cloud's TypeScript natively (type stripping): Node 22.18 or newer. Another repository needs it only if it has such a server.
+if [ -f "$COVEN_ROOT/server/package.json" ]; then
+  command -v node >/dev/null || { echo "run-host: node is not on PATH (this repository needs Node 22.18 or newer)" >&2; exit 1; }
+  node_version="$(node -p 'process.versions.node' 2>/dev/null || echo 0.0.0)"
+  IFS=. read -r node_major node_minor _ <<<"$node_version"
+  if [ "${node_major:-0}" -lt 22 ] || { [ "$node_major" -eq 22 ] && [ "${node_minor:-0}" -lt 18 ]; }; then
+    echo "run-host: node $node_version is too old: this repository needs Node 22.18 or newer (see server/package.json engines)" >&2
+    exit 1
+  fi
+fi
+
 # 1. cloud login + project: the login follows COVEN_CLOUD_URL; the project is set once with `coven project link`.
-cloud_url="${COVEN_CLOUD_URL:-https://52-220-6-189.sslip.io}"
+# COVEN_CLOUD_URL wins; else a login already saved on this machine is kept; only with neither does it use the default test cloud.
 saved_url="$(coven doctor 2>&1 | sed -n 's/^cloud: //p' | head -n 1)"
+cloud_url="${COVEN_CLOUD_URL:-${saved_url:-https://52-220-6-189.sslip.io}}"
 if [ "${saved_url%/}" != "${cloud_url%/}" ]; then
   echo "host: logging in to $cloud_url (was: ${saved_url:-none})"
   coven login --cloud-url "$cloud_url" --token "${COVEN_TOKEN:-dev}" >/dev/null

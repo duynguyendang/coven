@@ -52,6 +52,37 @@ def cmd_link(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_init(args: argparse.Namespace) -> int:
+    from . import scaffold
+
+    if args.path:
+        root = Path(args.path).expanduser().resolve()
+    elif os.environ.get("COVEN_ROOT"):
+        root = _root()
+    else:  # the repository's top folder, wherever in it this runs
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+        root = Path(top.stdout.strip()) if top.returncode == 0 and top.stdout.strip() else Path.cwd().resolve()
+    try:
+        done = scaffold.init(root, args.project, telemetry_only=args.telemetry_only, source=args.source, portable=args.portable,
+                             merge_check=args.merge_check, base_branch=args.base_branch, remote=args.remote,
+                             cloud_url=args.cloud_url, token=args.token)
+    except scaffold.InitError as exc:
+        print(f"coven init: {exc}", file=sys.stderr)
+        return 2
+    print(f"{root}\nlinked to project {done['project']!r} ({done['config']})")
+    if done["written"]:
+        print("wrote (review and commit these):")
+        print("\n".join(f"  {name}" for name in done["written"]))
+    if done["kept"]:
+        print(f"kept {len(done['kept'])} file(s) the repository already had")
+    print(f"hooks: {done['hooks']} command(s) written" if done["hooks"] else "hooks: already up to date")
+    for note in done["notes"]:
+        print(f"note: {note}")
+    print("next:")
+    print("\n".join(f"  {line}" for line in done["next"]))
+    return 0
+
+
 def _spawn_relay(*, machine: bool, root: Path) -> int:
     env = os.environ.copy()
     src = str(Path(__file__).resolve().parents[1])
@@ -157,6 +188,7 @@ def cmd_hooks(args: argparse.Namespace) -> int:
     root = _root()
     if args.hooks_command == "install":
         changes = hooks.install(root, portable=args.portable)
+        config.register_root(root)  # the machine relay serves this repo from now on
         for name, old, new in changes:
             print(f"{name}: {old}\n  -> {new}")
         print(f"{len(changes)} hook command(s) updated" if changes else "hook commands already up to date")
@@ -389,6 +421,9 @@ def cmd_host(args: argparse.Namespace) -> int:
         print(f"coven host run: a host already runs in this working copy (pid {host.host_lock_pid(root)}); stop it first. "
               "Two hosts here would share one name and answer every message twice.", file=sys.stderr)
         return 2
+    if (runner.auto_merge or runner.autonomous) and not host.merge_check(root):
+        print("host: no merge check for this repository: it will not auto-merge anything. Set `merge_check` in .coven/config.json "
+              "(or COVEN_MERGE_CHECK) to the command that tests it.", file=sys.stderr, flush=True)
     fixed, problems = host.self_check(root)
     for line in fixed:
         print(f"host: self-check: {line}", flush=True)
@@ -661,6 +696,19 @@ def build_parser() -> argparse.ArgumentParser:
     link.add_argument("--cloud-url")
     link.add_argument("--token")
     link.set_defaults(func=cmd_link)
+
+    init = sub.add_parser("init", help="connect this repository to Coven: project, hooks and (unless --telemetry-only) the witches and the flow recipe")
+    init.add_argument("path", nargs="?", help="the repository (default: the git top folder here)")
+    init.add_argument("--project", help="project name (default: the folder name)")
+    init.add_argument("--telemetry-only", action="store_true", help="only the project link and the hooks; copy no agents or recipe")
+    init.add_argument("--from", dest="source", metavar="CHECKOUT", help="a Coven checkout to copy .kiro/agents and the recipe from (or set COVEN_TEMPLATES)")
+    init.add_argument("--portable", action="store_true", help="write plain `coven emit` in the hooks (needs coven on PATH), safe to commit")
+    init.add_argument("--merge-check", help="the command a host runs on a merged tree before it merges (default: `make verify` if the repo has that target)")
+    init.add_argument("--base-branch", help="the branch builds start from and merges go to (default: the checked-out branch)")
+    init.add_argument("--remote", help="the git remote a host fetches from and pushes to (default: origin)")
+    init.add_argument("--cloud-url")
+    init.add_argument("--token")
+    init.set_defaults(func=cmd_init)
 
     relay_parser = sub.add_parser("relay", help="manage the local relay")
     relay_sub = relay_parser.add_subparsers(dest="action", required=True)

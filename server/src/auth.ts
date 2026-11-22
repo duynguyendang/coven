@@ -63,3 +63,21 @@ export function authorised(
   for (const allowed of tokens(scope, env)) if (equal(token, allowed)) ok = true; // no early exit
   return ok;
 }
+
+/**
+ * Projects a token is limited to, or null for all of them. `COVEN_PROJECT_TOKENS` is a comma-separated list of
+ * `token=projectA|projectB` (`*` for all). It only narrows: a token must still be valid in `COVEN_TOKENS`,
+ * `COVEN_READ_TOKEN`, `COVEN_INGEST_TOKEN` or `COVEN_ADMIN_TOKEN`, and a token that is not listed sees every project.
+ */
+export function projectScope(token: string | null, env: Env = processEnv()): Set<string> | null {
+  if (!token) return null;
+  let found: Set<string> | null = null;
+  for (const entry of split(env.COVEN_PROJECT_TOKENS)) {
+    const at = entry.indexOf("=");
+    if (at < 1) continue;
+    if (!equal(token, entry.slice(0, at))) continue; // no early exit
+    const names = entry.slice(at + 1).split("|").map((name) => name.trim()).filter(Boolean);
+    found = names.includes("*") ? null : new Set([...(found ?? []), ...names]);
+  }
+  return found;
+}

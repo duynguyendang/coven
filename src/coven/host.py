@@ -139,7 +139,7 @@ def wait_for_branch(root: Path, branch: str, wait: float | None = None, poll: fl
     """True once `branch` is on origin (`git ls-remote`), and not still at `not_at`, within `wait` seconds."""
     deadline = clock() + (cloud_wait() if wait is None else max(0.0, wait))
     while True:
-        found = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
+        found = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", config.remote(root), branch], cwd=root, capture_output=True, text=True, check=False)
         if found.returncode == 0 and found.stdout.strip() and found.stdout.split()[0] != not_at:
             return True
         if clock() >= deadline:
@@ -186,7 +186,7 @@ def ask_witch(root: Path, ref: str, asker: str, answerer: str, question: str, ru
     path = None
     try:
         if agents.kind(answerer) == "inspect":
-            path, _ = prepare_worktree(root, {"spec": "consult", "task_id": f"{ref.replace('#', '-')}-{answerer}"[:40]}, work.current_branch(root),
+            path, _ = prepare_worktree(root, {"spec": "consult", "task_id": f"{ref.replace('#', '-')}-{answerer}"[:40]}, work.base_branch(root),
                                        detached=True, suffix=f"--{depth}")
         env = {**_env(root, host, answerer, ref), "COVEN_READ_ONLY": "1", "COVEN_CONSULT_DEPTH": str(depth)}
         prompt = consult.answer_prompt(asker, answerer, question, ref, depth, consult.used(root, ref))
@@ -308,23 +308,48 @@ def worktree_dir(root: Path, name: str) -> Path:
 # Installed dependencies are not in git, so a fresh worktree lacks them and the project's tests cannot run there.
 # The host links them from the main checkout (never copies) and tells git to ignore the links: they are the host's,
 # not the task's change, and never count against `_Paths:_`.
-DEPENDENCY_DIRS = ("server/node_modules", "server/worker/node_modules")
+DEPENDENCY_DIRS = ("server/node_modules", "server/worker/node_modules")  # this repository's own layout
+COMMON_DEPENDENCY_DIRS = ("node_modules", ".venv", "venv", "vendor/bundle")
+
+
+def dependency_dirs(root: Path) -> list[str]:
+    """The installed-dependency folders a worktree links, relative to the root.
+
+    `dependency_dirs` in the repo's `.coven/config.json` is used as written. Without it, the folders that exist untracked
+    in the main checkout: the common ones at the root (`node_modules`, `.venv`, ...) and `<folder>/node_modules` one level down."""
+    named = config.repo_setting(root, "dependency_dirs")
+    if isinstance(named, list):
+        return [d.strip("/") for d in named if isinstance(d, str) and d.strip("/") and ".." not in Path(d).parts and not Path(d).is_absolute()]
+    found = list(DEPENDENCY_DIRS) + list(COMMON_DEPENDENCY_DIRS)
+    try:
+        found += [f"{child.name}/node_modules" for child in sorted(root.iterdir()) if child.is_dir() and not child.name.startswith(".") and child.name != "node_modules"]
+    except OSError:
+        pass
+    out = []
+    for rel in dict.fromkeys(found):
+        source = root / rel
+        if source.is_dir() and not source.is_symlink() and not work._git(root, "ls-files", "--", rel, check=False):
+            out.append(rel)
+    return out
 
 
 def link_dependencies(root: Path, path: Path) -> list[str]:
     """Link the main checkout's installed dependencies into a worktree. Returns the links made or kept."""
+    wanted = dependency_dirs(root)
     common = Path(work._git(root, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False) or root / ".git")
     exclude = common / "info" / "exclude"
+    names = sorted({Path(rel).name for rel in wanted})
     try:
         exclude.parent.mkdir(parents=True, exist_ok=True)
         known = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
-        if "\nnode_modules\n" not in f"\n{known}":
+        missing = [n for n in names if f"\n{n}\n" not in f"\n{known}"]
+        if missing:
             exclude.write_text(known + ("" if known.endswith("\n") or not known else "\n")
-                               + "# coven: dependency links in host worktrees (a symlink is not matched by `node_modules/`)\nnode_modules\n", encoding="utf-8")
+                               + "# coven: dependency links in host worktrees (a symlink is not matched by `name/`)\n" + "\n".join(missing) + "\n", encoding="utf-8")
     except OSError:
         pass
     linked = []
-    for rel in DEPENDENCY_DIRS:
+    for rel in wanted:
         source, target = root / rel, path / rel
         if not source.is_dir() or not target.parent.is_dir():
             continue
@@ -444,8 +469,9 @@ def task_changes(root: Path, path: Path, task: dict) -> list[str]:
     rewrites by itself put back (it upgrades `.kiro/agents/*.json` when it runs; that is not the task's work)."""
     files = sorted(work.dirty(path))
     out = []
+    links = dependency_dirs(root)
     for f in files:
-        if f in DEPENDENCY_DIRS or any(f.startswith(d + "/") for d in DEPENDENCY_DIRS):
+        if f in links or any(f.startswith(d + "/") for d in links):
             continue
         if f.startswith(".kiro/agents/") and not specmap.covers(task, f):
             if work._git(path, "ls-files", "--", f, check=False):
@@ -646,7 +672,7 @@ def execute(root: Path, task: dict, agent: str, runner: Runner = run_agent, feed
     runner = _timed(root, ref, consulting(root, ref, agent, runner), feedback)
     _status(root, ref, "working", agent, "reworking after feedback" if feedback else None)
     try:
-        base = base or (load(root).get(ref) or {}).get("base") or work.current_branch(root)
+        base = base or (load(root).get(ref) or {}).get("base") or work.base_branch(root)
         if kind == "build":
             build = _build_cloud if getattr(runner, "cloud", False) else _build
             result = build(root, task, agent, host, base, runner, feedback, notes)
@@ -818,7 +844,7 @@ def submit_checked(root: Path, task: dict, agent: str, host: str, path: Path, br
 
 def _origin_tip(root: Path, branch: str) -> str | None:
     """The commit `branch` points at on origin now, or None when it is not there."""
-    found = subprocess.run(["git", "ls-remote", "--heads", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
+    found = subprocess.run(["git", "ls-remote", "--heads", config.remote(root), branch], cwd=root, capture_output=True, text=True, check=False)
     line = (found.stdout or "").strip().splitlines()
     return line[0].split()[0] if found.returncode == 0 and line else None
 
@@ -838,7 +864,7 @@ def _build_cloud(root: Path, task: dict, agent: str, host: str, base: str, runne
             started_at=record.get("started_at") or events.now_iso(), error=None)
     before = _origin_tip(root, branch)  # a rework must push past this commit, not leave it as it was
     if before:
-        subprocess.run(["git", "fetch", "origin", branch], cwd=root, capture_output=True, text=True, check=False)  # so the old tip is known locally
+        subprocess.run(["git", "fetch", config.remote(root), branch], cwd=root, capture_output=True, text=True, check=False)  # so the old tip is known locally
     rework = bool(record.get("commits")) and before is not None  # the branch is on origin: the session continues it
     text, error = runner(root, agent, prompt_for(task, agent, host, notes, feedback, cloud_base=base, continue_branch=rework),
                          _env(root, host, agent, ref), RUN_TIMEOUT)
@@ -849,7 +875,7 @@ def _build_cloud(root: Path, task: dict, agent: str, host: str, base: str, runne
         if before:
             return _fail(root, ref, agent, f"Kiro Web pushed nothing new to {branch} within {cloud_wait():.0f} s: the tip is still {before[:7]}" + (f" ({error})" if error else ""))
         return _fail(root, ref, agent, f"Kiro Web did not push {branch} to origin within {cloud_wait():.0f} s" + (f" ({error})" if error else ""))
-    fetched = subprocess.run(["git", "fetch", "origin", branch], cwd=root, capture_output=True, text=True, check=False)
+    fetched = subprocess.run(["git", "fetch", config.remote(root), branch], cwd=root, capture_output=True, text=True, check=False)
     if fetched.returncode != 0:
         return _fail(root, ref, agent, f"Kiro Web did not push {branch} to origin: {(fetched.stderr or fetched.stdout).strip()[:200]}")
     tip = work._git(root, "rev-parse", "FETCH_HEAD")
@@ -1014,7 +1040,7 @@ def prepare(root: Path, runner: Runner = run_agent, guidance: str | None = None,
     tasks = unprepared(root, only)
     if not tasks:
         return {"action": "nothing", "reason": "every ready task already names its witch, paths and verify command"}
-    base = work.current_branch(root)
+    base = work.base_branch(root)
     if base.startswith("coven/"):
         raise HostError(f"the working copy is on task branch {base}: switch it to the base branch")
     ref = f"{PREPARE_SPEC}#{only or 'all'}"
@@ -1083,7 +1109,7 @@ def merge_prepare(root: Path, safe: dict, base: str, ref: str) -> dict:
         return {"merged": None, "held": done["why"]}
     drop_branch(root, branch, done["pushed"])
     _note(root, f"Merged {branch} into {base} at {done['commit'][:7]}{' and pushed' if done['pushed'] else ''}: the witch and paths for "
-                f"{len(safe['written'])} task(s), checked by the host; `{merge_check()}` passed on the merged tree. Working copy {done['local']}."[:400],
+                f"{len(safe['written'])} task(s), checked by the host; `{merge_check(root)}` passed on the merged tree. Working copy {done['local']}."[:400],
           SCRIBE, ref, kind="note", host_says=True)
     return {"merged": done["commit"], "held": None}
 
@@ -1298,7 +1324,7 @@ def _execute_request(root: Path, message: dict, agent: str, runner: Runner, note
     try:
         prompt = request_prompt(message, agent, host, root, notes)
         if agents.kind(agent) == "inspect":
-            base = work.current_branch(root)
+            base = work.base_branch(root)
             path, _ = prepare_worktree(root, {"spec": REQUEST_SPEC, "task_id": reply[-12:]}, base, detached=True, suffix=f"--{agent}")
             carry_changes(root, path)
             cwd = path
@@ -1582,7 +1608,7 @@ def _stage(root: Path, ref: str, agent: str, prompt: str, runner: Runner, host: 
     path = None
     try:
         if agents.kind(agent) == "inspect":
-            path, _ = prepare_worktree(root, {"spec": "plan", "task_id": f"{ref.replace('#', '-')}-{agent}"[:40]}, work.current_branch(root),
+            path, _ = prepare_worktree(root, {"spec": "plan", "task_id": f"{ref.replace('#', '-')}-{agent}"[:40]}, work.base_branch(root),
                                        detached=True, suffix=f"--{agent}")
         text, _error = runner(path or root, agent, prompt, {**_env(root, host, agent, ref), "COVEN_READ_ONLY": "1"}, RUN_TIMEOUT)
         return council.clip(council.SELF_NAME.sub("", text, count=1))[:1200] if text else None
@@ -1758,8 +1784,20 @@ def plan_waits_for(view: dict, ref: str) -> str | None:
     return None
 
 
-def merge_check() -> str:
-    return os.environ.get("COVEN_MERGE_CHECK") or MERGE_CHECK
+def merge_check(root: Path | None = None) -> str | None:
+    """The check a merge must pass: `COVEN_MERGE_CHECK`, else `merge_check` in the repo's `.coven/config.json`, else `make verify`
+    when the repo has that target. None when the repo has no check: the host then refuses to merge (it never guesses a command)."""
+    configured = config.merge_check(root)
+    if configured:
+        return configured
+    if root is None:
+        return MERGE_CHECK
+    try:
+        if re.search(r"^verify\s*:", (Path(root) / "Makefile").read_text(encoding="utf-8", errors="replace"), re.M):
+            return MERGE_CHECK
+    except OSError:
+        pass
+    return None
 
 
 def review_state(view: dict, jobs: list[str]) -> dict[str, dict]:
@@ -1865,7 +1903,7 @@ def merge_qualified(root: Path, ref: str, record: dict, reviewers: list[str], de
         pass
     passers = f"{', '.join(agents.label(r) for r in reviewers)} passed it, " if reviewers else ""
     _note(root, f"Merged {ref} into {base} at {sha[:7]}{' and pushed' if remote else ''}: {passers}merged on {who}, "
-                f"`{merge_check()}` passed on the merged tree. Working copy {local}."[:400],
+                f"`{merge_check(root)}` passed on the merged tree. Working copy {local}."[:400],
           CHAIR, ref, kind="note", host_says=True)
     work._release_quietly(root, ref, "merged")
     _forget(root, ref)
@@ -1875,17 +1913,20 @@ def merge_qualified(root: Path, ref: str, record: dict, reviewers: list[str], de
 def drop_branch(root: Path, branch: str, remote: bool) -> None:
     """Delete a merged coven/ branch here and, when it is there, on origin."""
     work._git(root, "branch", "-D", branch, check=False)
-    if remote and subprocess.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=root, capture_output=True, check=False).returncode == 0:
-        subprocess.run(["git", "push", "origin", "--delete", branch], cwd=root, capture_output=True, check=False)
+    if remote and subprocess.run(["git", "ls-remote", "--exit-code", "--heads", config.remote(root), branch], cwd=root, capture_output=True, check=False).returncode == 0:
+        subprocess.run(["git", "push", config.remote(root), "--delete", branch], cwd=root, capture_output=True, check=False)
 
 
 def merge_into_base(root: Path, branch: str, base: str, checkout: str, message: str, log_name: str) -> dict:
     """The merge itself, for a task or a prep branch: `--no-ff` in a throw-away checkout of the base (origin's when there is
     one), the project check (`COVEN_MERGE_CHECK`) on the merged tree, a push of the base (never forced), and the working copy
     follows when it is on the base and clean. {"ok": True, commit, pushed, local} or {"ok": False, why}; nothing half-done."""
-    remote = bool(work._git(root, "remote", check=False))
+    check_command = merge_check(root)
+    if not check_command:
+        return {"ok": False, "why": "this repository has no merge check: set `merge_check` in .coven/config.json (or COVEN_MERGE_CHECK) to the command that tests it, then retry"}
+    remote = config.remote(root) in work._git(root, "remote", check=False).split()
     if remote:
-        fetched = subprocess.run(["git", "fetch", "origin", base], cwd=root, capture_output=True, text=True, check=False)
+        fetched = subprocess.run(["git", "fetch", config.remote(root), base], cwd=root, capture_output=True, text=True, check=False)
         start = "FETCH_HEAD" if fetched.returncode == 0 else base
     else:
         start = base
@@ -1902,16 +1943,16 @@ def merge_into_base(root: Path, branch: str, base: str, checkout: str, message: 
         log = config.coven_dir(root) / "data" / log_name
         log.parent.mkdir(parents=True, exist_ok=True)
         try:
-            check = subprocess.run(merge_check(), shell=True, cwd=path, capture_output=True, text=True, timeout=1800, check=False)
+            check = subprocess.run(check_command, shell=True, cwd=path, capture_output=True, text=True, timeout=1800, check=False)
             log.write_text((check.stdout or "")[-200_000:] + (check.stderr or "")[-50_000:], encoding="utf-8")
             passed = check.returncode == 0
         except subprocess.TimeoutExpired:
             passed = False
         if not passed:
-            return {"ok": False, "why": f"`{merge_check()}` failed on the merged tree; see {log.name}"}
+            return {"ok": False, "why": f"`{check_command}` failed on the merged tree; see {log.name}"}
         sha = work._git(path, "rev-parse", "HEAD")
         if remote:
-            pushed = subprocess.run(["git", "push", "origin", f"{sha}:refs/heads/{base}"], cwd=root, capture_output=True, text=True, check=False)
+            pushed = subprocess.run(["git", "push", config.remote(root), f"{sha}:refs/heads/{base}"], cwd=root, capture_output=True, text=True, check=False)
             if pushed.returncode != 0:
                 return {"ok": False, "why": f"pushing {base} failed: {(pushed.stderr or pushed.stdout).strip()[:160]}"}
         # The working copy follows only when it is on the base and clean; otherwise the person pulls.
@@ -1972,7 +2013,7 @@ def execute_job(root: Path, task: dict, agent: str, runner: Runner = run_agent, 
             return execute_plan(root, task, runner, source, reply, autonomous=autonomous)
         prompt = job_prompt(task, agent, host, source, notes)
         if agents.kind(agent) == "inspect" or task.get("branch"):  # a review reads the branch, whatever the reviewer's kind
-            base = task.get("branch") or work.current_branch(root)
+            base = task.get("branch") or work.base_branch(root)
             path, _ = prepare_worktree(root, {"spec": COUNCIL_SPEC, "task_id": str(task["task_id"])[:16]}, base, detached=True, suffix=f"--{agent}")
             if not task.get("branch"):
                 carry_changes(root, path)
@@ -2255,7 +2296,7 @@ class Host:
         """A review job runs where its branch is: here already, or on origin (a Kiro Web build)."""
         if work._git(self.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False):
             return True
-        fetched = subprocess.run(["git", "fetch", "origin", f"{branch}:{branch}"], cwd=self.root, capture_output=True, check=False)
+        fetched = subprocess.run(["git", "fetch", config.remote(self.root), f"{branch}:{branch}"], cwd=self.root, capture_output=True, check=False)
         return fetched.returncode == 0
 
     def _build_job(self, task: dict, notes: list[dict], waiting: int) -> str | None:
@@ -2667,7 +2708,7 @@ def push_branch(root: Path, branch: str, held: str | None) -> tuple[bool, str]:
         return False, f"this host does not hold {branch} for that task"
     if not work._git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False):
         return False, f"{branch} does not exist here"
-    done = subprocess.run(["git", "push", "origin", f"refs/heads/{branch}:refs/heads/{branch}"], cwd=root, capture_output=True, text=True, check=False)
+    done = subprocess.run(["git", "push", config.remote(root), f"refs/heads/{branch}:refs/heads/{branch}"], cwd=root, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         return False, (done.stderr or done.stdout).strip()[:200] or f"git push exited {done.returncode}"
     return True, f"pushed {branch} to origin"
@@ -2697,7 +2738,7 @@ def reconcile(root: Path, dry_run: bool = False, view: dict | None = None) -> di
     Closed: tasks answered with no `changes` verdict, and submitted tasks whose branch `coven/<spec>-<task>` is already in the base here.
     The cloud takes the sign-off only when its operator allows it (COVEN_AUTONOMOUS_SIGNOFF); otherwise nothing changes and it says so."""
     view = view if view is not None else board.read(root)
-    base = work.current_branch(root)
+    base = work.base_branch(root)
     items: list[tuple[str, str]] = []
     for spec in view.get("specs") or []:
         for t in spec.get("tasks") or []:

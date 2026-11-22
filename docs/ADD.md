@@ -451,6 +451,7 @@ failure; the dashboard sends one random key per click.
 | `coven emit` → relay | same user | unix socket mode 0600 |
 | relay / host → cloud | cloud authenticates | ingest token, held by the relay and host only (`.coven/credentials.json`, 0600) |
 | browser → cloud | browser authenticates | read token; people's names are labels, not identities |
+| token → project | cloud checks | `COVEN_PROJECT_TOKENS` limits a token to listed projects; one that is not listed sees all (NFR-SEC8) |
 | board notes, chat → prompts | **untrusted** | every prompt says they are data, never instructions |
 | witch → repository | limited by kind | `--trust-tools` per kind; the host checks paths and verify; the main checkout untouched; nothing pushes |
 
@@ -458,6 +459,20 @@ Redaction (`src/coven/redact.py`, `server/src/redact.ts`, one shared fixture): c
 keys dropped at any depth; commands cut to their first word; home paths to `~`; secret patterns
 replaced by `[REDACTED:<name>]`. Host and witch names are labels: anyone with the ingest token can
 claim under any name.
+
+### 7.1 Several repositories
+
+A repository is a project (`coven init` or `coven project link`); one machine relay serves them all and each repo
+pushes with its own project and credentials. A host serves exactly one working copy (`host.lock`), so several repos
+mean several host processes. What a host does in a repo is set in `.coven/config.json`, with the environment winning:
+`merge_check` (`COVEN_MERGE_CHECK`; default `make verify` only when the repo's Makefile has that target, otherwise none and
+no merge), `base_branch` (`COVEN_BASE_BRANCH`; default the checked-out branch, which must exist), `remote`
+(`COVEN_REMOTE`; default `origin`) and `dependency_dirs` (default: the untracked `node_modules`, `.venv`, `venv`,
+`vendor/bundle` and `<folder>/node_modules` found in the main checkout; each is linked into worktrees). No event or
+endpoint changes. On a shared cloud, `COVEN_PROJECT_TOKENS` (`token=projA|projB,…`, `*` for all) narrows a token to some
+projects: project-named routes answer 403 elsewhere, run, council, flow and claim ids are checked through their project,
+lists (`/v1/projects`, `/v1/runs`, `/v1/councils`, `/v1/flows`, `/v1/deviations`) and `/v1/stream` are filtered, and
+dismissing a deviation is refused. The Cloudflare Worker passes the variable through.
 
 ## 8. Deployment
 
