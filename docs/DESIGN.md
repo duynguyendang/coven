@@ -367,9 +367,9 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
   session; FINISHED or FAILED once it ended. Always visible for a run; age since the last heartbeat beside it.
 - **Number tile:** the label in caps, the number in 22 px mono, one line of context (*2 need a
   host*). The whole tile is a button with an accessible name that includes the number.
-- **Task row:** in a column, one line per task: mono id, title, the witch (icon + name) and one
-  badge (its state, *Needs a host*, *Pass* / *Changes* for a review job, *Merged*). In review, a build's reviews are its
-  Test, Attack and SA pills. Selecting it opens
+- **Task row:** in a column, one line per task: mono id, title, then the chips in the S-04 order: state
+  (*Needs a host*, *Pass* / *Changes* for a review job, *Merged*), the witch (icon + name), then a build's
+  Test, Attack and SA pills in review. Selecting it opens
   the **task dialog**.
 - **Task dialog:** a native modal `<dialog>` (Esc, a click outside or *Close*); the title names the
   task. It shows the witch, the merged line (*Merged into main at abc1234 · passed by … · decided by
