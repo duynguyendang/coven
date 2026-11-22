@@ -528,6 +528,13 @@
   .plan .decide .why { flex: 1 1 14rem; min-inline-size: 0; padding: 4px 8px; }
   .card > .head { padding: 11px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .empty { padding: 26px 16px; color: var(--muted); font-size: 0.8125rem; }
+  .skel { padding: 16px; display: grid; gap: 10px; }
+  .skel .bar { block-size: 12px; border-radius: 6px; background: var(--line); animation: pulse 1.8s ease-in-out infinite; }
+  .skel .bar:nth-child(2) { inline-size: 80%; }
+  .skel .bar:nth-child(3) { inline-size: 55%; }
+  .skel progress { inline-size: 100%; block-size: 6px; }
+  li.skel { list-style: none; padding: 6px 0; }
+  @media (prefers-reduced-motion: reduce) { .skel .bar { animation: none; } }
   .empty ol { margin: 10px 0 0 18px; padding: 0; line-height: 1.9; }
   .empty code, .note code { color: var(--text); font-family: var(--mono); font-size: 0.75rem; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 
@@ -811,7 +818,7 @@
       <div class="spacer"></div>
       <span id="stream-pill" class="pill" role="status">CONNECTING</span>
     </header>
-    <main id="main" tabindex="-1"><div class="empty">Loading…</div></main>
+    <main id="main" tabindex="-1"><div class="skel" role="status" aria-busy="true"><span class="sr">Loading…</span><div class="bar"></div><div class="bar"></div><progress aria-hidden="true"></progress></div></main>
     <footer>
       <details><summary>What Coven records and what it changes</summary>
         <p>Coven records tool calls after they happen: intent, programs, exit codes, file paths and sizes; never output, file contents or command arguments.</p>
@@ -1824,7 +1831,7 @@
   /** The task's conversation: notes, statuses, jobs and chat in one thread. Open when the task opens, unless a person folded it. */
   function threadBox(t) {
     const open = closedThreads.has(t.ref) ? "" : " open";
-    return `<details class="convo" data-thread="${esc(t.ref)}" data-key="thread-${esc(t.ref)}"${open}><summary>Conversation</summary><ol class="items" aria-live="polite">${threadItems.get(t.ref) ?? '<li class="hint">Loading…</li>'}</ol></details>`;
+    return `<details class="convo" data-thread="${esc(t.ref)}" data-key="thread-${esc(t.ref)}"${open}><summary>Conversation</summary><ol class="items" aria-live="polite">${threadItems.get(t.ref) ?? '<li class="skel" role="status" aria-busy="true"><span class="sr">Loading the conversation…</span><div class="bar"></div><div class="bar"></div><progress aria-hidden="true"></progress></li>'}</ol></details>`;
   }
   const THREAD_LABEL = { board_note: "note", task_status: "status", task_created: "job", chat_message: "chat", task_claimed: "claimed",
     task_released: "released", push_request: "push asked", push_done: "push", plan_proposed: "plan", plan_decision: "decision" };
@@ -2568,7 +2575,7 @@
 
   function sessionView() {
     const run = state.run;
-    if (!run) return `${sessionHeader(null)}<div class="card"><div class="empty">Loading session…</div></div>`;
+    if (!run) return `${sessionHeader(null)}<div class="card"><div class="skel" role="status" aria-busy="true"><span class="sr">Loading session…</span><div class="bar"></div><div class="bar"></div><div class="bar"></div><progress aria-hidden="true"></progress></div></div>`;
     const events = state.events;
     const calls = events.filter((e) => e.type === "tool_call");
     const first = events.find((e) => !COUNCIL_TYPES.has(e.type));

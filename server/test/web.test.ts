@@ -2280,3 +2280,28 @@ describe("CSS font sizes", () => {
     assert.deepEqual(small, []);
   });
 });
+
+describe("loading states of session detail and the thread box", () => {
+  const html = readFileSync(join(webDir, "index.html"), "utf8");
+  const skeleton = /class="skel" role="status" aria-busy="true"/;
+
+  test("session detail shows a skeleton with a progress indicator, not bare Loading text", () => {
+    const view = html.slice(html.indexOf("function sessionView()"), html.indexOf("const events = state.events;"));
+    assert.match(view, skeleton);
+    assert.match(view, /<progress aria-hidden="true">/);
+    assert.doesNotMatch(view, /class="empty">Loading/);
+  });
+
+  test("the thread box shows a skeleton until its items arrive", () => {
+    const box = html.slice(html.indexOf("function threadBox(t)"), html.indexOf("const THREAD_LABEL"));
+    assert.match(box, /class="skel" role="status" aria-busy="true"/);
+    assert.match(box, /<progress aria-hidden="true">/);
+    assert.doesNotMatch(box, /class="hint">Loading/);
+  });
+
+  test("the page shell starts with a busy status, not a bare Loading", () => {
+    const main = html.match(/<main id="main"[^>]*>.*<\/main>/)![0];
+    assert.match(main, skeleton);
+    assert.doesNotMatch(main, /class="empty">Loading/);
+  });
+});
