@@ -814,6 +814,24 @@ describe("session screen", () => {
     assert.ok(lines().includes("Online hosts: 2, was 1"), "the count change is stated");
     await go("#/");
   });
+  test("chat head: a host seen online in an earlier poll and offline now is named with its last seen; first load and a never-online host show nothing", async () => {
+    const hostEv = (member: string, secs: number) =>
+      ({ ...ev(`member_${member}`, "dropn", "host_online", { agents: ["elf"], slots: 1, running: [] }, secs), member });
+    const notice = () => [...doc().querySelectorAll(".chat-head .who-on.off")].map((e) => e.textContent!.replace(/\s+/g, " ").trim()).filter((t) => /went offline/.test(t));
+    // d2 is already offline on the first load, d1 is online for about 3 more seconds
+    await send("dropn", "member_d2", [hostEv("d2", 600)]);
+    await send("dropn", "member_d1", [hostEv("d1", 147)]);
+    await go("#/chat/dropn", 600);
+    assert.deepEqual(notice(), [], "first load: nothing, and a host never seen online is not a drop");
+    await wait(4000);
+    await go("#/");
+    await go("#/chat/dropn", 600);
+    const lines = notice();
+    assert.equal(lines.length, 1, "only the host that was online drops");
+    assert.match(lines[0], /^Host d1 went offline \(last seen 2 min ago\)$/);
+    assert.doesNotMatch(lines[0], /d2/);
+    await go("#/");
+  });
   test("board: a project with every host online shows no host line", async () => {
     await go("#/board/lab", 600);
     assert.equal(doc().querySelector(".host-drop"), null);

@@ -1740,6 +1740,18 @@
     }
     return out;
   }
+  const hostAgo = (s) => { const m = Math.floor(s / 60); return m < 1 ? "under 1 min ago" : m < 180 ? `${m} min ago` : m < 2880 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} days ago`; };
+  /** Chat head: a host this page saw online in an earlier poll that is offline now. First load, or a host never seen online, shows nothing. */
+  function hostWentOffline(list, project) {
+    const hosts = (list || []).filter((h) => h && typeof h.host === "string");
+    const prev = state.hostsSeenOn && state.hostsSeenOn.project === project ? state.hostsSeenOn.names : new Set();
+    const dropped = hosts.filter((h) => !h.online && prev.has(h.host));
+    state.hostsSeenOn = { project, names: new Set([...prev, ...hosts.filter((h) => h.online).map((h) => h.host)]) };
+    return dropped.map((h) => {
+      const age = secondsSince(h.last_seen);
+      return `<span class="who-on off" role="status">Host <b>${esc(h.host)}</b> went offline${age === null ? "" : ` (last seen ${hostAgo(age)})`}</span>`;
+    }).join("");
+  }
   /** Plain lines about hosts that dropped, from `last_seen` and `agents` only: a witch that some host listed and no online host lists,
       with the host that had her seen most recently; and the online-host count when it changed while this page was open. Static text. */
   function hostDropLines(list, project) {
@@ -1753,7 +1765,7 @@
       if (age === null) continue;
       for (const a of listed(h)) if (!onlineNow.has(a) && WITCHES[a] && (!lastSeen.has(a) || age < lastSeen.get(a).age)) lastSeen.set(a, { host: h.host, age });
     }
-    const ago = (s) => { const m = Math.floor(s / 60); return m < 1 ? "under 1 min ago" : m < 180 ? `${m} min ago` : m < 2880 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} days ago`; };
+    const ago = hostAgo;
     const lines = [...lastSeen].map(([slug, v]) => `${AGENT_NAME[slug]} has no online host (host ${v.host} last seen ${ago(v.age)})`);
     const shown = lines.slice(0, 4);
     if (lines.length > shown.length) shown.push(`${lines.length - shown.length} more witches have no online host`);
@@ -2401,7 +2413,7 @@
       </form>`;
     return `<div class="chat-page">${demoBanner(seededProject(project) || showSeed)}${pageHeader({ crumbs, title: `Council chat · ${project}`,
         lede: "You decide; the council advises and dispatches. Everyone signed in speaks as Human; a rejection is the one message that binds." })}
-      <div class="chat-head">${status}<span class="spacer"></span>${picker}
+      <div class="chat-head">${status}${hostWentOffline(c.hosts, project)}<span class="spacer"></span>${picker}
         <button class="act quiet" type="button" data-new-chat data-key="new-chat"${real.length ? "" : " disabled"} title="Start a fresh conversation: the Chair forgets this one">${icon("plus")}<span>New chat</span></button></div>
       ${hostDropHtml(c.hosts, project)}
       <div class="thread" id="chat-thread">${thread}</div>${compose}</div>`;
