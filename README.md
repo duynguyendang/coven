@@ -392,6 +392,10 @@ Kiro loads the skill `.kiro/skills/coven-board/SKILL.md` and loops: `coven work 
 
 You review the branch, merge it, and tick the task. Keep `coven relay up --machine` running so claims stay alive.
 
+The task view follows two rules (requirements S-04 and S-05, shown in `docs/DESIGN.md`): a task is one
+flow, with the same row chips and the same dialog order wherever it appears, and an empty or error
+state always names its next action. Both are planned; the dashboard does not fully follow them yet.
+
 ## Talking to the council
 
 Open **Council chat** on the dashboard (`#/chat/<project>`). Type what you want, press
