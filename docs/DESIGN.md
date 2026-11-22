@@ -367,9 +367,9 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
   session; FINISHED or FAILED once it ended. Always visible for a run; age since the last heartbeat beside it.
 - **Number tile:** the label in caps, the number in 22 px mono, one line of context (*2 need a
   host*). The whole tile is a button with an accessible name that includes the number.
-- **Task row:** in a column, one line per task: mono id, title, the witch (icon + name) and one
-  badge (its state, *Needs a host*, *Pass* / *Changes* for a review job, *Merged*). In review, a build's reviews are its
-  Test, Attack and SA pills. Selecting it opens
+- **Task row:** in a column, one line per task: mono id, title, then the chips in the S-04 order: state
+  (*Needs a host*, *Pass* / *Changes* for a review job, *Merged*), the witch (icon + name), then a build's
+  Test, Attack and SA pills in review. Selecting it opens
   the **task dialog**.
 - **Task dialog:** a native modal `<dialog>` (Esc, a click outside or *Close*); the title names the
   task. It shows the witch, the merged line (*Merged into main at abc1234 · passed by … · decided by
@@ -377,6 +377,9 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
   that apply: *Run in Kiro Web*, *Ask host to push*, *Mark done* (in review), *Retry* (blocked), and the
   task's **Conversation**, open by default. Yellow tint and a how-to line when no online host runs its
   witch. It follows live updates without closing.
+- **Row chips (S-04):** a task row shows its state as chips after the title, in one order: state, witch, then review pills (Test, Attack, SA) for a build. A chip is a badge: 4 px radius, mono 11 px, tinted by state only. One row, one task, one set of chips; no second place repeats them.
+- **Dialog order (S-04):** the task dialog lists, top to bottom: the witch, the merged line or verdict, the plan it came from, the state and detail, *Kiro Web*, the actions, then the Conversation. The same task shows the same order from any column.
+- **No dead ends (S-05):** an empty or error state always names its next action: what to press, which command to run (*run `make hooks`*), or who to ask. Never a bare *Nothing here* or *Error*. The action is a real button or a mono command, not prose alone.
 - **Board order:** what waits for you, then the Monitor (its own heading, *every active run on every host, read only*), then plans that wait for you, then Tasks (a column is always open: the person's choice, else the most urgent with tasks), then Witches (cards only for those working, available or waiting for a slot; the rest fold behind one row of their ghosts), then the Whiteboard.
 - **Plans:** only plans that wait for a person are cards (above Tasks). Decided plans fold below the task list into one line each: the decision, the plan, its summary, how many of its tasks are done, who and when; opening one shows the reasons and its tasks.
 - **Long columns:** more than 8 tasks are grouped by spec (newest first), each group a fold with its count; Done folds by default, other columns stay open; a filter above the list finds a task by id, title or witch and opens its group.

@@ -225,6 +225,8 @@ here is built or planned until they do.
 | F-02 | _To be written by a person._ | | Proposed |
 | F-03 | _To be written by a person._ | | Proposed |
 | F-04 | _To be written by a person._ | | Proposed |
+| S-04 | One flow, one task view: a task row carries chips for its state, witch and reviews, and the task dialog shows its parts in one fixed order (see `docs/DESIGN.md`, Task row and Task dialog). Reads `GET /v1/board` fields only. | Should | Planned |
+| S-05 | No dead ends: an empty or error state names the next action the person can take (a button, a command or who to ask). Checked by `server/test/web.test.ts`. | Should | Planned |
 
 The spec `.kiro/specs/ux-v2/` lists these ids in work order (S-01, S-02, E-01 with E-02, F-01) and still
 awaits the brief's text.
