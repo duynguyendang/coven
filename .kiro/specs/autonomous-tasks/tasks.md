@@ -140,7 +140,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_dry_read.py tests/test_plan.py`_
   - _Requirements: R4.3_
 
-- [ ] 12. The dev team's NEEDS and SPLIT outcomes
+- [x] 12. The dev team's NEEDS and SPLIT outcomes
   - Goal: any dev-team witch can end a run with `NEEDS:` or `SPLIT:`, and the host records it instead of failing the task.
   - Context: requirements R5.1 to R5.5; `VERDICT:` is the model for reading a last line.
   - Read first: `src/coven/host.py` (`verdict_of`, `prompt_for`, `job_prompt`, `_build`), `src/coven/agents.py` (`review_rules`).
