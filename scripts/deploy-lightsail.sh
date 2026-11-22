@@ -49,13 +49,18 @@ sync --exclude .env infra/lightsail/ "$host:$dir/infra/lightsail/"
 [ "$dry" = 1 ] && { echo "deploy: dry run, nothing changed on the VM"; exit 0; }
 
 echo "deploy: rebuilding"
-remote "cd $dir/infra/lightsail && sudo docker compose up -d --build 2>&1 | tail -4"
+out="$(remote "cd $dir/infra/lightsail && sudo docker compose up -d --build 2>&1")"
+echo "$out" | tail -4
+# Unchanged code builds the same image and compose leaves the container running: no restart, so `started_at` stays the same.
+restarted=1
+echo "$out" | grep -Eq "lightsail-coven-1 +(Recreate|Starting|Started)" || restarted=0
 
 echo "deploy: waiting for $url/healthz (up to ${wait_seconds}s)"
 end=$((SECONDS + wait_seconds))
 while [ "$SECONDS" -lt "$end" ]; do
   now="$(curl -s -m 10 "$url/healthz" || true)"
-  if [ -n "$now" ] && [ "$now" != "$before" ] && echo "$now" | grep -q '"ok":true'; then
+  if echo "$now" | grep -q '"ok":true' && { [ "$restarted" = 0 ] || [ "$now" != "$before" ]; }; then
+    [ "$restarted" = 0 ] && echo "deploy: the image did not change, so the container was not restarted"
     echo "deploy: up: $now"
     remote "cd $dir/infra/lightsail && sudo docker compose ps coven | tail -1"
     exit 0
