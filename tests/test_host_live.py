@@ -47,7 +47,11 @@ with open(os.environ["FAKE_KIRO_LOG"], "a") as log:
 assert args[:2] == ["chat", "--no-interactive"] and "--trust-workspace" in args, args
 assert args[args.index("--output-format") + 1] == "stream-json", args
 prompt = args[-1]
-if agent == "green-witch":
+if agent == "green-witch" and (os.environ.get("COVEN_TASK") or "").endswith("-1b2"):
+    os.makedirs("src/cart", exist_ok=True)
+    open("src/cart/tax.py", "w").write("def tax(total):\n    return total // 5\n")
+    text = "Added src/cart/tax.py."
+elif agent == "green-witch":
     os.makedirs("src/cart", exist_ok=True)
     open("src/cart/total.py", "w").write("def total(items):\n    return sum(items)\n")
     text = "Added src/cart/total.py."
@@ -184,3 +188,71 @@ def test_an_unknown_witch_name_refuses_to_start(world):
                           env={**os.environ, "PYTHONPATH": str(REPO / "src")}, capture_output=True, text=True, check=False)
     assert done.returncode == 2 and "unknown agent(s) nobody" in done.stderr
     assert world["calls"]() == [], "no witch ran"
+
+
+def _event(project, member, type_, payload):
+    import secrets
+    from datetime import datetime, timezone
+    return {"event_id": f"evt_{secrets.token_hex(8)}", "project_id": project, "run_id": f"member_{member}", "type": type_,
+            "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"), "source": "coven-cli",
+            "member": member, "payload": payload}
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "the host's submitted task_status carries no tip (src/coven/board.py task_status), so the cloud refuses its own "
+    "branch_in_base as 'the tip is not the submitted tip'; remove this mark when the submission sends the branch tip"))
+def test_a_branch_merged_by_hand_resolves_in_one_poll_and_unblocks_the_next_step(world, cloud):
+    """FR-H19 end to end: a person merges the Dev's plan branch outside the host; one host poll marks it done, in base,
+    and the plan's next step is built. Another member's forged word that it is in base changes nothing."""
+    root, project, push = world["root"], world["project"], world["push"]
+    plan = "council#pm-1"
+    steps = [{"task_id": "pm-1b1", "title": "Cart totals", "paths": ["src/cart/"], "verify": "test -f src/cart/total.py"},
+             {"task_id": "pm-1b2", "title": "Cart tax", "paths": ["src/cart/"], "verify": "test -f src/cart/tax.py"}]
+    api(cloud, "/v1/events", {"project_id": project, "run_id": "member_planner", "events": [
+        _event(project, "planner", "task_created", {"task": plan, "title": "Plan", "agent": "elder-witch", "plan": True}),
+        _event(project, "planner", "plan_proposed", {"plan": plan, "tasks": steps})]})
+    api(cloud, "/v1/board/plan", {"project_id": project, "plan": plan, "state": "approved", "author": "duy"})
+
+    def council():
+        view = api(cloud, f"/v1/board?project_id={project}")
+        return view, {t["task_id"]: t for s in view["specs"] if s["spec"] == "council" for t in s["tasks"]}
+
+    # Poll 1: the Dev builds step 1 on its branch; step 2 waits for it.
+    first = host.Host(root, slots=1, only=["green-witch"], out=lambda line: None).run(once=True)
+    push()
+    assert first["requests"] == ["council#pm-1b1"]
+    view, tasks = council()
+    assert tasks["pm-1b1"]["doer_state"] == "submitted"
+    assert host.plan_waits_for(view, "council#pm-1b2") == "council#pm-1b1"
+    tip = git(root, "rev-parse", "coven/council-pm-1b1")
+
+    # A person merges the branch by hand, outside the host.
+    git(root, "merge", "--no-ff", "-q", "-m", "merge by hand", "coven/council-pm-1b1")
+    assert (root / "src" / "cart" / "total.py").exists()
+
+    # Another member says it is in base: refused, a drift note, the status stays.
+    api(cloud, "/v1/events", {"project_id": project, "run_id": "member_evil", "events": [
+        _event(project, "evil", "branch_in_base", {"task": "council#pm-1b1", "branch": "coven/council-pm-1b1", "tip": tip, "base": "main"})]})
+    view, tasks = council()
+    assert tasks["pm-1b1"]["doer_state"] == "submitted" and not tasks["pm-1b1"].get("merged")
+    assert any(n["task"] == "council#pm-1b1" and "did not come from the host" in n["note"] for n in view["notes"])
+    assert host.plan_waits_for(view, "council#pm-1b2") == "council#pm-1b1", "a forged word unblocks nothing"
+
+    # Poll 2: the host sees the tip in main, says so, and lets go of the branch. One poll is enough.
+    second = host.Host(root, slots=1, only=["green-witch"], out=lambda line: None).run(once=True)
+    push()
+    assert "council#pm-1b1" in second["finished"]
+    view, tasks = council()
+    assert tasks["pm-1b1"]["doer_state"] == "done", [n["note"] for n in view["notes"] if n["task"] == "council#pm-1b1"]
+    assert tasks["pm-1b1"]["merged"]["in_base"] is True
+    assert tasks["pm-1b1"]["merged"]["commit"] == tip
+    assert host.plan_waits_for(view, "council#pm-1b2") is None
+    assert (tasks["pm-1b2"]["doer_state"], tasks["pm-1b2"]["claimed_by"]) == (None, None), "step 2 is free to take"
+
+    # Poll 3: step 2 is built, on top of the merged step 1.
+    third = host.Host(root, slots=1, only=["green-witch"], out=lambda line: None).run(once=True)
+    push()
+    assert third["requests"] == ["council#pm-1b2"]
+    assert git(root, "merge-base", "--is-ancestor", tip, "coven/council-pm-1b2") == ""
+    assert "src/cart/tax.py" in git(root, "show", "--name-only", "--format=", "coven/council-pm-1b2")
+    assert council()[1]["pm-1b2"]["doer_state"] == "submitted"
