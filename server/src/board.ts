@@ -86,6 +86,21 @@ export function delivery(task: Json, doing: Json | undefined, owner: Json | unde
   return !runnable && age > JOB_EXPIRY_SECONDS ? "expired" : "requested";
 }
 
+/** The typed, size-limited failure facts of a failed task_status, or null. Redaction has already run on every string. */
+function cleanFailure(f: any): Json | null {
+  if (!f || typeof f !== "object") return null;
+  const text = (v: unknown, n: number): string | undefined => (typeof v === "string" && v ? v.slice(0, n) : undefined);
+  const out: Json = { cause: text(f.cause, 20) ?? "error", summary: text(f.summary, 200) ?? null, next: text(f.next, 400) ?? null };
+  if (Number.isInteger(f.attempts)) out.attempts = f.attempts;
+  if (typeof f.seconds === "number") out.seconds = f.seconds;
+  if (["passed", "failed", "none"].includes(f.verify)) out.verify = f.verify;
+  if (typeof f.base_changed === "boolean") out.base_changed = f.base_changed;
+  if (Array.isArray(f.outside_paths)) out.outside_paths = f.outside_paths.filter((x: unknown) => typeof x === "string").slice(0, 5).map((x: string) => x.slice(0, 200));
+  const said = text(f.said, 300);
+  if (said) out.said = said;
+  return out;
+}
+
 export class Board {
   claims = new Map<string, Json>();          // claim_id -> claim (newest state)
   notes = new Map<string, Json[]>();         // project -> notes, oldest first
@@ -192,6 +207,7 @@ export class Board {
           by_web: event.source === "web",
           state: p.state, ts: event.ts, host: event.member ?? null, agent: typeof p.agent === "string" ? p.agent : null,
           detail: typeof p.detail === "string" ? p.detail.slice(0, 200) : null,
+          failure: p.state === "failed" ? cleanFailure(p.failure) : null, // a later status (working, queued) clears it
           task_key: this.keyFor(project, p, p.task), attempt_id: attemptOf(p),
           // runs of this task so far: each `working` status starts one (the host builds its attempt id from this)
           attempts: (known?.attempts ?? 0) + (p.state === "working" ? 1 : 0),
@@ -440,7 +456,7 @@ export class Board {
         const doing = this.statuses.get(projectId)?.get(`${spec}#${t.task_id}`);
         const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
-        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null, merged: doing?.merged ?? null,
+        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null, merged: doing?.merged ?? null,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           accept: this.accepts.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           delivery: spec === "council" ? delivery(t, doing, owner, this.runsAgent(projectId, t.agent, at), at) : null,

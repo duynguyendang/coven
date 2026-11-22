@@ -74,6 +74,7 @@ export const EVENT_TYPES = new Set([
 /** One `coven host run` process: two processes that share a host id are still two (the monitor shows both). */
 export const PROCESS_ID = /^p_[0-9a-f]{8}$/;
 /** What a host runs: a task, a council job or a chat request (`chat#<message id>`). */
+const FAILURE_CODES = new Set(["no_change", "verify_failed", "outside_paths", "timeout", "no_answer", "kiro_error", "cloud", "error"]);
 const RUN_REF = /^[^#\s]{1,80}#[^#\s]{1,40}$/;
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
 export const HOST_ID = /^h_[0-9a-f]{8}$/;
@@ -228,6 +229,23 @@ export function validateEvent(event: Json): string[] {
     if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_dispatch needs task as <spec>#<task>");
     if (!DISPATCH_VIA.has(p.via)) errors.push(`task_dispatch via must be one of ${[...DISPATCH_VIA].join(", ")}`);
     if (!DISPATCH_STATES.has(p.state)) errors.push(`task_dispatch state must be one of ${[...DISPATCH_STATES].join(", ")}`);
+  }
+  // Why a task failed (a host's own measurements, shown to people): only on a failed status, small and typed.
+  if (event.type === "task_status" && isObject(payload) && payload.failure !== undefined) {
+    const f = payload.failure;
+    if (payload.state !== "failed") errors.push("failure belongs to a failed task_status");
+    else if (!isObject(f)) errors.push("failure must be an object");
+    else {
+      if (!FAILURE_CODES.has(f.cause as string)) errors.push(`failure cause must be one of ${[...FAILURE_CODES].join(", ")}`);
+      for (const key of ["summary", "next", "said"]) {
+        if (f[key] !== undefined && (typeof f[key] !== "string" || (f[key] as string).length > 400)) errors.push(`failure ${key} must be text of at most 400 characters`);
+      }
+      if (f.attempts !== undefined && !(Number.isInteger(f.attempts) && (f.attempts as number) >= 0 && (f.attempts as number) <= 50)) errors.push("failure attempts must be 0 to 50");
+      if (f.seconds !== undefined && !(typeof f.seconds === "number" && f.seconds >= 0 && f.seconds < 1e6)) errors.push("failure seconds must be a number");
+      if (f.verify !== undefined && !["passed", "failed", "none"].includes(f.verify as string)) errors.push("failure verify must be passed, failed or none");
+      if (f.base_changed !== undefined && typeof f.base_changed !== "boolean") errors.push("failure base_changed must be true or false");
+      if (f.outside_paths !== undefined && !(Array.isArray(f.outside_paths) && f.outside_paths.length <= 5 && f.outside_paths.every((x) => typeof x === "string" && x.length <= 200))) errors.push("failure outside_paths must be at most 5 paths");
+    }
   }
   // A branch is pushed only when a person asks (spec multi-host, R2.3): the request names the branch and the host that holds it.
   if (event.type === "push_request" || event.type === "push_done") {

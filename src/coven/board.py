@@ -304,7 +304,8 @@ TASK_STATES = ("working", "submitted", "answered", "failed", "queued")
 
 
 def task_status(root: Path, ref: str, state: str, agent: str | None = None, detail: str | None = None,
-                key: str | None = None, attempt: int | None = None, branch: str | None = None, verdict: str | None = None) -> dict:
+                key: str | None = None, attempt: int | None = None, branch: str | None = None, verdict: str | None = None,
+                failure: dict | None = None) -> dict:
     """Say where a task stands, as its doer: working, submitted (for review), answered, or failed. Done is the spec's tick."""
     if state not in TASK_STATES:
         raise ValueError(f"state must be one of {', '.join(TASK_STATES)}")
@@ -315,6 +316,8 @@ def task_status(root: Path, ref: str, state: str, agent: str | None = None, deta
         payload["detail"] = " ".join(str(detail).split())[:200]
     if verdict in ("pass", "changes"):
         payload["verdict"] = verdict  # a reviewer's: the host may merge on it (auto-merge)
+    if failure and state == "failed":
+        payload["failure"] = failure  # why it failed, in the host's own measured words (contract: task_status `failure`)
     _stamp(payload, key, attempt)
     payload["host_id"] = config.host_id(root)
     if state == "submitted":

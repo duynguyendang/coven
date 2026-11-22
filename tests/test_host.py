@@ -65,7 +65,7 @@ class FakeCloud:
             tasks = specmap.load(root)
             return [t for r, t in tasks.items() if r not in held and not t["done"]]
 
-        c.answers, c.statuses, c.created, c.stamps, c.branches, c.verdicts, c.monitor = [], [], [], [], [], [], []
+        c.answers, c.statuses, c.created, c.stamps, c.branches, c.verdicts, c.monitor, c.failures = [], [], [], [], [], [], [], []
         c.lease_ok = True
         monkeypatch.setattr(board, "task_create", lambda root, spec, task_id, title, agent, detail=None, source=None, plan=False, branch=None, review_of=None, key=None, sender=None, expects=None, reply_to=None, depth=None: c.created.append(
             {"spec": spec, "task_id": task_id, "title": title, "agent": agent, "detail": detail, "source": source, "plan": plan, "branch": branch, "review_of": review_of, "key": key, "from": sender, "expects": expects, "reply_to": reply_to}) or {})
@@ -82,7 +82,7 @@ class FakeCloud:
         monkeypatch.setattr(board, "signoff", signoff)
         monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
             {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
-        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None, verdict=None: (c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch)), c.verdicts.append((ref, verdict))) and {})
+        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None, verdict=None, failure=None: (c.failures.append((ref, failure)) if failure else None, c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch)), c.verdicts.append((ref, verdict))) and {})
         monkeypatch.setattr(board, "answer", lambda root, reply_to, message, role="chair", kind="answer": c.answers.append((reply_to, role, kind, message)) or {})
         for attr, fn in {
             "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root: [],

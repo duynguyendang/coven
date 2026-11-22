@@ -1533,6 +1533,40 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: a failed task says why, in the list and in its dialog, and an old failure still says what it can", async () => {
+    const spec = (id: string, seq: number) => ({ ...ev("member_wf", "wf", "spec_artifact_updated", { artifact: "tasks", spec: id, total: 1, done: 0, in_progress: 0, queued: 0, optional: 0,
+      tasks: [{ task_id: "1", title: `Task ${id}`, status: "not_started", paths: ["x/"] }] }, seq), member: "wf" });
+    const failed = (id: string, seq: number, extra: Record<string, unknown>) => ({ ...ev("member_wf", "wf", "task_status", { task: `${id}#1`, state: "failed", agent: "green-witch",
+      detail: "nothing changed in the checkout", ...extra }, seq), member: "wf" });
+    await send("wf", "member_wf", [spec("fa", 1), failed("fa", 2, { failure: { cause: "no_change", summary: "nothing changed in the checkout", attempts: 2, seconds: 21.5,
+      verify: "none", base_changed: true, said: "I looked and it is already there.", next: "Check the base branch, then mark it done or retry." } }),
+      spec("fb", 3), failed("fb", 4, { failure: { cause: "outside_paths", summary: "files outside the task's paths (x/): y/a.py", outside_paths: ["y/a.py"], next: "Widen the paths." } }),
+      spec("fc", 5), failed("fc", 6, {})]);
+    await go("#/board/wf", 600);
+    const need = (ref: string) => doc().querySelector(`[data-key="need-${ref}"]`)!.textContent!.replace(/\s+/g, " ");
+    assert.match(need("fa#1"), /Changed nothing\. Its paths changed on the base branch, so the work may already be in\./);
+    assert.match(need("fb#1"), /Changed files outside its paths: files outside the task's paths/);
+    assert.match(need("fc#1"), /nothing changed in the checkout\. Open it to see why/, "an old failure shows its one-line reason");
+    (doc().querySelector('[data-key="need-open-fa#1"]') as HTMLButtonElement).click();
+    const card = doc().querySelector('#task-dialog [data-key="task-fa#1"]') as HTMLElement;
+    const why = card.querySelector('section.failure[aria-label="Why it failed"]')!;
+    const said = why.textContent!.replace(/\s+/g, " ");
+    assert.match(said, /Why it failed: Changed nothing The agent finished without changing a single file/);
+    assert.match(said, /Runs\s*2 runs, 22 s in all/);
+    assert.match(said, /Verify\s*the task declares none/);
+    assert.match(said, /Base branch\s*files in this task's paths changed there since it started/);
+    assert.match(said, /What the agent said last: I looked and it is already there\./);
+    assert.match(said, /What you can do: Check the base branch, then mark it done or retry\./);
+    assert.ok(card.querySelector("[data-done]") && card.querySelector("[data-retry]"), "Mark done and Retry stay in the dialog");
+    closeTask();
+    (doc().querySelector('[data-key="need-open-fc#1"]') as HTMLButtonElement).click();
+    const old = (doc().querySelector('#task-dialog [data-key="task-fc#1"] section.failure') as HTMLElement).textContent!.replace(/\s+/g, " ");
+    assert.match(old, /nothing changed in the checkout/);
+    assert.match(old, /recorded before Coven kept the details of a failure/);
+    closeTask();
+    await go("#/");
+  });
+
   test("board: a live update refreshes it", async () => {
     await go("#/board/shop", 400);
     assert.equal((await postJson(s.base, "/v1/claims", { project_id: "shop", member: "dee", spec: "shop", task_id: "4", paths: ["docs/"] })).status, 201);

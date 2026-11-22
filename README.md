@@ -271,7 +271,7 @@ or **Do it** to the Scribe in the chat): she proposes them, and the host writes 
 online host runs (*N need a host*).
 
 The doer reports where a task stands (**working → submitted / answered**, or **failed** with
-why), and the board follows. You merge the branch, or click **Mark done** on the card, to
+why: the cause, runs and time, verify, whether its paths changed on the base branch since it started, what the agent said last, and what to do next; the dashboard shows it under **Why it failed**), and the board follows. You merge the branch, or click **Mark done** on the card, to
 make it done. Design: `docs/ADD.md` §4.2–§4.4.
 
 **Working together.** Each witch has a written role (`coven host agents --roles`): what she

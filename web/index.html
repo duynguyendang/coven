@@ -667,6 +667,13 @@
   /* a witch's "never" is on her card */
   .changes-form { display: flex; gap: 8px; margin-top: 6px; }
   .changes-form input { flex: 1; min-inline-size: 0; padding: 5px 9px; }
+  .failure { border: 1px solid var(--bad-line); border-left: 4px solid var(--bad-line); border-radius: var(--radius-element); padding: 10px 12px; margin: 8px 0; }
+  .failure h3 { margin: 0 0 4px; font-size: 0.875rem; }
+  .failure p { margin: 4px 0; overflow-wrap: anywhere; }
+  .failure dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 6px 0; font-size: 0.8125rem; }
+  .failure dt { color: var(--muted); }
+  .failure dd { margin: 0; overflow-wrap: anywhere; }
+  .failure .said { margin: 6px 0; padding: 4px 10px; border-left: 2px solid var(--line); color: var(--muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
   .needs { margin: 0 0 16px; }
   .need-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .need-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 12px;
@@ -1603,10 +1610,33 @@
   }
   /** What a task waits for from a PERSON, if anything: null when the witches and hosts are still on it.
       {kind, label, why, accept}: `label` is the short badge, `why` says what to do and what happens next. */
+  const FAILURE_LABEL = { no_change: "Changed nothing", verify_failed: "Its verify command failed", outside_paths: "Changed files outside its paths", timeout: "Ran out of time",
+    no_answer: "Gave no answer", kiro_error: "Kiro could not run", cloud: "Kiro Web delivered no usable branch", error: "Unexpected error" };
+  /** Why a task failed, from the host's own facts (task_status `failure`); an older failure has only its one-line reason. */
+  function failureHtml(t) {
+    if (t.doer_state !== "failed" || isDoneTask(t) || t.claimed_by) return "";
+    const f = t.doer_failure;
+    if (!f) {
+      return `<section class="failure" aria-label="Why it failed"><h3>Why it failed</h3><p>${esc(t.doer_detail || "The host gave no reason.")}</p>
+        <p class="hint">This was recorded before Coven kept the details of a failure. Retry it, or mark it done.</p></section>`;
+    }
+    const rows = [];
+    if (f.attempts !== undefined) rows.push(["Runs", `${plural(f.attempts, "run")}${typeof f.seconds === "number" ? `, ${f.seconds < 90 ? `${Math.round(f.seconds)} s` : `${Math.round(f.seconds / 60)} min`} in all` : ""}`]);
+    if (f.verify) rows.push(["Verify", { passed: "passed", failed: "failed or could not pass on the unchanged checkout", none: "the task declares none" }[f.verify] || f.verify]);
+    if (typeof f.base_changed === "boolean") rows.push(["Base branch", f.base_changed ? "files in this task's paths changed there since it started: the work may already be in" : "no change in this task's paths since it started"]);
+    if ((f.outside_paths || []).length) rows.push(["Outside its paths", f.outside_paths.join(", ")]);
+    return `<section class="failure" aria-label="Why it failed"><h3>Why it failed: ${esc(FAILURE_LABEL[f.cause] || f.cause)}</h3>
+      ${f.cause === "no_change" && f.summary === "nothing changed in the checkout" ? "<p>The agent finished without changing a single file in its checkout.</p>" : f.summary ? `<p>${esc(f.summary)}</p>` : ""}
+      ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
+      ${f.said ? `<blockquote class="said"><span class="hint">What the agent said last:</span> ${esc(f.said)}</blockquote>` : ""}
+      ${f.next ? `<p><b>What you can do:</b> ${esc(f.next)}</p>` : ""}</section>`;
+  }
   function needsYou(t, all, notes) {
     if (t.status === "completed" || t.doer_state === "done" || t.merged) return null;
     if (t.doer_state === "failed" && !t.claimed_by) {
-      return { kind: "failed", label: "Failed: needs you", why: `${t.doer_detail ? `${short(t.doer_detail, 140)}. ` : ""}Open it to retry it, or mark it done.` };
+      const f = t.doer_failure;
+      const lead = f ? `${FAILURE_LABEL[f.cause] || f.cause}${f.summary && f.cause !== "no_change" ? `: ${short(f.summary, 110)}` : ""}. ` : (t.doer_detail ? `${short(t.doer_detail, 140)}. ` : "");
+      return { kind: "failed", label: "Failed: needs you", why: `${lead}${f && f.base_changed ? "Its paths changed on the base branch, so the work may already be in. " : ""}Open it to see why, then retry it or mark it done.` };
     }
     if (t.doer_state !== "submitted" || !t.branch_host) return null;
     if (t.accept && t.accept.state === "requested" && t.accept.decision === "accept") return null; // accepted: the host is merging
@@ -1996,13 +2026,14 @@
     const needLine = t.needs ? `<div class="state needs-you-line"><span class="badge warn">${esc(t.needs.label)}</span><span class="hint">${esc(t.needs.why)}</span></div>` : "";
     const stateLine = needLine || (t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
       ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "");
+    const failureLine = failureHtml(t);
     const agentLine = `<div class="agent">${avatar(holder || need)}<span>${esc(agentName(holder || need))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : t.merged || t.status === "completed" || t.doer_state === "done" ? "" : " needed"}</span></div>`;
     const stuck = state.runnable && isStuck(t, state.runnable);
     const mergedLine = t.merged ? `<div class="state"><span class="badge accept">Merged</span> <span class="hint">into <code>${esc(t.merged.base)}</code> at <code>${esc(String(t.merged.commit).slice(0, 7))}</code> · passed by ${(t.merged.reviewers || []).map((r) => esc(agentName(r))).join(", ")} · decided by ${esc(agentName("grey-witch"))}</span></div>`
       : t.doer_verdict ? `<div class="state"><span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes needed"}</span>${t.review_of ? `<span class="hint">review of ${esc(t.review_of)}</span>` : ""}</div>` : "";
     const planLine = t.from_plan ? `<div class="hint">from <a href="#/board/${encodeURIComponent(state.boardProject || "")}" data-key="from-plan-${esc(t.ref)}" data-plan-link="${esc(t.from_plan)}">plan ${esc(t.from_plan)}</a>, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}<div class="tactions" data-actions="${esc(t.ref)}">${dispatchLine(t, need)}${acceptLine(t)}${pushLine(t)}${!isDoneTask(t) ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}"${t.claimed_by ? ` data-claimed="${esc(t.claimed_by)}"` : ""} data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${who ? `<div class="who">${who}</div>` : ""}${threadBox(t)}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${failureLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}<div class="tactions" data-actions="${esc(t.ref)}">${dispatchLine(t, need)}${acceptLine(t)}${pushLine(t)}${!isDoneTask(t) ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}"${t.claimed_by ? ` data-claimed="${esc(t.claimed_by)}"` : ""} data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${who ? `<div class="who">${who}</div>` : ""}${threadBox(t)}</div>`;
   }
   /** The whiteboard: newest first, one list. Notes about done tasks are hidden unless a person asks for them; a filter keeps
       holds and questions, or verdicts; the newest WALL_STEP show, then WALL_STEP more per click. */

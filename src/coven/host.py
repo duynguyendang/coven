@@ -566,10 +566,12 @@ def _role_warning(root: Path, agent: str, ref: str, produced: str) -> None:
         pass
 
 
-def _status(root: Path, ref: str, state: str, agent: str, detail: str | None = None, branch: str | None = None, verdict: str | None = None) -> None:
+def _status(root: Path, ref: str, state: str, agent: str, detail: str | None = None, branch: str | None = None, verdict: str | None = None,
+            failure: dict | None = None) -> None:
     """Tell the board where the task stands. A courtesy: the work never waits on it."""
     try:
-        board.task_status(root, ref, state, agent=agent, detail=detail, branch=branch, verdict=verdict, **_run_stamp(ref))
+        extra = {"failure": failure} if failure else {}
+        board.task_status(root, ref, state, agent=agent, detail=detail, branch=branch, verdict=verdict, **extra, **_run_stamp(ref))
     except Exception:  # noqa: BLE001
         pass
 
@@ -612,6 +614,83 @@ def _stop_done(root: Path, task: dict, agent: str, branch: str, path: Path | Non
     return {"action": "skipped", "task": ref, "agent": agent, "branch": branch, "commit": tip, "reason": "marked done"}
 
 
+FAILURE_CODES = ("no_change", "verify_failed", "outside_paths", "timeout", "no_answer", "kiro_error", "cloud", "error")
+FAILURE_NEXT = {
+    "no_change": "The Dev ran and changed nothing. Read what she said; if the work is already in the base branch, mark the task done. "
+                 "Otherwise Retry it (the next run sees the same task), or reword the task and retry.",
+    "verify_failed": "Her change failed the task's own verify command. Run it yourself in the branch, then Retry, or mark the task done if the change is not needed.",
+    "outside_paths": "She changed files outside the task's declared paths, so the host refused it. Widen the task's paths, or Retry and ask for a narrower change.",
+    "timeout": "The run did not finish in time. Retry it; if it happens again the task is too big: split it.",
+    "no_answer": "The run ended without an answer. Retry it; check that Kiro works on this host (coven doctor).",
+    "kiro_error": "Kiro could not run on this host. Fix that (coven doctor), then Retry.",
+    "cloud": "The Kiro Web session did not deliver a usable branch. Retry it, or run the task on a host instead.",
+    "error": "The host hit an error it did not expect. Retry it; if it repeats, read the host log.",
+}
+
+
+def failure_code(reason: str) -> str:
+    text = (reason or "").lower()
+    if text.startswith(NO_CHANGE) or "changes nothing against" in text:
+        return "no_change"
+    if "outside the task's paths" in text:
+        return "outside_paths"
+    if "verify command did not pass" in text:
+        return "verify_failed"
+    if "no result within" in text or "timed out" in text:
+        return "timeout"
+    if "gave no answer" in text:
+        return "no_answer"
+    if "kiro-cli is not installed" in text or "kiro could not" in text:
+        return "kiro_error"
+    if "kiro web" in text:
+        return "cloud"
+    return "error"
+
+
+def base_changed(root: Path, record: dict, task: dict | None) -> bool | None:
+    """Whether files in the task's declared paths changed on the base branch since the host started it: a hint that the work landed another way."""
+    paths = [p for p in ((task or record.get("plan_task") or {}).get("paths") or []) if isinstance(p, str)]
+    since, base = record.get("started_at"), record.get("base")
+    if not (paths and since and base):
+        return None
+    try:
+        out = work._git(root, "log", f"--since={since}", "--format=%h", base, "--", *paths, check=False)
+    except Exception:  # noqa: BLE001
+        return None
+    return bool(out.strip())
+
+
+def failure_facts(root: Path, ref: str, agent: str, reason: str, task: dict | None = None) -> dict:
+    """What a person needs to understand a failed task, as short redacted facts (contract: task_status `failure`).
+
+    Everything here is the host's own measurement, except `said`: the last words of the agent's run, clipped, like a note."""
+    record = load(root).get(ref) or {}
+    task = task or record.get("plan_task") or specmap.load(root).get(ref)
+    code = failure_code(reason)
+    steps = [s for s in record.get("steps") or [] if isinstance(s, list) and len(s) == 2 and isinstance(s[1], (int, float))]
+    facts: dict = {"cause": code, "summary": redact.redact_text(" ".join((reason or "").split()))[:200], "attempts": len(steps),
+                   "seconds": round(sum(s[1] for s in steps), 1), "next": FAILURE_NEXT[code]}
+    if code == "verify_failed":
+        facts["verify"] = "failed"
+    elif code == "no_change":
+        facts["verify"] = "failed" if "did not pass on the unchanged" in (reason or "") else ("none" if "declares no" in (reason or "") else None)
+        facts = {k: v for k, v in facts.items() if v is not None}
+        changed = base_changed(root, record, task)
+        if changed is not None:
+            facts["base_changed"] = changed
+            if changed:
+                facts["next"] = ("The Dev changed nothing, and files in this task's paths have changed on the base branch since it started: "
+                                 "the work may already be there. Check, then mark the task done; otherwise Retry.")
+    elif code == "outside_paths":
+        listed = re.search(r"\):\s*(.+?)(?:\.\s*Undo.*)?$", reason or "")
+        if listed:
+            facts["outside_paths"] = [redact.redact_text(x.strip())[:200] for x in listed.group(1).split(",") if x.strip()][:5]
+    said = " ".join(str(record.get("said") or "").split())
+    if said:
+        facts["said"] = redact.redact_text(said)[:300]
+    return facts
+
+
 def _fail(root: Path, ref: str, agent: str, reason: str) -> dict:
     """The agent could not finish: say so on the board, let go of the task, keep the record so it is not retried blindly.
 
@@ -630,8 +709,12 @@ def _fail(root: Path, ref: str, agent: str, reason: str) -> dict:
         return {"action": "paused", "task": ref, "agent": agent, "error": reason}
     work._release_quietly(root, ref, f"{agent} failed")
     _note(root, f"{agents.label(agent)} could not finish {ref}: {reason}"[:400], agent, ref, kind="question", host_says=True)
-    record = _update(root, ref, state="failed", error=reason[:300], finished_at=events.now_iso())
-    _status(root, ref, "failed", agent, reason)
+    try:
+        failure = failure_facts(root, ref, agent, reason)
+    except Exception:  # noqa: BLE001 - the explanation is a courtesy; the failure is reported without it
+        failure = None
+    record = _update(root, ref, state="failed", error=reason[:300], finished_at=events.now_iso(), failure=failure)
+    _status(root, ref, "failed", agent, reason, failure=failure)
     return {"action": "failed", "task": ref, "agent": agent, "error": reason}
 
 
@@ -714,6 +797,7 @@ def _build(root: Path, task: dict, agent: str, host: str, base: str, runner: Run
     problem = None
     for attempt in range(ATTEMPTS):
         text, error = runner(path, agent, prompt_for(task, agent, host, notes, feedback, problem), _env(root, host, agent, ref), RUN_TIMEOUT)
+        _update(root, ref, said=council.clip(text, 300) if text else None)  # kept locally; a failure sends it, clipped and redacted
         if error and not text:
             return _fail(root, ref, agent, error)
         done, problem = submit_checked(root, task, agent, host, path, branch, first, run_ok=not error)
