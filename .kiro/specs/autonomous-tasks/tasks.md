@@ -32,7 +32,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_cli.py tests/test_relay.py`_
   - _Requirements: R2.1_
 
-- [ ] 3. Contract: new task_status fields and states
+- [x] 3. Contract: new task_status fields and states
   - Goal: the cloud accepts, validates and shows the new status fields and states, and ADD §6 lists them.
   - Context: design "Contract changes". Requirement R7.1. The harness fails when ADD §6.2 lacks a field.
   - Read first: `server/src/events.ts` (the `task_status` block and `PEOPLE_STATES`), `server/src/board.ts` (the `task_status` branch and `cleanFailure`), `src/coven/board.py` (`TASK_STATES`, `task_status`), `docs/ADD.md` §6.2.

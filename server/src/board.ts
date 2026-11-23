@@ -222,6 +222,13 @@ export class Board {
           submitted_at: p.state === "submitted" ? event.ts : (known?.submitted_at ?? null),
           submitted_by: p.state === "submitted" ? (event.member ?? null) : (known?.submitted_by ?? null),
           verdict: p.verdict === "pass" || p.verdict === "changes" ? p.verdict : null,
+          // the autonomous-task fields: `parent`, `ready` and `missing` stay until said again; a later status clears step, question, pieces
+          parent: typeof p.parent === "string" ? p.parent.slice(0, 120) : (known?.parent ?? null),
+          ready: p.ready === "yes" || p.ready === "no" ? p.ready : (known?.ready ?? null),
+          missing: Array.isArray(p.missing) ? p.missing.filter((x: unknown) => typeof x === "string").slice(0, 5).map((x: string) => x.slice(0, 40)) : (known?.missing ?? []),
+          step: typeof p.step === "string" ? p.step.slice(0, 160) : null,
+          question: typeof p.question === "string" ? p.question.slice(0, 400) : null,
+          pieces: typeof p.pieces === "string" ? p.pieces.slice(0, 400) : null,
         });
       }
       this.statuses.set(project, all);
@@ -463,7 +470,8 @@ export class Board {
         const doing = this.statuses.get(projectId)?.get(`${spec}#${t.task_id}`);
         const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
-        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null, merged: doing?.merged ?? null,
+        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null,
+          doer_parent: doing?.parent ?? null, doer_ready: doing?.ready ?? null, doer_missing: doing?.missing ?? [], doer_step: doing?.step ?? null, doer_question: doing?.question ?? null, doer_pieces: doing?.pieces ?? null, merged: doing?.merged ?? null,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           accept: this.accepts.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           delivery: spec === "council" ? delivery(t, doing, owner, this.runsAgent(projectId, t.agent, at), at) : null,

@@ -100,7 +100,7 @@ export const DISPATCH_STATES = new Set(["requested", "cancelled"]);
 const NOTE_KINDS = new Set(["idea", "question", "answer", "review", "note", "review-wanted"]);
 /** Where a task stands as its doer reports it. `done` is not here: only the spec's tick (a merge) makes a task done. */
 // `queued`: a person (or their host) asked for a failed task to be taken again; any host that runs its witch may.
-export const TASK_STATES = new Set(["working", "submitted", "answered", "failed", "queued"]);
+export const TASK_STATES = new Set(["working", "submitted", "answered", "failed", "queued", "needs_clarification", "needs_split", "replaced", "held"]);
 /** `done` is people's word (POST /v1/board/done), never a doer's. */
 export const PEOPLE_STATES = new Set([...TASK_STATES, "done"]);
 
@@ -223,6 +223,12 @@ export function validateEvent(event: Json): string[] {
     const p = isObject(payload) ? payload : {};
     if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_status needs task as <spec>#<task>");
     if (!PEOPLE_STATES.has(p.state)) errors.push(`task_status state must be one of ${[...PEOPLE_STATES].join(", ")}`);
+    if (p.parent !== undefined && !(typeof p.parent === "string" && TASK_REF.test(p.parent))) errors.push("task_status parent must be a task as <spec>#<task>");
+    if (p.ready !== undefined && p.ready !== "yes" && p.ready !== "no") errors.push("task_status ready must be yes or no");
+    if (p.missing !== undefined && !(Array.isArray(p.missing) && p.missing.length <= 5 && p.missing.every((x) => typeof x === "string" && x.length > 0 && x.length <= 40))) errors.push("task_status missing must be at most 5 names of at most 40 characters");
+    for (const key of ["step", "question", "pieces"]) {
+      if (p[key] !== undefined && (typeof p[key] !== "string" || (p[key] as string).length > 400)) errors.push(`task_status ${key} must be text of at most 400 characters`);
+    }
   }
   if (event.type === "task_dispatch") {
     const p = isObject(payload) ? payload : {};

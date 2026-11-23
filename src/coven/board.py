@@ -300,12 +300,15 @@ def answer(root: Path, reply_to: str, message: str, role: str = "chair", kind: s
                                                 "reply_to": reply_to, "persona": role})
 
 
-TASK_STATES = ("working", "submitted", "answered", "failed", "queued")
+TASK_STATES = ("working", "submitted", "answered", "failed", "queued",
+               "needs_clarification", "needs_split", "replaced", "held")
 
 
 def task_status(root: Path, ref: str, state: str, agent: str | None = None, detail: str | None = None,
                 key: str | None = None, attempt: int | None = None, branch: str | None = None, verdict: str | None = None,
-                failure: dict | None = None) -> dict:
+                failure: dict | None = None, parent: str | None = None, ready: str | None = None,
+                missing: list | None = None, step: str | None = None, question: str | None = None,
+                pieces: str | None = None) -> dict:
     """Say where a task stands, as its doer: working, submitted (for review), answered, or failed. Done is the spec's tick."""
     if state not in TASK_STATES:
         raise ValueError(f"state must be one of {', '.join(TASK_STATES)}")
@@ -318,6 +321,15 @@ def task_status(root: Path, ref: str, state: str, agent: str | None = None, deta
         payload["verdict"] = verdict  # a reviewer's: the host may merge on it (auto-merge)
     if failure and state == "failed":
         payload["failure"] = failure  # why it failed, in the host's own measured words (contract: task_status `failure`)
+    if parent:
+        payload["parent"] = parent
+    if ready in ("yes", "no"):
+        payload["ready"] = ready
+    if missing:
+        payload["missing"] = [str(m)[:40] for m in list(missing)[:5]]
+    for name, value in (("step", step), ("question", question), ("pieces", pieces)):
+        if value:
+            payload[name] = " ".join(str(value).split())[: 160 if name == "step" else 400]
     _stamp(payload, key, attempt)
     payload["host_id"] = config.host_id(root)
     if state == "submitted":
