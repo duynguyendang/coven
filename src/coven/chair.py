@@ -45,11 +45,16 @@ def sweep(view: dict, now, seen: set[str] | None = None) -> list[dict]:
     at = _time(now) or datetime.now(timezone.utc)
     found: list[dict] = []
 
-    for claim in view.get("claims") or []:
+    # `claims` holds only live claims; a lapsed lease is in `recent_claims` with state "expired".
+    live = {(c.get("spec"), str(c.get("task_id"))) for c in view.get("claims") or []}
+    open_task = {(sp.get("spec"), str(t.get("task_id"))): not _closed(t) for sp in view.get("specs") or [] for t in sp.get("tasks") or []}
+    for claim in view.get("recent_claims") or []:
+        who = (claim.get("spec"), str(claim.get("task_id")))
+        if claim.get("kind", "task") != "task" or claim.get("released_at") or claim.get("state") == "released":
+            continue
         until = _time(claim.get("lease_until"))
-        if until and until < at and not claim.get("released_at"):
-            ref = f"{claim.get('spec')}#{claim.get('task_id')}"
-            found.append(_finding("stale_claim", ref, f"the lease of {claim.get('member') or 'a host'} lapsed at {claim.get('lease_until')}",
+        if until and until < at and who not in live and open_task.get(who, True):
+            found.append(_finding("stale_claim", f"{who[0]}#{who[1]}", f"the lease of {claim.get('member') or 'a host'} lapsed at {claim.get('lease_until')}",
                                   claim.get("claim_id"), claim.get("lease_until")))
 
     for spec in view.get("specs") or []:
@@ -72,8 +77,10 @@ def sweep(view: dict, now, seen: set[str] | None = None) -> list[dict]:
                 found.append(_finding("needs_clarification", ref, f"a witch asked: {t.get('doer_detail') or 'no question recorded'}", t.get("doer_detail")))
             elif state == "needs_split":
                 found.append(_finding("needs_split", ref, f"a witch says it is too large: {t.get('doer_detail') or 'no pieces recorded'}", t.get("doer_detail")))
-            if t.get("ready") == "no" and not _closed(t):
-                missing = [str(m) for m in t.get("missing") or []]
+            is_parent = str(t.get("task_id")) in children
+            # Ready means the task names its witch, paths and verify command (the Scribe's list, host.py).
+            missing = [] if is_parent or spec.get("spec") == "council" else [k for k in ("agent", "paths", "verify") if not t.get(k)]
+            if missing and not _closed(t) and state in (None, "queued"):
                 found.append(_finding("not_ready", ref, f"not ready, missing {', '.join(missing) or 'something'}", ",".join(missing)))
             subs = children.get(str(t.get("task_id")))
             if subs:
