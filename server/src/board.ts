@@ -490,6 +490,16 @@ export class Board {
         announced_at: h?.last_seen ?? null,
       };
     }).sort((a: Json, b: Json) => ((a.last_seen || "") < (b.last_seen || "") ? 1 : -1));
+    // A parent's roll-up: its subtasks name it in `parent` of their task_status (done, failed, held, of total).
+    const rollups = new Map<string, { done: number; failed: number; held: number; total: number }>();
+    for (const [ref, st] of this.statuses.get(projectId) ?? []) {
+      if (typeof st.parent !== "string") continue;
+      const r = rollups.get(st.parent) ?? { done: 0, failed: 0, held: 0, total: 0 };
+      r.total++;
+      if (st.state === "done") r.done++; else if (st.state === "failed") r.failed++; else if (st.state === "held") r.held++;
+      rollups.set(st.parent, r);
+      void ref;
+    }
     const specs = [...(this.tasks.get(projectId)?.entries() ?? [])].map(([spec, tasks]) => ({
       spec,
       tasks: tasks.map((t) => {
@@ -502,6 +512,7 @@ export class Board {
         return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null,
           orphaned: orphan.orphaned, orphaned_since: orphan.since, takeovers: this.newest.get(projectId)?.get(`${spec}#${t.task_id}`)?.takeovers ?? 0,
           doer_parent: doing?.parent ?? null, doer_ready: doing?.ready ?? null, doer_missing: doing?.missing ?? [], doer_step: doing?.step ?? null, doer_question: doing?.question ?? null, doer_pieces: doing?.pieces ?? null, merged: doing?.merged ?? null,
+          rollup: rollups.get(`${spec}#${t.task_id}`) ?? null,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           accept: this.accepts.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           delivery: spec === "council" ? delivery(t, doing, owner, this.runsAgent(projectId, t.agent, at), at) : null,

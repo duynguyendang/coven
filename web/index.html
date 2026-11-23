@@ -1571,6 +1571,18 @@
   /* -------------------------------------------------------------- coven board */
   const ONLINE_SECONDS = 120;
   const KIND_LABEL = { idea: "idea", question: "question", answer: "answer", review: "review", note: "note", "review-wanted": "review wanted" };
+  const WAITING_STATES = ["needs_clarification", "needs_split", "held"];
+  /** The host that owns a working task has not been seen for ONLINE_SECONDS (a host the board never heard of counts as silent). */
+  function hostSilent(b, member) {
+    if (!member) return false;
+    const h = (b.hosts || b.members || []).find((x) => x.member === member || x.host === member);
+    return !h || secondsSince(h.last_seen) === null || secondsSince(h.last_seen) >= ONLINE_SECONDS;
+  }
+  /** "3 of 5 done, 1 failed" for a parent; empty when the task has no subtasks. */
+  function rollupText(r) {
+    if (!r || !r.total) return "";
+    return `${r.done} of ${r.total} done${r.failed ? `, ${r.failed} failed` : ""}${r.held ? `, ${r.held} held` : ""}`;
+  }
   function boardColumns(b) {
     const cols = { ready: [], claimed: [], review: [], failed: [], done: [] };
     const wanted = new Set((b.notes || []).filter((n) => n.kind === "review-wanted" && n.task).map((n) => n.task));
@@ -1596,8 +1608,9 @@
           // the board and the repo disagree: a host's "branch is in the base" was refused, so the task is not done by the board's rule
           drift: t.doer_state === "done" || t.merged ? null : ((b.notes || []).find((n) => n.task === ref && n.kind === "note" && /^branch_in_base ignored/.test(n.note || "")) || {}).note || null,
           notes: (b.notes || []).filter((n) => n.task === ref && n.kind !== "review-wanted").length };
-        if (t.status === "completed" || t.doer_state === "done") cols.done.push(card);
-        else if (t.doer_state === "failed" && !t.claimed_by) cols.failed.push(card);
+        card.host_offline = t.doer_state === "working" && hostSilent(b, t.doer_host);
+        if (t.status === "completed" || t.doer_state === "done" || t.doer_state === "replaced") cols.done.push(card);
+        else if ((t.doer_state === "failed" || WAITING_STATES.includes(t.doer_state)) && !t.claimed_by) cols.failed.push(card);
         else if ((t.reviewers || []).length || (wanted.has(ref) && t.claimed_by) || ["submitted", "answered"].includes(t.doer_state)) cols.review.push(card);
         else if (t.claimed_by) cols.claimed.push(card);
         else if (!t.optional) cols.ready.push(card);
@@ -1673,6 +1686,9 @@
       const lead = f ? `${FAILURE_LABEL[f.cause] || f.cause}${f.summary && f.cause !== "no_change" ? `: ${short(f.summary, 110)}` : ""}. ` : (t.doer_detail ? `${short(t.doer_detail, 140)}. ` : "");
       return { kind: "failed", label: "Failed: needs you", why: `${lead}${f && f.base_changed ? "Its paths changed on the base branch, so the work may already be in. " : ""}Open it to see why, then retry it or mark it done.` };
     }
+    if (t.doer_state === "needs_clarification") return { kind: "clarify", label: "Needs you: answer", why: short(t.doer_question || t.doer_detail || "The Dev asked a question.", 200) };
+    if (t.doer_state === "needs_split") return { kind: "split", label: "Needs you: split", why: short(t.doer_pieces || t.doer_detail || "The Dev says the task is too big.", 200) };
+    if (t.doer_state === "held" && !t.claimed_by) return { kind: "host_held", label: "Needs you: held", why: short(t.doer_detail || "The host held this for a person.", 200) };
     if (t.doer_state !== "submitted" || !t.branch_host) return null;
     if (t.accept && t.accept.state === "requested" && t.accept.decision === "accept") return null; // accepted: the host is merging
     const held = notes.filter((n) => n.task === t.ref && n.kind === "question" && /holds .* for a person/i.test(n.note || "")).pop();
@@ -1756,7 +1772,7 @@
     }
     return { ready: byPlan(ready), attention: byPlan(attention), drawer, folded, count: ready.length + attention.length };
   }
-  const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed", queued: "Queued again" };
+  const DOER_STATE = { working: "Working", submitted: "Submitted for review", answered: "Answered", failed: "Failed", queued: "Queued again", needs_clarification: "Needs an answer", needs_split: "Needs a split", held: "Held", replaced: "Replaced" };
   /** The witches some online host can run now; a host from before hosts (no list) can still run the Dev. */
   function runnableWitches(b) {
     const out = new Set();
@@ -1959,6 +1975,7 @@
     // `working` with no live run on any host: the host stopped or crashed; say so on the row (the stage does not show her working)
     const stale = t.doer_state === "working" && state.liveRefs && !state.liveRefs.has(t.ref);
     const status = t.needs ? `<span class="badge warn needs-you" title="${esc(t.needs.why)}">${esc(t.needs.label)}</span>`
+      : t.host_offline ? '<span class="badge warn" data-host-offline title="The host that runs this has not been seen for 2 minutes">Host offline</span>'
       : stale ? '<span class="badge warn" data-stale title="Its status says working, but no online host runs it now">Working · no live run</span>'
       : t.doer_verdict ? `<span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes"}</span>`
       : t.merged ? '<span class="badge accept">Merged</span>'
@@ -2071,8 +2088,11 @@
     const need = t.agent || "green-witch";
     const holder = t.claimed_agent || (t.claimed_by ? null : need);
     const needLine = t.needs ? `<div class="state needs-you-line"><span class="badge warn">${esc(t.needs.label)}</span><span class="hint">${esc(t.needs.why)}</span></div>` : "";
+    const offline = t.host_offline ? `<span class="badge warn" data-host-offline>Host offline</span>` : "";
     const stateLine = needLine || (t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
-      ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "");
+      ? `<div class="state">${offline || `<span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>`}${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "")
+      + (t.doer_state === "working" && t.doer_step ? `<div class="state" data-step><span class="hint">${esc(short(t.doer_step, 160))}</span></div>` : "")
+      + (t.rollup && t.rollup.total ? `<div class="state" data-rollup><span class="hint">${esc(rollupText(t.rollup))}</span></div>` : "");
     const failureLine = failureHtml(t);
     const agentLine = `<div class="agent">${avatar(holder || need)}<span>${esc(agentName(holder || need))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : t.merged || t.status === "completed" || t.doer_state === "done" ? "" : " needed"}</span></div>`;
     const stuck = state.runnable && isStuck(t, state.runnable);
