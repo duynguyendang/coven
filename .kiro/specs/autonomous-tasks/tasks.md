@@ -92,7 +92,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_chair_lease.py tests/test_host.py tests/test_council.py`_
   - _Requirements: R3.1, R3.2_
 
-- [ ] 8. Read the ready fields from tasks.md
+- [x] 8. Read the ready fields from tasks.md
   - Goal: `specmap` reads Goal, Context, Read first, Change, Acceptance and Out of scope from a subtask's bullets.
   - Context: requirement R4.1; Kiro ignores free-text bullets, so they are safe in `tasks.md`.
   - Read first: `src/coven/specmap.py` (`_annotations`, `parse`, `_process`), `tests/test_specmap.py`.
