@@ -252,3 +252,11 @@ def test_the_chair_remembers_across_a_restart(tmp_path):
     assert again.jobs == [], "the same finding is not reported again after a restart"
     again.d.act(council(board(asked), scribe, doer_state="answered"), NOW)
     assert [a for _, a in again.jobs] == ["elder-witch"], "the Elder check still follows the Scribe's answer"
+
+
+def test_an_old_failure_on_a_finished_task_is_left_alone():
+    fx = Live()
+    fx.d.act(board({"task_id": "1", "status": "completed", "doer_state": "failed", "doer_failure": {"cause": "error"}},
+                   {"task_id": "2", "doer_state": "failed", "merged": {"in_base": True}, "doer_failure": {"cause": "error"}},
+                   {"task_id": "3", "status": "completed", "doer_state": "needs_clarification", "doer_detail": "which?"}), NOW)
+    assert fx.queued == [] and fx.asked == [] and fx.jobs == []

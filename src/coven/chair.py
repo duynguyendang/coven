@@ -75,6 +75,8 @@ def sweep(view: dict, now, seen: set[str] | None = None) -> list[dict]:
         for t in tasks:
             ref = f"{spec.get('spec')}#{t.get('task_id')}"
             state = t.get("doer_state")
+            if (_closed(t) or t.get("merged")) and state in ("failed", "needs_clarification", "needs_split"):
+                state = None  # ticked, merged or done: an old stop on a finished task needs nobody (never queue it again)
             if state == "failed":
                 failure = t.get("doer_failure") or {}
                 cause = failure.get("cause") or "error"
