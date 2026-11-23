@@ -44,7 +44,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `cd server && npm run check && node --test test/autonomous.test.ts test/board.test.ts && cd .. && PYTHONPATH=src python3 -m pytest -q tests/test_board.py tests/test_harness.py`_
   - _Requirements: R1.1, R5.1, R5.2, R7.1_
 
-- [ ] 4. Progress while a run works
+- [x] 4. Progress while a run works
   - Goal: the board shows what a running witch is doing now, at most every 20 seconds.
   - Context: `run_agent` waits for `subprocess.run` and shows nothing until the run ends. Requirement R2.2.
   - Read first: `src/coven/host.py` (`run_agent`, `_timed`), `src/coven/council.py` (`final_text`), `src/coven/runner.py`, `tests/test_host_live.py` (the fake `kiro-cli`).

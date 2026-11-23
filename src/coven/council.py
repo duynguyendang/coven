@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -194,6 +195,91 @@ def final_text(stream: str) -> tuple[str | None, str | None]:
             text = "\n".join(line for line in lines if line)
             return (text, None) if text else (None, "the run gave no answer")
     return None, "the run did not finish"
+
+
+STEP_VERBS = {"fs_write": "editing", "write": "editing", "str_replace": "editing", "fs_append": "editing", "edit": "editing",
+              "fs_read": "reading", "read": "reading", "grep": "searching", "glob": "listing", "code": "inspecting code",
+              "execute_bash": "running", "run_command": "running", "shell": "running", "bash": "running"}
+
+
+def tool_step(record: dict) -> str | None:
+    """A progress line ("editing web/index.html") from one stream-json record that is a tool call, else None.
+
+    Kiro's schema is not fully documented, so this reads the usual spellings and ignores the rest."""
+    if not isinstance(record, dict):
+        return None
+    kind = str(record.get("type") or record.get("event") or "").lower()
+    if "tool" not in kind or "result" in kind:
+        return None
+    data = record.get("data") if isinstance(record.get("data"), dict) else {}
+    name = ""
+    for source in (record, data):
+        for key in ("name", "tool", "toolName", "tool_name"):
+            if isinstance(source.get(key), str) and source[key]:
+                name = source[key]
+                break
+        if name:
+            break
+    if not name:
+        return None
+    args: dict = {}
+    for source in (record, data):
+        for key in ("input", "tool_input", "toolInput", "arguments", "args"):
+            if isinstance(source.get(key), dict):
+                args = source[key]
+                break
+        if args:
+            break
+    target = ""
+    for key in ("path", "file_path", "filePath", "file", "command", "pattern"):
+        if isinstance(args.get(key), str) and args[key].strip():
+            target = " ".join(args[key].split())
+            break
+    verb = STEP_VERBS.get(name.lower(), f"using {name}")
+    return f"{verb} {target}".strip()
+
+
+def stream_run(command: list[str], cwd: Path, env: dict, timeout: int, on_step=None, every: float = 20.0,
+               clock=time.monotonic) -> str:
+    """Run `command`, reading its stdout line by line. Returns the stdout.
+
+    `on_step(line)` gets the latest tool step at most once per `every` seconds. Raises subprocess.TimeoutExpired
+    (after killing the run) and FileNotFoundError like subprocess.run does."""
+    proc = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    lines: list[str] = []
+
+    def read() -> None:
+        latest = None
+        last = None
+        for line in proc.stdout:  # type: ignore[union-attr]
+            lines.append(line)
+            if on_step is None:
+                continue
+            try:
+                step = tool_step(json.loads(line))
+            except ValueError:
+                step = None
+            latest = step or latest
+            now = clock()
+            if latest and (last is None or now - last >= every):
+                last = now
+                try:
+                    on_step(latest)
+                except Exception:  # noqa: BLE001 - progress is a courtesy
+                    pass
+                latest = None
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        reader.join(5)
+        raise
+    reader.join()
+    return "".join(lines)
 
 
 def run_agent(root: Path, prompt: str, timeout: int = ANSWER_TIMEOUT) -> tuple[str | None, str | None]:

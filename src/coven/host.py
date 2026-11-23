@@ -49,6 +49,8 @@ RUN_TIMEOUT = 1800
 ATTEMPTS = 2          # a build agent gets one more try when its change was refused
 PRESENCE_EVERY = 60
 CHAIR_RENEW_EVERY = 40  # seconds; the cloud lease lasts 120
+PROGRESS_EVERY = 20   # seconds between progress lines of a running witch
+PROGRESS_CHARS = 160
 
 # runner(cwd, agent, prompt, env, timeout) -> (final text | None, error | None)
 Runner = Callable[[Path, str, str, dict, int], "tuple[str | None, str | None]"]
@@ -70,13 +72,19 @@ def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_
     trust = os.environ.get(f"COVEN_TRUST_{kind.upper()}", agents.TRUST[kind])
     command = ["kiro-cli", "chat", "--no-interactive", "--trust-workspace", f"--trust-tools={trust}",
                "--output-format", "stream-json", "--agent", agent, prompt]
+    run_env = {**os.environ, **env}
+    ref, root = env.get("COVEN_TASK"), env.get("COVEN_ROOT")
+    on_step = None
+    if ref and root and not ref.startswith("chat#"):
+        def on_step(line: str) -> None:
+            _status(Path(root), ref, "working", agent, step=redact.redact_text(line)[:PROGRESS_CHARS])
     try:
-        done = subprocess.run(command, cwd=cwd, env={**os.environ, **env}, capture_output=True, text=True, timeout=timeout, check=False)
+        out = council.stream_run(command, cwd, run_env, timeout, on_step, PROGRESS_EVERY)
     except FileNotFoundError:
         return None, "kiro-cli is not installed on this host"
     except subprocess.TimeoutExpired:
         return None, f"no result within {timeout} s"
-    return council.final_text(done.stdout or "")
+    return council.final_text(out)
 
 
 CLOUD_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -577,11 +585,13 @@ def _role_warning(root: Path, agent: str, ref: str, produced: str) -> None:
 
 
 def _status(root: Path, ref: str, state: str, agent: str, detail: str | None = None, branch: str | None = None, verdict: str | None = None,
-            failure: dict | None = None) -> None:
-    """Tell the board where the task stands. A courtesy: the work never waits on it."""
+            failure: dict | None = None, step: str | None = None) -> None:
+    """Tell the board where the task stands. A courtesy: the work never waits on it.
+
+    `step` is a progress line of a running witch; board.task_status has no field for it yet, so it travels as the detail."""
     try:
         extra = {"failure": failure} if failure else {}
-        board.task_status(root, ref, state, agent=agent, detail=detail, branch=branch, verdict=verdict, **extra, **_run_stamp(ref))
+        board.task_status(root, ref, state, agent=agent, detail=step or detail, branch=branch, verdict=verdict, **extra, **_run_stamp(ref))
     except Exception:  # noqa: BLE001
         pass
 
