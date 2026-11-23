@@ -90,7 +90,9 @@ def _parse_ts(stamp: str | None) -> datetime | None:
 
 
 def chair_on_a_host(chat: dict) -> bool:
-    """True when an online host runs the Grey Witch: she, not the listener, takes what is said to the council."""
+    """True when an online host runs the Grey Witch: she, not the listener, takes what is said to the council.
+
+    A host advertises her only while it holds the Chair lease, so the holder is the host counted here."""
     return any(h.get("online") and "grey-witch" in (h.get("agents") or []) for h in chat.get("hosts") or [])
 
 
