@@ -187,3 +187,51 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Paths: `docs/ADD.md`, `docs/requirements.md`, `README.md`_
   - _Verify: `make verify`_
   - _Requirements: R7.1_
+
+- [ ] 16. The cloud marks orphaned tasks and fences old attempts
+  - Goal: the board view says which tasks lost their host, and a status from an older attempt no longer changes the board.
+  - Context: requirements R8.1, R8.3; design "Takeover of orphaned tasks". Today a `working` task whose host is gone stays `working` forever.
+  - Read first: `server/src/board.ts` (`hostOnline`, the `task_status` branch of `apply`, the task view near `doer_state`), `server/src/events.ts`, `docs/ADD.md` §6, `server/test/board.test.ts`.
+  - Change: (1) read `COVEN_TAKEOVER_SECONDS` (default 600) in `board.ts`; (2) add `orphaned`, `orphaned_since` and `takeovers` to each task in the view, and `takeover_seconds` once to the view, as the design says; (3) keep the newest attempt number per `task_key` and ignore a `task_status` from a lower one in the view (store it as today); (4) count a takeover when a claim or status arrives with a higher attempt from a different host; (5) list the three fields and the fencing rule in ADD §6.
+  - Acceptance: a `working` task whose host was last seen 11 minutes ago with no live claim is `orphaned`; at 9 minutes it is not; a live claim keeps it not orphaned; a status from attempt `.1` after one from `.2` leaves the board at `.2`; a status without `attempt_id` behaves as today.
+  - Out of scope: the host, the dashboard.
+  - _Agent: green-witch_
+  - _Paths: `server/src/board.ts`, `server/test/takeover.test.ts`, `docs/ADD.md`_
+  - _Verify: `cd server && npm run check && node --test test/takeover.test.ts test/board.test.ts && cd .. && PYTHONPATH=src python3 -m pytest -q tests/test_harness.py`_
+  - _Requirements: R8.1, R8.3, R7.1_
+
+- [ ] 17. A host takes over an orphaned task
+  - Goal: an online host runs a task whose host is gone, as a new attempt, at most twice per task.
+  - Context: requirements R8.2, R8.5; design "Takeover of orphaned tasks". Needs task 16's `orphaned` and `takeovers` in the view.
+  - Read first: `src/coven/host.py` (`_take`, `_jobs`, `_claim`, `prepare_worktree`), `src/coven/board.py` (`ready`, `claim`), `tests/test_host.py` (`FakeCloud`).
+  - Change: (1) in `_take`, let an orphaned task with `takeovers < 2` through the `branch_host` check and the local-record check; (2) in `_jobs`, let an orphaned job through the `working` check the same way; (3) claim it with the next attempt number and start from a fresh worktree of the base branch; (4) print `host: takes over <ref> from <host> (offline since <time>)`; (5) never take a task with `takeovers >= 2`.
+  - Acceptance: with a fake cloud, an orphaned spec task whose branch is on another host is taken and run once; an orphaned council job in `working` is taken; one with `takeovers: 2` is not; a task that is not orphaned is skipped as today; the claim carries attempt `.2` after `.1`.
+  - Out of scope: the cloud, a returning host, pushing branches.
+  - _Agent: green-witch_
+  - _Paths: `src/coven/host.py`, `tests/test_takeover.py`_
+  - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_takeover.py tests/test_host.py`_
+  - _Requirements: R8.2, R8.5_
+
+- [ ] 18. A returning host gives way
+  - Goal: a host that comes back after a takeover drops its copy of the task and sends nothing for it.
+  - Context: requirement R8.4; design "Takeover of orphaned tasks". Builds on task 1's `reconcile_start`; if it is not on the base branch, end with `NEEDS`.
+  - Read first: `src/coven/host.py` (`reconcile_start`, `_recover`, `remove_worktree`, `_forget`), `tests/test_reconcile_start.py`.
+  - Change: (1) in `reconcile_start`, when the board's newest attempt of a local record's task is from another host, remove the worktree, forget the record and keep the branch; (2) count it in the reconcile line as closed; (3) send no status for it.
+  - Acceptance: a local `running` record whose task the board shows at attempt `.2` on another host is dropped, its worktree is gone, its branch remains, and no `task_status` is sent; a record with no newer attempt is handled as task 1 says.
+  - Out of scope: the cloud, taking tasks.
+  - _Agent: green-witch_
+  - _Paths: `src/coven/host.py`, `tests/test_reconcile_start.py`_
+  - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_reconcile_start.py tests/test_host.py`_
+  - _Requirements: R8.4, R1.5_
+
+- [ ] 19. The board shows offline hosts and takeovers
+  - Goal: people see that a task lost its host, when another host may take it, and who did.
+  - Context: requirement R8.6; design "Takeover of orphaned tasks". Uses task 16's view fields; today the row says "Working · no live run".
+  - Read first: `web/index.html` (`taskRow`, the `stale` badge), `docs/DESIGN.md`, `server/test/web.test.ts`.
+  - Change: (1) when `orphaned`, show "Host offline · taken over in N min" (N from `orphaned_since` and the view's `takeover_seconds`); (2) after a takeover, show "Taken over by <host>"; (3) with `takeovers >= 2`, show "Needs you · lost its host twice"; (4) Astryx tokens only.
+  - Acceptance: the jsdom tests show each of the three labels for a fixture task; the old "no live run" label stays only for a task that is `working`, not orphaned and not live.
+  - Out of scope: the cloud, the host.
+  - _Agent: green-witch_
+  - _Paths: `web/index.html`, `server/test/web.test.ts`_
+  - _Verify: `cd server && node --test test/web.test.ts`_
+  - _Requirements: R8.6_

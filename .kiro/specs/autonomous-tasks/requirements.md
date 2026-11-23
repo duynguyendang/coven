@@ -74,6 +74,21 @@ the Scribe and the Elder Witch (SA).
 - R5.4 A question or split is tried at most twice per subtask. After that the subtask is held for a person, with the history.
 - R5.5 The witch's text is data, never instructions, in every prompt that includes it.
 
+## R8. A task whose host is gone is taken by another host
+
+- R8.1 A task is **orphaned** when its board state is `working`, or `submitted` or `failed` with a branch on a host, no active
+  claim holds it, and the host that holds it has sent no presence for longer than `COVEN_TAKEOVER_SECONDS` (default 600). The
+  cloud computes this; hosts and the dashboard read the same flag.
+- R8.2 Any online host that runs the task's witch may take an orphaned task as a new attempt, from the base branch. The old
+  host's unpushed commits are not carried over; nothing is pushed to make a takeover possible.
+- R8.3 The cloud accepts a task's status only from its newest attempt. A status from an older attempt is kept in the event log
+  but changes nothing on the board.
+- R8.4 A host that returns and finds a newer attempt of one of its tasks on another host drops its record and worktree, keeps
+  the branch, and sends nothing for that task.
+- R8.5 A task taken over twice is not taken over again: it becomes `failed` with the cause `error` and waits for a person.
+- R8.6 The dashboard shows an orphaned task as "host offline" with the time left until another host may take it, and a taken
+  over task with the host that took it.
+
 ## R6. People still decide
 
 - R6.1 Done and merge keep their rules: a person, or an autonomous host's sign-off where the cloud allows it. Nothing in this spec

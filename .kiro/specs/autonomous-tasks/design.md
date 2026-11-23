@@ -96,6 +96,25 @@ larger than the size limit, end with `SPLIT: <why>; <pieces>`. `host.outcome_of(
 `NEEDS`/`SPLIT` the host stops the attempt loop (no second attempt), keeps the worktree, sends the new status and notes the
 Chair. These outcomes are counted: after two for one subtask it is `held`.
 
+## Takeover of orphaned tasks (R8)
+
+What exists: claims are leases (`DEFAULT_LEASE_SECONDS`, 15 min, renewed by a running host); `hostOnline` says a host sent
+presence in the last 150 s; every run has an `attempt_id` (`<task_key>.<n>`). What blocks a takeover today, in `host.py`:
+`_jobs` skips any council job whose `doer_state` is `working`, and `_take` skips a task whose `branch_host` is another host.
+
+- Cloud (`board.ts`): the task view gains `orphaned` (boolean), `orphaned_since` (ISO time: when the holder was last seen) and
+  `takeovers` (count); the view also carries `takeover_seconds` once. `orphaned` = R8.1, using the `host_id` of the newest status
+  and `COVEN_TAKEOVER_SECONDS`.
+- Fencing (`board.ts`): per task, the newest attempt wins. A `task_status` whose `attempt_id` has a lower `n` than the newest
+  known for that `task_key` is stored but ignored by the view. A status with no `attempt_id` (older hosts) keeps today's rule.
+- Host (`host.py`): `_take` and `_jobs` treat an orphaned task as ready, even when it is `working` or its `branch_host` is
+  elsewhere, if `takeovers < 2`. The claim carries the next attempt number; the run starts from a fresh worktree of the base.
+  The host prints `host: takes over <ref> from <host> (offline since <time>)`. With `takeovers >= 2` it sends nothing; the
+  cloud's view shows the task as needing a person.
+- Return (`host.reconcile_start`, task 1): a local record whose task has a newer attempt from another host is dropped with its
+  worktree; the branch is kept for a person; nothing is sent.
+- Contract: the three view fields and the fencing rule go into `docs/ADD.md` §6; no new event type.
+
 ## Why this order
 
 Reconcile and the lease change who may act, so they come first. The readiness gate and the outcomes change what the Dev gets,
