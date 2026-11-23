@@ -313,3 +313,54 @@ def test_spec_cache_trusts_an_old_unchanged_file(tmp_path, monkeypatch):
     monkeypatch.setattr(specmap, "parse", lambda *a, **k: calls.append(1) or {})
     cache.tasks()
     assert calls == [], "a file that settled long ago is not parsed again"
+
+
+READY_TASKS = """- [ ] 1. Do it
+  - Goal: make it work.
+  - Context: because R1.
+  - Read first: `src/a.py` (`f`), `tests/test_a.py`.
+  - Change: (1) add `f`; (2) test it.
+  - Acceptance: passes.
+  - Out of scope: the host.
+  - _Paths: `src/a.py`_
+
+- [ ] 2. Lines
+  - Change:
+    - first thing
+    - second thing
+  - Goal: g
+"""
+
+
+def test_ready_fields_are_read():
+    task = specmap.parse(READY_TASKS, "s")["s#1"]
+    assert task["goal"] == "make it work."
+    assert task["context"] == "because R1."
+    assert task["read_first"] == ["src/a.py", "f", "tests/test_a.py"]
+    assert task["steps"] == ["add `f`", "test it."]
+    assert task["acceptance"] == "passes."
+    assert task["out_of_scope"] == "the host."
+    assert task["paths"] == ["src/a.py"]
+
+
+def test_change_without_markers_splits_on_lines():
+    task = specmap.parse(READY_TASKS, "s")["s#2"]
+    assert task["steps"] == ["first thing", "second thing"]
+    assert task["goal"] == "g"
+
+
+def test_task_without_ready_fields_has_empty_values():
+    task = specmap.parse(KIRO_TASKS, "s")["s#1"]
+    assert (task["goal"], task["context"], task["acceptance"], task["out_of_scope"]) == ("", "", "", "")
+    assert task["read_first"] == [] and task["steps"] == []
+
+
+def test_own_spec_tasks_one_to_fourteen_are_filled():
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / ".kiro/specs/autonomous-tasks/tasks.md"
+    tasks = specmap.parse(path.read_text(), "autonomous-tasks")
+    for number in range(1, 15):
+        task = tasks[f"autonomous-tasks#{number}"]
+        for field in ("goal", "context", "read_first", "steps", "acceptance", "out_of_scope"):
+            assert task[field], (number, field)

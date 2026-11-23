@@ -135,6 +135,55 @@ def _process(lines: list[str], start: int, parent_text: str | None, out: list[di
     return index
 
 
+READY_FIELD = re.compile(
+    r"^(?P<indent>\s*)[-*+]\s+(?P<key>Goal|Context|Read first|Change|Acceptance|Out of scope):\s*(?P<value>.*)$", re.IGNORECASE
+)
+STEP_MARK = re.compile(r"\(\d+\)")
+BULLET = re.compile(r"^\s*[-*+]\s+")
+
+
+def _steps(value: str, extra: list[str]) -> list[str]:
+    """`Change:` as steps: split on `(n)` markers, else one step per line."""
+    if STEP_MARK.search(value):
+        parts = STEP_MARK.split(" ".join([value, *extra]))
+        return [part.strip(" ;\t") for part in parts if part.strip(" ;\t")]
+    return [line for line in (part.strip() for part in [value, *extra]) if line]
+
+
+def _ready_fields(content: list[str]) -> dict:
+    """Goal, Context, Read first, Change, Acceptance and Out of scope bullets of a task (R4.1). Absent means empty."""
+    found: dict = {"goal": "", "context": "", "read_first": [], "steps": [], "acceptance": "", "out_of_scope": ""}
+    names = {"goal": "goal", "context": "context", "acceptance": "acceptance", "out of scope": "out_of_scope"}
+    index = 0
+    while index < len(content):
+        line = content[index]
+        if HEADING.match(line):
+            break
+        match = READY_FIELD.match(line)
+        index += 1
+        if not match:
+            continue
+        indent, key, value = len(match.group("indent")), match.group("key").lower(), match.group("value").strip()
+        extra: list[str] = []
+        while index < len(content):
+            following = content[index]
+            if HEADING.match(following):
+                break
+            if BULLET.match(following) and len(following) - len(following.lstrip()) <= indent:
+                break
+            extra.append(BULLET.sub("", following).strip())
+            index += 1
+        if key == "read first":
+            if not found["read_first"]:
+                found["read_first"] = [p for p in BACKTICKED.findall(" ".join([value, *extra])) if p]
+        elif key == "change":
+            if not found["steps"]:
+                found["steps"] = _steps(value, extra)
+        elif not found[names[key]]:
+            found[names[key]] = " ".join(part for part in [value, *extra] if part)
+    return found
+
+
 def _annotations(content: list[str]) -> dict:
     found: dict = {"paths": [], "verify": None, "requirements": [], "agent": None, "allow_empty": None, "delegated": []}
     for line in content:
@@ -215,6 +264,7 @@ def parse(text: str, spec: str | None = None) -> dict[str, dict]:
         else:
             parent = None
         notes = _annotations(task["content"])
+        ready = _ready_fields(task["content"])
         tasks[f"{spec}#{task_id}" if spec else task_id] = {
             "spec": spec,
             "task_id": task_id,
@@ -231,6 +281,7 @@ def parse(text: str, spec: str | None = None) -> dict[str, dict]:
             "agent": notes["agent"],
             "allow_empty": notes["allow_empty"],
             "delegated": notes["delegated"],
+            **ready,
             "wave": waves.get(task_id),
             "line": task["line"],
         }
