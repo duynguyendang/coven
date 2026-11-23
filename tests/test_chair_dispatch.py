@@ -127,3 +127,22 @@ def test_host_sweeps_only_with_the_lease_and_every_sweep_interval(monkeypatch):
     h.chair_held = False
     h._chair_sweep({})
     assert h._chair_dispatch is None and h._chair_sweep_at is None
+
+
+def test_failed_replaced_send_is_retried_next_sweep():
+    fx = Fx()
+    view = board({"task_id": "1", "doer_state": "needs_split", "doer_detail": "two pieces"},
+                 {"task_id": "1.1", "parent": "s#1"}, {"task_id": "1.2", "parent": "s#1"})
+    calls = []
+
+    def flaky(r, s, x):
+        calls.append(r)
+        if len(calls) == 1:
+            raise OSError("down")
+        fx.sent.append((r, s, x))
+
+    fx.d.send = flaky
+    fx.d.act(view, NOW)
+    assert fx.sent == []
+    fx.d.act(view, NOW)
+    assert fx.sent == [("s#1", "replaced", "split into subtasks")]

@@ -169,8 +169,11 @@ class Dispatcher:
                     did.append({"task": ref, "action": "elder_check", "job": made})
         for ref, t in tasks.items():  # a split subtask whose new subtasks exist is closed as replaced
             if t.get("doer_state") == "needs_split" and ref in parents and ref not in self.done:
+                try:
+                    self.send(ref, "replaced", "split into subtasks")
+                except Exception:  # noqa: BLE001 - a failed send is retried on the next sweep
+                    continue
                 self.done.add(ref)
-                self.send(ref, "replaced", "split into subtasks")
                 did.append({"task": ref, "action": "replaced"})
         for f in sweep(view, now, self.seen):
             ref, kind = f["task"], f["kind"]
