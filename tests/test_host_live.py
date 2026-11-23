@@ -178,7 +178,8 @@ def test_a_host_takes_requests_and_tasks_runs_each_witch_and_the_cloud_sees_it_a
     api(cloud, "/v1/board/done", {"project_id": project, "task": "shop#2", "author": "duy"})
     third = host.Host(root, slots=3, out=lambda line: None).run(once=True)
     push()
-    assert "shop#2" in third["finished"] and "shop#2" not in third["taken"]
+    # The reconcile at start (autonomous-tasks#1) drops a record the board closed, so it may go before the first tick reports it.
+    assert "shop#2" not in third["taken"] and "shop#2" not in host.load(root)
     held = {(c["spec"], c["task_id"], c.get("agent")) for c in api(cloud, f"/v1/board?project_id={project}")["claims"]}
     assert ("shop", "2", "elf") not in held and ("shop", "1", "green-witch") in held, "the Dev's branch still waits for people"
 

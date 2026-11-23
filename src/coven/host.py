@@ -3115,6 +3115,7 @@ def reconcile_start(root: Path) -> dict:
         task = seen.get(ref) or {}
         state, local = task.get("doer_state"), record.get("state")
         if state in ("done", "merged", "replaced", "abandoned") or task.get("merged"):
+            work._release_quietly(root, ref, "closed on the board")  # else its claim is renewed forever and holds the task
             remove_worktree(root, record.get("worktree"))
             _drop_unused_branch(root, record)
             _forget(root, ref)
