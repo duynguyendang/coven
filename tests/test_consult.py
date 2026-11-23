@@ -121,10 +121,11 @@ def git_dirty(root):
 
 
 def test_a_read_only_run_of_the_dev_trusts_reads_only(monkeypatch, tmp_path):
-    import subprocess
+    from coven import council
 
     seen = []
-    monkeypatch.setattr(subprocess, "run", lambda command, **k: seen.append(command) or subprocess.CompletedProcess(command, 0, "", ""))
+    # run_agent streams the run (council.stream_run, task 4): record the command it would start
+    monkeypatch.setattr(council, "stream_run", lambda command, *a, **k: seen.append(command) or "")
     host.run_agent(tmp_path, "green-witch", "q", {"COVEN_READ_ONLY": "1"}, 5)
     host.run_agent(tmp_path, "green-witch", "q", {}, 5)
     assert "--trust-tools=fs_read" in seen[0] and "--trust-tools=fs_read,fs_write,execute_bash,run_command" in seen[1]
