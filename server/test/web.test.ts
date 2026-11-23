@@ -972,6 +972,7 @@ describe("session screen", () => {
     assert.match(text, /Owns design and architecture; the plan of a change/);
     assert.match(text, /Never write code; approve your own plan; edit tasks\.md/);
     await pick("elf");
+    assert.equal(doc().querySelector(".stage-card .witch .motto")!.textContent, "“What if we tried…?”", "the Elf's quote sits on her roster card");
     assert.match(doc().querySelector('[data-key="duty-elf"]')!.textContent!.replace(/\s+/g, " "), /Hands off to Elder Witch/);
     assert.equal(duty.querySelectorAll("dt").length, 4);
     await go("#/");
