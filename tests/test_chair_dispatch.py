@@ -50,7 +50,8 @@ def test_autonomous_signoff_only_for_no_change():
     fx.d.act(board({"task_id": "1", "doer_state": "failed", "doer_failure": {"cause": "no_change"}},
                    {"task_id": "2", "doer_state": "failed", "doer_failure": {"cause": "base_changed"}},
                    {"task_id": "3", "doer_state": "failed", "doer_failure": {"cause": "error"}}), NOW)
-    assert fx.signed == ["s#1"] and [r for r, _ in fx.asked] == ["s#2"]
+    # no_change is signed off; base_changed asks "close it?"; an `error` with no requeue effect goes to a person, never nowhere
+    assert fx.signed == ["s#1"] and [r for r, _ in fx.asked] == ["s#2", "s#3"]
 
 
 def test_budget_stops_the_seventh_run_and_the_rest_wait():
@@ -146,3 +147,108 @@ def test_failed_replaced_send_is_retried_next_sweep():
     assert fx.sent == []
     fx.d.act(view, NOW)
     assert fx.sent == [("s#1", "replaced", "split into subtasks")]
+
+
+# ---------------------------------------------------------------- nothing is left without a next step
+
+
+class Live(Fx):
+    """The dispatcher with the requeue and note effects a host gives it."""
+
+    def __init__(self, state_path=None, **kw):
+        super().__init__(**kw)
+        self.queued, self.notes = [], []
+        self.d.requeue = lambda r, why: self.queued.append(r)
+        self.d.note = lambda r, text: self.notes.append((r, text))
+        if state_path:
+            self.d.state_path = state_path
+
+
+def council(view, job, **fields):
+    view["specs"].append({"spec": "council", "tasks": [{"task_id": job, **fields}]})
+    return view
+
+
+def test_a_question_goes_scribe_then_elder_then_back_to_the_queue_with_both_answers():
+    fx = Live()
+    asked = {"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "which file holds the cart?"}
+    fx.d.act(board(asked), NOW)
+    scribe = fx.jobs[0][0]
+    fx.d.act(council(board(asked), scribe, doer_state="answered", doer_detail="src/cart.py"), NOW)
+    elder = fx.jobs[1][0]
+    assert [a for _, a in fx.jobs] == ["scribe", "elder-witch"] and fx.queued == []
+    fx.d.act(council(council(board(asked), scribe, doer_state="answered"), elder, doer_state="answered", doer_detail="READY"), NOW)
+    assert fx.queued == ["s#1"], "the Dev's task goes back to the queue"
+    assert fx.notes and "src/cart.py" in fx.notes[0][1] and "READY" in fx.notes[0][1], "her next prompt sees both answers"
+
+
+def test_the_same_question_again_is_a_new_round_then_held():
+    fx = Live()
+    asked = {"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "which file?"}
+    for _ in range(2):  # two full rounds, each ending in the queue
+        fx.d.act(board(asked), NOW)
+        scribe = fx.jobs[-1][0]
+        fx.d.act(council(board(asked), scribe, doer_state="answered"), NOW)
+        elder = fx.jobs[-1][0]
+        fx.d.act(council(council(board(asked), scribe, doer_state="answered"), elder, doer_state="answered"), NOW)
+    assert fx.queued == ["s#1", "s#1"]
+    fx.d.act(board(asked), NOW)  # the Dev asks the same thing a third time
+    assert ("s#1", "held") in [(r, s) for r, s, _ in fx.sent], "MAX_ROUNDS is reached, not skipped by the seen-memory"
+
+
+def test_a_transient_failure_is_queued_again_twice_then_a_person_is_asked():
+    fx = Live()
+    for attempt in range(3):
+        fx.d.act(board({"task_id": "1", "doer_state": "failed", "doer_attempts": attempt, "doer_failure": {"cause": "error", "summary": "host restarted"}}), NOW)
+    assert fx.queued == ["s#1", "s#1"]
+    assert [r for r, _ in fx.asked] == ["s#1"]
+
+
+def test_a_failure_about_the_work_waits_for_a_person():
+    fx = Live()
+    fx.d.act(board({"task_id": "1", "doer_state": "failed", "doer_failure": {"cause": "verify_failed"}}), NOW)
+    assert fx.queued == [] and [r for r, _ in fx.asked] == ["s#1"]
+
+
+def test_a_failed_scribe_job_starts_a_new_round():
+    fx = Live()
+    asked = {"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "which file?"}
+    fx.d.act(board(asked), NOW)
+    scribe = fx.jobs[0][0]
+    fx.d.act(council(board(asked), scribe, doer_state="failed", doer_failure={"cause": "verify_failed"}), NOW)
+    assert [a for _, a in fx.jobs] == ["scribe", "scribe"], "the question is not dropped: a second round starts at once"
+    assert fx.d.pending["s#1"]["job"] != scribe
+
+
+def test_a_split_proposal_goes_to_a_person():
+    fx = Live()
+    split = {"task_id": "1", "doer_state": "needs_split", "doer_detail": "a; b"}
+    fx.d.act(board(split), NOW)
+    scribe = fx.jobs[0][0]
+    fx.d.act(council(board(split), scribe, doer_state="answered", doer_detail="1.1 a; 1.2 b"), NOW)
+    elder = fx.jobs[1][0]
+    fx.d.act(council(council(board(split), scribe, doer_state="answered"), elder, doer_state="answered"), NOW)
+    assert fx.queued == [] and any("1.1 a" in text for _, text in fx.asked)
+
+
+def test_a_held_task_a_person_retried_is_looked_at_again():
+    fx = Live()
+    fx.d.done.add("s#1")
+    fx.d.rounds["s#1"] = ["a", "b"]
+    fx.d.act(board({"task_id": "1", "doer_state": "queued"}), NOW)
+    assert "s#1" not in fx.d.done and "s#1" not in fx.d.rounds
+
+
+def test_the_chair_remembers_across_a_restart(tmp_path):
+    path = tmp_path / "chair.json"
+    fx = Live(state_path=path)
+    asked = {"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "which file?"}
+    fx.d.act(board(asked), NOW)
+    scribe = fx.jobs[0][0]
+    again = Live(state_path=path)
+    again.d._load()
+    assert again.d.pending["s#1"]["job"] == scribe
+    again.d.act(board(asked), NOW)
+    assert again.jobs == [], "the same finding is not reported again after a restart"
+    again.d.act(council(board(asked), scribe, doer_state="answered"), NOW)
+    assert [a for _, a in again.jobs] == ["elder-witch"], "the Elder check still follows the Scribe's answer"

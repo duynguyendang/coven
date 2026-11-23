@@ -178,8 +178,12 @@ def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None, 
 
 
 def release(root: Path, claim_id: str, reason: str = "released") -> dict:
-    status, body = _call(root, "POST", f"/v1/claims/{claim_id}/release", {"member": member(root), "reason": reason, "host_id": config.host_id(root)})
-    _remember(root, [c for c in held(root) if c["claim_id"] != claim_id])
+    try:
+        status, body = _call(root, "POST", f"/v1/claims/{claim_id}/release", {"member": member(root), "reason": reason, "host_id": config.host_id(root)})
+    finally:
+        # Forget it here even when the cloud cannot be reached: else renew_all keeps renewing a claim nobody runs, and the task
+        # stays held forever. Unrenewed, the cloud's lease lapses by itself (DEFAULT_LEASE_SECONDS).
+        _remember(root, [c for c in held(root) if c["claim_id"] != claim_id])
     if status not in (200, 404, 410):
         raise BoardError(f"release refused ({status}): {body.get('error') or body}", status, body)
     return body
@@ -513,6 +517,7 @@ def ready(root: Path, board: dict | None = None) -> list[dict]:
     for task in tasks.values():
         by_spec.setdefault(task["spec"], []).append(task)
     taken = set()
+    finished = set()  # done on the board (Mark done, or merged) though tasks.md here may not be ticked yet
     if board:
         for c in board.get("claims") or []:
             if c.get("kind") == "task":
@@ -520,20 +525,24 @@ def ready(root: Path, board: dict | None = None) -> list[dict]:
         # people accepted it on the board (Mark done): finished, even before anyone ticks tasks.md
         for s in board.get("specs") or []:
             for t in s.get("tasks") or []:
-                if t.get("doer_state") == "done":
+                if t.get("doer_state") in ("done", "replaced") or t.get("merged"):
                     taken.add((s.get("spec"), str(t.get("task_id"))))
+                    finished.add((s.get("spec"), str(t.get("task_id"))))
     out = []
     for spec, items in by_spec.items():
         parents = {t["parent"] for t in items if t.get("parent")}
         leaves = [t for t in items if t["task_id"] not in parents and not t["optional"]]
+        def over(o: dict) -> bool:
+            return o["done"] or (spec, o["task_id"]) in finished
+
         for t in leaves:
             if t["done"] or (spec, t["task_id"]) in taken:
                 continue
             if t.get("wave") is not None:
-                blocked = any(o["wave"] is not None and o["wave"] < t["wave"] and not o["done"] for o in leaves)
+                blocked = any(o["wave"] is not None and o["wave"] < t["wave"] and not over(o) for o in leaves)
             else:
                 earlier = [o for o in leaves if t.get("parent") and o.get("parent") == t.get("parent") and o["line"] < t["line"]]
-                blocked = any(not o["done"] for o in earlier)
+                blocked = any(not over(o) for o in earlier)
             if not blocked:
                 out.append(t)
     return sorted(out, key=lambda t: (t["spec"], t.get("wave") if t.get("wave") is not None else 10**6, t["line"]))
