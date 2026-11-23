@@ -82,7 +82,7 @@ class FakeCloud:
         monkeypatch.setattr(board, "signoff", signoff)
         monkeypatch.setattr(board, "plan_propose", lambda root, plan, tasks, summary, source=None, agent="elder-witch": c.plans.append(
             {"plan": plan, "tasks": tasks, "summary": summary, "source": source}) or {})
-        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None, verdict=None, failure=None: (c.failures.append((ref, failure)) if failure else None, c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch)), c.verdicts.append((ref, verdict))) and {})
+        monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None, verdict=None, failure=None, **_more: (c.failures.append((ref, failure)) if failure else None, c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch)), c.verdicts.append((ref, verdict))) and {})
         monkeypatch.setattr(board, "answer", lambda root, reply_to, message, role="chair", kind="answer": c.answers.append((reply_to, role, kind, message)) or {})
         for attr, fn in {
             "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root: [],
@@ -104,6 +104,8 @@ def repo(tmp_path, monkeypatch):
     for slug in agents.AGENTS:
         (root / ".kiro" / "agents" / f"{slug}.json").write_text("{}\n")
     (root / ".gitignore").write_text(".coven/\n")
+    # These tests are about other things: the readiness gate has its own tests (tests/test_ready_gate.py).
+    monkeypatch.setattr(host.ready, "check", lambda *a, **k: {"ready": True, "missing": [], "why": {}, "already_done": False})
     monkeypatch.setenv("COVEN_ROOT", str(root))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("COVEN_MACHINE_SOCKET", str(tmp_path / "none.sock"))
