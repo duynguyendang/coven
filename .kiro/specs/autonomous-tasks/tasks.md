@@ -164,7 +164,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_chair_sweep.py`_
   - _Requirements: R3.3, R3.4_
 
-- [ ] 14. The Chair acts on the sweep
+- [x] 14. The Chair acts on the sweep
   - Goal: the lease-holding Chair turns findings into the right witch's job, within a model budget.
   - Context: requirements R3.3, R3.5, R5.3, R5.4; design "Dispatch by finding".
   - Read first: `src/coven/chair.py`, `src/coven/host.py` (`dispatch`, `board.task_create`, `COUNCIL_SPEC`), `src/coven/board.py` (`task_create`).

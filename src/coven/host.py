@@ -40,7 +40,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Callable
 
-from . import agents, board, brief, config, consult, council, events, redact, specmap, taskkey, verify, work
+from . import agents, board, brief, chair, config, consult, council, events, redact, specmap, taskkey, verify, work
 
 STATE_FILE = "host.json"
 DEFAULT_SLOTS = 2
@@ -2309,6 +2309,8 @@ class Host:
         self.installed = [a for a in have if not only or a in only]
         self.chair_held = False  # the Chair role runs only while this host holds the cloud's lease (spec autonomous-tasks, R3.1)
         self._chair_at: float | None = None
+        self._chair_dispatch: chair.Dispatcher | None = None
+        self._chair_sweep_at: float | None = None
         self.pool = ThreadPoolExecutor(max_workers=self.slots, thread_name_prefix="coven-agent")
         self.running: dict[str, Future] = Runs()  # stamps when each run started, for the witch monitor
         self.process = f"p_{secrets.token_hex(4)}"  # this process: two hosts that share an id still tell apart
@@ -2337,6 +2339,38 @@ class Host:
             self.chair_held = bool(board.chair_lease(self.root, "renew" if self.chair_held else "claim")["held"])
         except Exception:  # noqa: BLE001 - cannot reach the cloud: the lease may lapse, so the role stops
             self.chair_held = False
+
+    def _chair_sweep(self, view: dict) -> list[dict]:
+        """Every CHAIR_SWEEP_EVERY seconds, only while this host holds the lease: turn the board's findings into jobs (autonomous-tasks R3.3)."""
+        if not self.chair_held:
+            self._chair_dispatch = self._chair_sweep_at = None  # a later holder starts with no memory
+            return []
+        now = self.clock()
+        if self._chair_sweep_at is not None and now - self._chair_sweep_at < chair.SWEEP_EVERY:
+            return []
+        self._chair_sweep_at = now
+        root = self.root
+        if self._chair_dispatch is None:
+            def create(job, title, agent, detail):
+                board.task_create(root, COUNCIL_SPEC, job, title, agent, detail, sender=CHAIR, key=f"chair-{job}")
+
+            def ask(ref, text):
+                _note(root, text, CHAIR, ref, kind="question", host_says=True)
+
+            def send(ref, state, detail):
+                _send_outcome(root, ref, state, CHAIR, detail=detail)
+
+            def review(ref, why):
+                _note(root, f"{why}; review wanted", CHAIR, ref, kind="review-wanted", host_says=True)
+
+            def signoff(ref, why):
+                board.signoff(root, [(ref, why)])
+            self._chair_dispatch = chair.Dispatcher(create, ask, send, review, signoff if self.autonomous else None, clock=self.clock)
+        try:
+            return self._chair_dispatch.act(view, events.now_iso())
+        except Exception as exc:  # noqa: BLE001 - a sweep is a courtesy; the next one tries again
+            self.out(f"host: chair sweep failed: {exc}")
+            return []
 
     def _chair_release(self) -> None:
         if CHAIR in self.installed and self.chair_held:
@@ -2827,6 +2861,7 @@ class Host:
             finished = self._release_finished(tasks, view)
             return {"finished": finished, "requests": [], "reworked": [], "taken": [], "running": sorted(self.running),
                     "paused": round(self.paused()), **({"pushed": pushed} if pushed else {}), **({"accepted": accepted} if accepted else {})}
+        swept = self._chair_sweep(view) if not self.paused() else []
         settled = self._settle(view, chat, notes) if self.auto_merge else []
         signed = self._signoff(view) if self.autonomous else []
         finished = self._release_finished(tasks, view)
@@ -2838,7 +2873,7 @@ class Host:
         self.presence()  # runs started in this tick: the monitor hears it now, not in a minute
         return {"finished": finished, "requests": asked, "reworked": reworked, "taken": taken, "running": sorted(self.running),
                 **({"pushed": pushed} if pushed else {}), **({"settled": settled} if settled else {}), **({"accepted": accepted} if accepted else {}),
-                **({"signed": signed} if signed else {})}
+                **({"signed": signed} if signed else {}), **({"swept": swept} if swept else {})}
 
     def _signoff(self, view: dict) -> list[str]:
         """An autonomous host's final sign-off, by the Elder Witch (FR-ST2, with the cloud operator's consent):
