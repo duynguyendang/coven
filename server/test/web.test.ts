@@ -1453,6 +1453,7 @@ describe("session screen", () => {
     assert.ok(empty, "the shared empty state");
     assert.equal(empty.querySelector(".say")!.textContent, "The whiteboard is blank.");
     assert.equal(empty.querySelector(".then")!.textContent, "The Elf has ideas.");
+    assert.equal(empty.querySelector(".quote")!.textContent, "“What if we tried…?”", "the Elf's quote under her line");
     assert.ok(empty.querySelector(".peek .av"), "the ghost peeks");
     assert.ok(doc().getElementById("note-form"), "the compose form stays outside the line");
     assert.ok(!empty.classList.contains("still"), "the whiteboard ghost still peeks");
