@@ -68,7 +68,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `cd server && node --test test/web.test.ts test/board.test.ts`_
   - _Requirements: R1.1, R2.2, R2.4, R5.1, R5.2_
 
-- [ ] 6. The Chair lease in the cloud
+- [x] 6. The Chair lease in the cloud
   - Goal: the cloud lets exactly one host per project hold the Chair role at a time.
   - Context: requirements R3.1, R3.2; design "Chair lease". Claims already give leases with a host id.
   - Read first: `server/src/handler.ts` (the `/v1/claims` routes and `need`), `server/src/board.ts` (claims, `HOST_ID`), `server/src/store.ts` (`exclusive`, `claim`), `server/test/board.test.ts`.

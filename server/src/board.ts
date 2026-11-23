@@ -103,6 +103,7 @@ function cleanFailure(f: any): Json | null {
 
 export class Board {
   claims = new Map<string, Json>();          // claim_id -> claim (newest state)
+  chair = new Map<string, { host_id: string; until: string }>(); // project -> the host that holds the Chair lease (memory only, like renewals)
   notes = new Map<string, Json[]>();         // project -> notes, oldest first
   members = new Map<string, Map<string, Json>>(); // project -> member -> presence
   tasks = new Map<string, Map<string, Json[]>>(); // project -> spec -> task list (from spec progress)
@@ -431,6 +432,12 @@ export class Board {
       && c.task_id === wanted.task_id && c.kind === wanted.kind && (c.agent ?? null) === (wanted.agent ?? null)) ?? null;
   }
 
+  /** The live Chair lease of a project, or null once it lapsed. */
+  chairHolder(projectId: string, at = new Date().toISOString()): { host_id: string; until: string } | null {
+    const c = this.chair.get(projectId);
+    return c && c.until > at ? { ...c } : null;
+  }
+
   view(projectId: string, at = new Date().toISOString()): Json {
     const active = this.active(projectId, at);
     const recent = [...this.claims.values()].filter((c) => c.project_id === projectId && !active.includes(c))
@@ -466,6 +473,7 @@ export class Board {
     }));
     return {
       project_id: projectId, at, members, hosts: members, specs, monitor: this.monitor(projectId, specs, at),
+      chair: this.chairHolder(projectId, at),
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
       plans: [...(this.plans.get(projectId)?.values() ?? [])].sort((a, b) => ((a.proposed_at || "") < (b.proposed_at || "") ? 1 : -1)).slice(0, 20),

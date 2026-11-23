@@ -77,6 +77,8 @@ export function deriveFlow(flowEvents: Json[]): Json | null {
 /** A subscriber returns false when it can no longer keep up and must be dropped. */
 export type Subscriber = (message: Json) => boolean;
 
+export const CHAIR_LEASE_SECONDS = 120;
+
 export class MemoryStore {
   events = new Map<string, Json>();
   runs = new Map<string, Json>();
@@ -474,6 +476,27 @@ export class MemoryStore {
       await this.ingest(projectId, event.run_id, [event]);
       this.publish({ kind: "board", project_id: projectId });
       return { status: 201, body: { claim: { ...this.board.claims.get(claimId), state: "active" } } };
+    });
+  }
+
+  /** The Chair lease: one host per project. 200 with the holder when this host holds it, 409 with the holder otherwise. */
+  chairLease(projectId: string, hostId: string, action: string): Promise<{ status: number; body: Json }> {
+    return this.exclusive(async () => {
+      const holder = this.board.chairHolder(projectId);
+      const mine = holder?.host_id === hostId;
+      if (action === "release") {
+        if (mine) {
+          this.board.chair.delete(projectId);
+          this.publish({ kind: "board", project_id: projectId });
+        }
+        return mine || !holder ? { status: 200, body: { holder: null, until: null } } : { status: 409, body: { holder: holder.host_id, until: holder.until } };
+      }
+      if (holder && !mine) return { status: 409, body: { holder: holder.host_id, until: holder.until } };
+      if (action === "renew" && !mine) return { status: 409, body: { holder: null, until: null, error: "the lease lapsed; claim it again" } };
+      const until = new Date(Date.now() + CHAIR_LEASE_SECONDS * 1000).toISOString();
+      this.board.chair.set(projectId, { host_id: hostId, until });
+      if (!mine) this.publish({ kind: "board", project_id: projectId });
+      return { status: 200, body: { holder: hostId, until } };
     });
   }
 
