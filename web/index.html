@@ -330,6 +330,16 @@
     transform: rotateX(var(--rx)) rotateY(var(--ry)); animation: rig-sway 6s ease-in-out infinite; }
   @keyframes rig-sway { 0%, 100% { transform: rotateX(var(--rx)) rotateY(-8deg); } 50% { transform: rotateX(var(--rx)) rotateY(8deg); } }
   @media (prefers-reduced-motion: reduce) { .stage .stage-witch .rig { animation: none; } }
+  @keyframes rig-hop { 0%, 100% { transform: rotateX(var(--rx)) rotateY(var(--ry)) translateY(0); } 40% { transform: rotateX(var(--rx)) rotateY(var(--ry)) translateY(-6px); } }
+  @keyframes rig-lean { 0%, 100% { transform: rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(0deg); } 50% { transform: rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(-6deg); } }
+  @keyframes rig-turn { to { transform: rotateX(var(--rx)) rotateY(360deg); } }
+  @media (prefers-reduced-motion: no-preference) {
+    .stage .stage-witch.working .rig { animation: rig-hop 1.2s ease-in-out infinite, rig-lean 2.4s ease-in-out infinite; }
+    .stage .stage-witch.picked .rig { animation: rig-turn 12s linear infinite; }
+    .stage .stage-witch.off .rig { animation: none; opacity: 0.7; }
+    .stage .stage-witch .rig { transition: translate 150ms ease-out; }
+    .stage .stage-witch:hover .rig { translate: 0 -3px; }
+  }
   .stage .stage-witch .rig .av { position: relative; }
   .stage .stage-witch .lyr { position: absolute; pointer-events: none; display: block; }
   .stage .stage-witch .lyr-back { inset-inline: 18% ; inset-block: 30% 4%; background: var(--rig-body); border-radius: 40% 40% 12% 12%; opacity: 0.55; transform: translateZ(-4px); }
