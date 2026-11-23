@@ -1991,6 +1991,11 @@ def verdict_of(text: str | None) -> tuple[str | None, str]:
 # project check passes on the merged tree) and only then pushes the base branch. Any doubt holds it for a person.
 
 
+def live_refs(view: dict) -> set[str]:
+    """Refs some host is running now, by the board's run monitor (a run whose host went silent for 12 minutes is not live)."""
+    return {r.get("ref") for r in (view.get("monitor") or {}).get("runs") or [] if r.get("heartbeat") != "DISCONNECTED" and r.get("ref")}
+
+
 def plan_waits_for(view: dict, ref: str) -> str | None:
     """An approved plan's tasks run in order: the first earlier task of the same plan not yet done, or None.
 
@@ -2002,7 +2007,8 @@ def plan_waits_for(view: dict, ref: str) -> str | None:
     if not me or not me.get("from_plan"):
         return None
     for t in tasks[: tasks.index(me)]:
-        if t.get("from_plan") == me["from_plan"] and t.get("status") != "completed" and t.get("doer_state") != "done":
+        finished = t.get("status") == "completed" or t.get("merged") or t.get("doer_state") in ("done", "replaced")
+        if t.get("from_plan") == me["from_plan"] and not finished:
             return f"{spec}#{t.get('task_id')}"
     return None
 
@@ -2375,7 +2381,14 @@ class Host:
 
             def signoff(ref, why):
                 board.signoff(root, [(ref, why)])
-            self._chair_dispatch = chair.Dispatcher(create, ask, send, review, signoff if self.autonomous else None, clock=self.clock)
+
+            def requeue(ref, why):
+                board.task_status(root, ref, "queued", detail=why)
+
+            def note(ref, text):
+                _note(root, text, CHAIR, ref, kind="answer", host_says=True)
+            self._chair_dispatch = chair.Dispatcher(create, ask, send, review, signoff if self.autonomous else None, clock=self.clock,
+                                                    requeue=requeue, note=note, state_path=config.state_dir(Path(root)) / "chair.json")
         try:
             return self._chair_dispatch.act(view, events.now_iso())
         except Exception as exc:  # noqa: BLE001 - a sweep is a courtesy; the next one tries again
@@ -2394,8 +2407,12 @@ class Host:
         """Runs a previous host process left `running` were cut off: free their tasks (a person can `coven host retry` them)."""
         for ref, record in load(self.root).items():
             if record.get("state") == "running":
-                work._release_quietly(self.root, ref, "the host restarted while the agent was running")
-                _update(self.root, ref, state="failed", error="the host restarted while the agent was running")
+                why = "the host restarted while the agent was running"
+                work._release_quietly(self.root, ref, why)
+                _update(self.root, ref, state="failed", error=why)
+                # Say so on the board too: else it shows `working` forever. Cause `error` is transient: the Chair queues it again.
+                _status(self.root, ref, "failed", record.get("agent") or agents.DEFAULT, why,
+                        failure={"cause": "error", "summary": why, "next": "The Chair queues it again; else Retry it."})
 
     # -- bookkeeping each tick
     PAUSE_STEPS = (60, 120, 240, 480, 900)  # seconds: back off up to 15 minutes, then keep trying every 15
@@ -2613,6 +2630,7 @@ class Host:
         """Council jobs (made by the Chair) for a witch this host runs: claim, then run her on it. Approved plan tasks go to the Dev."""
         started = []
         messages = {m.get("message_id"): m for m in chat.get("messages") or []}
+        live = live_refs(view)
         for spec in view.get("specs") or []:
             if spec.get("spec") != COUNCIL_SPEC:
                 continue
@@ -2621,7 +2639,9 @@ class Host:
                 agent = agents.resolve(task.get("agent"))
                 if len(self.running) >= self.slots:
                     return started
-                if (task.get("doer_state") in ("answered", "failed", "done", "submitted", "working") or task.get("claimed_by")
+                # `working` with no live claim and no live run anywhere: its host stopped or died; the job is free again.
+                orphaned = task.get("doer_state") == "working" and not task.get("claimed_by") and ref not in live
+                if ((task.get("doer_state") in ("answered", "failed", "done", "submitted", "working") and not orphaned) or task.get("claimed_by")
                         or task.get("status") == "completed" or ref in self.running or not agent or agent not in self.can_run):
                     continue
                 if task.get("from_plan") and plan_waits_for(view, ref):

@@ -338,6 +338,24 @@ hosts. The cloud computes the roll-up (`3 of 5 done, 1 failed`). The cloud never
   most `COVEN_CHAIR_RUNS_PER_HOUR` (6) an hour. `not_ready` and `needs_split` go to the Scribe, then the Elder Witch;
   `needs_clarification` goes to the Scribe, or to a person when it is about intent; `failed` with `no_change` or
   `base_changed` becomes a "close it?" question; `parent_complete` goes to the existing review. The sweep never sends `done`.
+- **No task without a next step.** Every stopped task ends in `queued`, `held` or a question to a person, never in nothing:
+  - a question (`NEEDS`): Scribe, then the Elder Witch's check, then a note on the task with both answers (the Dev's next
+    prompt shows it as untrusted text) and `task_status queued`; the same question again is a new round; after
+    `MAX_ROUNDS` (2) the task is `held`. A split (`SPLIT`): the Scribe's proposed subtasks go to a person, who adds them to
+    `tasks.md` (no witch here writes it);
+  - a transient failure (cause `timeout`, `kiro_error`, `cloud`, `no_answer` or `error`): `queued` again, at most
+    `MAX_REQUEUES` (2) times, then a question; a failure about the work (`verify_failed`, `outside_paths`) is a question;
+  - a failed or held Scribe or Elder job starts the next round instead of waiting forever;
+  - a host restart: `_recover` sends `failed`, cause `error`, "the host restarted while the agent was running", so the board
+    stops saying `working` and the Chair queues it again;
+  - a council job `working` with no live claim and no live run in the board's run monitor is free to take;
+  - a later plan step may start once the earlier one is done, merged or `replaced`; a wave in `## Task Dependency Graph`
+    waits for the earlier waves to be ticked, marked done or merged;
+  - a claim whose release never reached the cloud is forgotten locally, so nothing renews it and its lease lapses;
+  - a person's Retry (`queued`) frees a host record that is `failed`, `needs_clarification`, `needs_split` or `held`.
+
+  The Chair's memory (findings seen, rounds, pending jobs, requeue counts, the hour's budget) is kept in
+  `.coven/state/chair.json`, so a restart or a new lease holder does not repeat work or reset the caps.
 - **Readiness gate** (`ready.check`, no model). In order, stopping at the first failing group: fields present (goal,
   context, read-first, change steps, paths, acceptance, verify, out of scope, agent); read-first files exist on the base;
   paths narrow and not overlapping another open subtask; the agent is installed on an online host; size within

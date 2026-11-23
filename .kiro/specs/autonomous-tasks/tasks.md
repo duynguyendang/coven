@@ -235,3 +235,12 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Paths: `web/index.html`, `server/test/web.test.ts`_
   - _Verify: `cd server && node --test test/web.test.ts`_
   - _Requirements: R8.6_
+
+## Task Dependency Graph
+
+A task waits until every task in an earlier wave is done (ticked here, marked done on the board, or merged). Tasks not
+listed run as before. #17 and #19 need #16's view fields; #18 needs #1's `reconcile_start` and #17's takeover.
+
+```json
+{"waves": [{"id": 0, "tasks": ["1", "2", "5", "10", "16"]}, {"id": 1, "tasks": ["17", "19"]}, {"id": 2, "tasks": ["18"]}]}
+```
