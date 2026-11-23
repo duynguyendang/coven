@@ -2712,11 +2712,11 @@ class Host:
         return done
 
     def _requeued(self, view: dict) -> list[str]:
-        """A person pressed Retry on a failed task: forget this host's failed run so the task can be taken again."""
+        """A person pressed Retry: forget this host's stopped run (failed, or one that asked or split) so the task can be taken again."""
         queued = {f"{s.get('spec')}#{t.get('task_id')}" for s in view.get("specs") or [] for t in s.get("tasks") or [] if t.get("doer_state") == "queued"}
         let_go = []
         for ref, record in load(self.root).items():
-            if ref in queued and record.get("state") == "failed" and ref not in self.running:
+            if ref in queued and record.get("state") in RETRYABLE and ref not in self.running:
                 remove_worktree(self.root, record.get("worktree"))
                 _drop_unused_branch(self.root, record)
                 _forget(self.root, ref)
@@ -3093,11 +3093,15 @@ def failed_tasks(root: Path) -> dict[str, dict]:
     return out
 
 
+# A run that stopped and waits for a person: Retry lets the task be taken again. Not `running`, `submitted` or `answered`.
+RETRYABLE = ("failed", "needs_clarification", "needs_split", "held")
+
+
 def retry(root: Path, ref: str) -> dict:
-    """Let the host take a failed task again."""
+    """Let the host take a stopped task again (failed, or one whose witch asked a question or asked to split it)."""
     record = load(root).get(ref)
-    if not record or record.get("state") != "failed":
-        raise HostError(f"{ref} is not a failed task of this host")
+    if not record or record.get("state") not in RETRYABLE:
+        raise HostError(f"{ref} is not a failed or waiting task of this host")
     remove_worktree(root, record.get("worktree"))
     _drop_unused_branch(root, record)
     _forget(root, ref)

@@ -797,7 +797,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_agents.add_argument("--roles", action="store_true", help="print each witch's role: owns, produces, consumes, hands off to, never")
     host_agents.add_argument("--sync", action="store_true", help="write each agent prompt's role block from src/coven/agents.py")
     host_agents.add_argument("--check", action="store_true", help="fail when an agent prompt's role block is out of date (the harness runs this)")
-    host_retry = host_sub.add_parser("retry", help="let this host take a failed task again")
+    host_retry = host_sub.add_parser("retry", help="let this host take a stopped task again: failed, or its witch asked a question (NEEDS), asked to split it or it is held")
     host_retry.add_argument("task", help="<spec>#<task>")
     host_retry.add_argument("--recheck", action="store_true", help="no model run: check the failed build's worktree again (paths, verify) and submit it if it passes; `all` for every failed build here")
     host_parser.set_defaults(func=cmd_host)

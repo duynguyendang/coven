@@ -1767,3 +1767,22 @@ def test_dev_prompt_never_says_read_only():
     text = host.prompt_for(task, "green-witch", "h")
     assert "must not change any" not in text
     assert "Change only files inside the declared paths" in text
+
+
+@pytest.mark.parametrize("stopped", ["needs_clarification", "needs_split", "held"])
+def test_retry_also_lets_go_of_a_task_whose_witch_asked_or_split(repo, monkeypatch, stopped):
+    """A Retry on the board, or `coven host retry`, frees a record that is not `failed` but waits for a person."""
+    cloud = FakeCloud().install(monkeypatch)
+    host._update(repo, "shop#1", task="shop#1", agent="green-witch", kind="build", state=stopped)
+    h = host.Host(repo, slots=1, runner=Runner({"green-witch": builds_cart}), only=["green-witch"])
+    cloud.specs = [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "queued"}]}]
+    assert h._requeued(board.read(repo)) == ["shop#1"] and "shop#1" not in host.load(repo)
+    host._update(repo, "shop#1", task="shop#1", agent="green-witch", kind="build", state=stopped)
+    assert host.retry(repo, "shop#1")["action"] == "retry" and "shop#1" not in host.load(repo)
+
+
+def test_retry_refuses_a_task_that_is_still_running(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    host._update(repo, "shop#1", task="shop#1", agent="green-witch", kind="build", state="running")
+    with pytest.raises(host.HostError):
+        host.retry(repo, "shop#1")
