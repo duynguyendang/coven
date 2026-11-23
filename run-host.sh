@@ -2,8 +2,8 @@
 # Run this machine as a Coven host: it takes ready tasks and chat "Do it" requests and runs the
 # witch each one needs with kiro-cli (headless). Ctrl-C stops it.
 #
-#   ./run-host.sh                         every installed witch except the Dev, 2 slots
-#   ./run-host.sh --all                   every installed witch, the Dev too (builds tasks in git worktrees)
+#   ./run-host.sh                         every installed witch, the Dev too (builds tasks in git worktrees), 2 slots
+#   ./run-host.sh --no-dev                every installed witch except the Dev: nothing builds or commits here
 #   ./run-host.sh --agents elf,raven      only these witches
 #   ./run-host.sh --slots 3 --once        any other `coven host run` option goes through
 #   ./run-host.sh --manual                not autonomous (as is COVEN_AUTONOMOUS=0 ./run-host.sh)
@@ -29,12 +29,13 @@ coven() { "${py[@]}" -m coven.cli "$@"; }
 
 command -v kiro-cli >/dev/null || { echo "run-host: kiro-cli is not on PATH" >&2; exit 1; }
 command -v "${py[0]}" >/dev/null || { echo "run-host: ${py[0]} is not on PATH" >&2; exit 1; }
-agents=""; all=0; extra=(); reconcile=0
+agents=""; no_dev=0; extra=(); reconcile=0
 # Autonomous unless the person says otherwise (COVEN_AUTONOMOUS=0, or --manual below).
 export COVEN_AUTONOMOUS="${COVEN_AUTONOMOUS:-1}"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --all) all=1 ;;
+    --all) ;; # the default now; kept so older commands still work
+    --no-dev) no_dev=1 ;;
     --agents) agents="${2:?--agents needs a list}"; shift ;;
     --manual) COVEN_AUTONOMOUS=0 ;;
     --reconcile) reconcile=1 ;;
@@ -87,15 +88,15 @@ if [ "$reconcile" = 1 ]; then
   exec "${py[@]}" -m coven.cli host reconcile
 fi
 
-# 4. which witches: by default not the Dev, so nothing builds or commits until you ask (--all)
-if [ -z "$agents" ] && [ "$all" = 0 ]; then
+# 4. which witches: every installed one by default; --no-dev leaves the Dev out, so nothing builds or commits here
+if [ -z "$agents" ] && [ "$no_dev" = 1 ]; then
   agents="$(coven host agents | awk '$NF=="installed" && $1!="green-witch" {printf "%s%s", sep, $1; sep=","}')"
 fi
 [ -n "$agents" ] && extra+=(--agents "$agents")
 
 if [ "$COVEN_AUTONOMOUS" = 1 ]; then
   echo "host: autonomous mode on (COVEN_AUTONOMOUS=1; turn it off with --manual or COVEN_AUTONOMOUS=0)"
-  case ",$agents," in *,green-witch,*) ;; *) [ "$all" = 1 ] || echo "host: the Dev is not on this host (add --all): approved plans wait for a host that builds" ;; esac
+  case ",$agents," in *,green-witch,*) ;; *) [ -z "$agents" ] || echo "host: the Dev is not on this host (drop --no-dev or --agents): approved plans wait for a host that builds" ;; esac
 fi
 
 exec "${py[@]}" -m coven.cli host run --slots "${COVEN_SLOTS:-2}" "${extra[@]}"

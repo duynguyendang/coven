@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _run(tmp_path, coven_py, args=(), **extra_env):
+def _run(tmp_path, coven_py, args=(), base=("--agents", "elf"), **extra_env):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "argv.log"
@@ -15,7 +15,7 @@ def _run(tmp_path, coven_py, args=(), **extra_env):
     fake.write_text(
         '#!/bin/sh\n'
         'printf "%s\\n" "$*" >> "$FAKE_LOG"\n'
-        'case "$*" in *" doctor"*) echo "health: 200";; *" member"*) echo "a@b:c";; *"host run"*) echo "COVEN_AUTONOMOUS=$COVEN_AUTONOMOUS" >> "$FAKE_LOG.env";; esac\n'
+        'case "$*" in *" doctor"*) echo "health: 200";; *" member"*) echo "a@b:c";; *"host agents"*) printf "green-witch build installed\nelf think installed\n";; *"host run"*) echo "COVEN_AUTONOMOUS=$COVEN_AUTONOMOUS" >> "$FAKE_LOG.env";; esac\n'
         'exit 0\n'
     )
     for f in bin_dir.iterdir():
@@ -29,7 +29,7 @@ def _run(tmp_path, coven_py, args=(), **extra_env):
         COVEN_PY=coven_py.format(fake=fake),
     )
     r = subprocess.run(
-        ["bash", str(ROOT / "run-host.sh"), "--agents", "elf", "--once", *args],
+        ["bash", str(ROOT / "run-host.sh"), *base, "--once", *args],
         env=env, capture_output=True, text=True, timeout=60,
     )
     lines = log.read_text().splitlines() if log.exists() else []
@@ -87,3 +87,22 @@ def test_the_local_runner_starts_autonomous_unless_told_otherwise(tmp_path):
         assert r.returncode == 0, r.stderr
         assert r.env_seen == ["COVEN_AUTONOMOUS=0"] and "autonomous mode on" not in r.stdout
         assert not any("--manual" in ln for ln in lines), "--manual is the script's own word, not passed on"
+
+
+def test_every_witch_runs_by_default_and_no_dev_leaves_the_dev_out(tmp_path):
+    """A plain ./run-host.sh runs all installed witches, the Dev included; --no-dev runs the rest."""
+    r, lines = _run(tmp_path, "{fake}", base=())
+    assert r.returncode == 0, r.stderr
+    run = next(ln for ln in lines if "host run" in ln)
+    assert "--agents" not in run and "the Dev is not on this host" not in r.stdout
+    sub = tmp_path / "no-dev"
+    sub.mkdir()
+    r, lines = _run(sub, "{fake}", ("--no-dev",), base=())
+    assert r.returncode == 0, r.stderr
+    run = next(ln for ln in lines if "host run" in ln)
+    assert run.endswith("--agents elf") and "the Dev is not on this host" in r.stdout
+    sub = tmp_path / "all"
+    sub.mkdir()
+    r, lines = _run(sub, "{fake}", ("--all",), base=())
+    assert r.returncode == 0, r.stderr
+    assert "--agents" not in next(ln for ln in lines if "host run" in ln), "--all is still accepted and is the default"

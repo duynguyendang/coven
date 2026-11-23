@@ -136,7 +136,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
-| `./run-host.sh [--all] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch except the Dev (`--all`: the Dev too). `--root PATH` hosts another repository. Logs in to `COVEN_CLOUD_URL` (token `COVEN_TOKEN`, default `dev`) when it differs from the saved login; with no `COVEN_CLOUD_URL` it keeps a saved login, and only with none at all uses the default test cloud |
+| `./run-host.sh [--no-dev] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch, the Dev included (`--no-dev`: all but the Dev). `--root PATH` hosts another repository. Logs in to `COVEN_CLOUD_URL` (token `COVEN_TOKEN`, default `dev`) when it differs from the saved login; with no `COVEN_CLOUD_URL` it keeps a saved login, and only with none at all uses the default test cloud |
 | `coven host run [--slots N] [--agents a,b] [--review-limit N] [--kiro-web OWNER/NAME] [--auto-merge] [--autonomous \| --manual] [--once]` | Take chat requests, council jobs and ready tasks and run the witch each one needs (`_Agent:_`, default the Dev), up to N at once; with `--kiro-web` (or `COVEN_KIRO_WEB_REPO`) the host also runs build tasks a person sent to Kiro Web from the dashboard (cloud sessions that push the task branch; the host waits up to `COVEN_CLOUD_WAIT` seconds for it on origin, then fetches and checks it) |
 | `coven host prepare [--only <spec>] [--note …]` | The Scribe proposes the witch, paths and verify for tasks that lack them; the host writes them on branch `coven/prepare-all` for you to merge |
 | `coven host status \| agents \| retry <task> [--recheck]` | The host's witches and tasks; the eleven witches and which are installed; let a failed task be taken again (`--recheck`, or `retry all --recheck`: check the work already in its worktree again, no model run); on the board, **Retry** does the same for any host |
@@ -254,8 +254,8 @@ which witch it needs; a host that runs her and has a free slot takes it and runs
 ```
 
 ```bash
-./run-host.sh                  # names the host, starts the relay, runs every installed witch except the Dev
-./run-host.sh --all            # ... the Dev too: builds ready tasks in git worktrees and commits locally
+./run-host.sh                  # names the host, starts the relay, runs every installed witch; the Dev builds ready tasks in git worktrees
+./run-host.sh --no-dev         # ... every witch except the Dev: nothing builds or commits on this host
 ./run-host.sh --agents elf,raven --slots 1
 ```
 
