@@ -972,6 +972,7 @@ describe("session screen", () => {
     assert.match(text, /Owns design and architecture; the plan of a change/);
     assert.match(text, /Never write code; approve your own plan; edit tasks\.md/);
     await pick("elf");
+    assert.equal(doc().querySelector(".stage-card .witch .motto")!.textContent, "“What if we tried…?”", "the Elf's quote sits on her roster card");
     assert.match(doc().querySelector('[data-key="duty-elf"]')!.textContent!.replace(/\s+/g, " "), /Hands off to Elder Witch/);
     assert.equal(duty.querySelectorAll("dt").length, 4);
     await go("#/");
@@ -1453,6 +1454,7 @@ describe("session screen", () => {
     assert.ok(empty, "the shared empty state");
     assert.equal(empty.querySelector(".say")!.textContent, "The whiteboard is blank.");
     assert.equal(empty.querySelector(".then")!.textContent, "The Elf has ideas.");
+    assert.equal(empty.querySelector(".quote")!.textContent, "“What if we tried…?”", "the Elf's quote under her line");
     assert.ok(empty.querySelector(".peek .av"), "the ghost peeks");
     assert.ok(doc().getElementById("note-form"), "the compose form stays outside the line");
     assert.ok(!empty.classList.contains("still"), "the whiteboard ghost still peeks");
@@ -1785,6 +1787,7 @@ describe("council chat", () => {
     assert.ok(quiet.classList.contains("still"), "ops screens: the ghost sits still");
     assert.ok(quiet.querySelector(".peek .av"), "the Chair's ghost is there");
     assert.ok(doc().querySelector(".chat-head .who-on .av"), "the head carries the ghost too");
+    assert.equal(doc().querySelector(".chat-head .who-quote")!.textContent, "“I propose. The guard disposes.”", "the Chair's quote in the status");
     assert.equal(doc().querySelector('input[name="chat-kind"]'), null, "no kind to pick: the message says what it is");
     assert.ok(!text().includes("Send as"));
     assert.ok((doc().querySelector('[data-new-chat]') as HTMLButtonElement).disabled, "nothing to start over from yet");

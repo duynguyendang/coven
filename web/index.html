@@ -744,6 +744,8 @@
   .empty.voice { position: relative; padding: 56px 20px 40px; text-align: center; font-size: 1rem; color: var(--text); overflow: hidden; }
   .empty.voice .say { display: block; font-family: var(--font-display); font-size: 1.375rem; margin-bottom: 6px; }
   .empty.voice .then { color: var(--muted); font-size: 0.875rem; }
+  .empty.voice .quote { display: block; margin-top: 8px; font-family: var(--font-display); font-style: italic; font-size: 0.8125rem; color: var(--muted); }
+  .who-quote { font-family: var(--font-display); font-style: italic; color: var(--muted); }
   .peek { display: block; inline-size: 44px; block-size: 26px; margin: 0 auto 14px; overflow: hidden; }
   .peek .av { width: 44px; height: 44px; margin: 0; animation: peek 2.8s ease-in-out 0.4s both; }
   .empty.voice.still .peek .av { animation: none; translate: 0 8%; } /* ops screens: the ghost sits there, no motion */
@@ -974,7 +976,7 @@
   /* ---------------------------------------------------------------- helpers */
   const $ = (id) => document.getElementById(id);
   /** An empty state with a voice: one sentence that sounds like the coven, what to do next, and a ghost peeking over the edge. */
-  const voice = (say, then, who = "coven", still = false) => `<div class="empty voice${still ? " still" : ""}"><span class="peek" aria-hidden="true">${avatar(who)}</span><span class="say">${say}</span><span class="then">${then}</span></div>`;
+  const voice = (say, then, who = "coven", still = false) => `<div class="empty voice${still ? " still" : ""}"><span class="peek" aria-hidden="true">${avatar(who)}</span><span class="say">${say}</span><span class="then">${then}</span>${WITCH_MOTTO[who] ? `<span class="quote">“${esc(WITCH_MOTTO[who])}”</span>` : ""}</div>`;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   /** The one table of keyboard shortcuts: the key handlers read it, and the hints and aria-keyshortcuts are drawn from it. */
   const SHORTCUTS = { search: "/", nav: "[", send: "Enter" };
@@ -2384,11 +2386,12 @@
     const picker = names.length > 1 ? `<label>Project <select data-chat-project aria-label="Chat project">${names.map((p) => `<option ${p === project ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
     const online = (c.listeners || []).filter((l) => l.online);
     const chairs = (c.hosts || []).filter((h) => h.online && (h.agents || []).includes("grey-witch"));
+    const chairQuote = WITCH_MOTTO["grey-witch"] ? `<span class="who-quote">“${esc(WITCH_MOTTO["grey-witch"])}”</span>` : "";
     const status = chairs.length
-      ? `<span class="who-on" role="status" title="What you say to the council, the Chair understands and dispatches to the witches as tasks on the board.">${avatar("grey-witch")}The Chair is on <b>${chairs.map((h) => esc(h.host)).join(", ")}</b></span>${online.length ? `<span>· one witch's questions: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} listening</span>` : ""}`
+      ? `<span class="who-on" role="status" title="What you say to the council, the Chair understands and dispatches to the witches as tasks on the board.">${avatar("grey-witch")}The Chair is on <b>${chairs.map((h) => esc(h.host)).join(", ")}</b></span>${online.length ? `<span>· one witch's questions: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} listening</span>` : ""}${chairQuote}`
       : online.length
-      ? `<span class="who-on" role="status">${avatar("grey-witch")}Answering: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} · listening, seen ${agoTag(online[0].last_seen)}</span><span>An answer takes a Kiro run: about a minute.</span>`
-      : `<span class="who-on off" role="status">${avatar("grey-witch")}<b>No member is listening:</b> messages wait. <span class="how">Run <code>coven council listen</code> or <code>./run-host.sh</code>.</span></span>`;
+      ? `<span class="who-on" role="status">${avatar("grey-witch")}Answering: ${online.map((l) => `<b>${esc(l.member)}</b>`).join(", ")} · listening, seen ${agoTag(online[0].last_seen)}</span><span>An answer takes a Kiro run: about a minute.</span>${chairQuote}`
+      : `<span class="who-on off" role="status">${avatar("grey-witch")}<b>No member is listening:</b> messages wait. <span class="how">Run <code>coven council listen</code> or <code>./run-host.sh</code>.</span></span>${chairQuote}`;
     const byId = new Map((c.messages || []).map((m) => [m.message_id, m]));
     const waiting = new Set(c.waiting || []);
     const replies = (kinds) => new Set((c.messages || []).filter((m) => m.role === "council" && kinds.includes(m.kind)).map((m) => m.reply_to));
