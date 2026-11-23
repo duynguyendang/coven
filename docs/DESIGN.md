@@ -265,7 +265,7 @@ palette. The Kiroween character comes from the witches' ghost icons, not from th
   her circle.") and states facts everywhere else. A witch's first "never" is on her card.
 - **Each witch has a quote** (`WITCH_MOTTO`): a static italic line (display font, `--muted`) under her
   "never" on the roster card, and under the `then` line of a `voice()` empty state whose witch has one
-  (`.empty.voice .quote`). Flat colour, Astryx tokens only, no motion.
+  (`.empty.voice .quote`) and in the council chat head beside the Chair status (`.who-quote`). Flat colour, Astryx tokens only, no motion.
 
 Hex values live only in `web/theme-specter.css`; the page uses tokens only (the harness checks).
 No gradients, no glow, no web fonts (the CSP allows none): the serif and Space Grotesk are used when installed.

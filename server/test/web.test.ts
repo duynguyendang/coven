@@ -1786,6 +1786,7 @@ describe("council chat", () => {
     assert.ok(quiet.classList.contains("still"), "ops screens: the ghost sits still");
     assert.ok(quiet.querySelector(".peek .av"), "the Chair's ghost is there");
     assert.ok(doc().querySelector(".chat-head .who-on .av"), "the head carries the ghost too");
+    assert.equal(doc().querySelector(".chat-head .who-quote")!.textContent, "“I propose. The guard disposes.”", "the Chair's quote in the status");
     assert.equal(doc().querySelector('input[name="chat-kind"]'), null, "no kind to pick: the message says what it is");
     assert.ok(!text().includes("Send as"));
     assert.ok((doc().querySelector('[data-new-chat]') as HTMLButtonElement).disabled, "nothing to start over from yet");
