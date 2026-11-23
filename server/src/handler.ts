@@ -403,6 +403,19 @@ export function createHandler(options: HandlerOptions): Handler {
       return json(result.status, result.body);
     }
 
+    if (method === "POST" && path === "/v1/chair") {
+      need(request, url, "ingest");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = scopedProject(body);
+      const hostId = idField(body, "host_id");
+      if (!/^h_[0-9a-f]{8}$/.test(hostId)) throw validation("host_id", "a host id such as h_0123abcd");
+      const action = optionalString(body, "action");
+      if (action !== "claim" && action !== "renew" && action !== "release") throw validation("action", "claim, renew or release");
+      const result = await store.chairLease(projectId, hostId, action);
+      return json(result.status, result.body);
+    }
+
     if (method === "POST" && seg[1] === "claims" && seg.length === 4 && (seg[3] === "renew" || seg[3] === "release")) {
       need(request, url, "ingest");
       const body = await readJson(request);
