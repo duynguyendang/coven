@@ -80,3 +80,50 @@ def test_two_rounds_then_held_with_history():
         fx.d.seen.clear()  # the board changed
     assert len(fx.jobs) == 2
     assert fx.sent and fx.sent[0][:2] == ("s#1", "held") and "round 1" in fx.sent[0][2]
+
+
+def test_a_failing_effect_loses_neither_its_finding_nor_the_rest_of_the_pass():
+    fx = Fx()
+    calls = []
+
+    def boom(ref, text):
+        calls.append(ref)
+        if len(calls) == 1:
+            raise RuntimeError("cloud down")
+    fx.d.ask = boom
+    view = board({"task_id": "3", "doer_state": "needs_clarification", "doer_detail": "do you want it faster or safer?"},
+                 {"task_id": "4", "doer_state": "failed", "doer_failure": {"cause": "no_change"}})
+    fx.d.act(view, NOW)  # the first ask raises; the pass goes on
+    assert len(calls) >= 2
+    fx.d.act(view, NOW)  # the failed finding is reported again
+    assert calls.count(calls[0]) == 2
+
+
+def _host(held, t):
+    from coven import host
+    h = host.Host.__new__(host.Host)
+    h.chair_held, h.root, h.autonomous = held, ".", False
+    h._chair_dispatch = h._chair_sweep_at = None
+    h.out = lambda *_: None
+    h.clock = lambda: t[0]
+    return h
+
+
+def test_host_sweeps_only_with_the_lease_and_every_sweep_interval(monkeypatch):
+    runs = []
+    monkeypatch.setattr(chair.Dispatcher, "act", lambda self, view, now: runs.append(1) or [])
+    t = [1000.0]
+    h = _host(False, t)
+    assert h._chair_sweep({}) == [] and not runs  # no lease: nothing
+    h.chair_held = True
+    h._chair_sweep({})
+    assert len(runs) == 1
+    t[0] += chair.SWEEP_EVERY - 1
+    h._chair_sweep({})
+    assert len(runs) == 1  # too soon
+    t[0] += 1
+    h._chair_sweep({})
+    assert len(runs) == 2
+    h.chair_held = False
+    h._chair_sweep({})
+    assert h._chair_dispatch is None and h._chair_sweep_at is None

@@ -176,7 +176,11 @@ class Dispatcher:
             ref, kind = f["task"], f["kind"]
             if ref in self.done and kind in ("not_ready", "needs_split", "needs_clarification"):
                 continue
-            result = self._handle(f, tasks.get(ref) or {})
+            try:
+                result = self._handle(f, tasks.get(ref) or {})
+            except Exception:  # noqa: BLE001 - one failing effect must not lose this finding or the rest of the pass
+                self.seen.discard(f["key"])
+                continue
             if result is None:
                 self.seen.discard(f["key"])  # no budget left: the next sweep reports it again
             elif result:
