@@ -152,7 +152,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_outcomes.py tests/test_host.py`_
   - _Requirements: R5.1, R5.2, R5.4, R5.5_
 
-- [ ] 13. The Chair's sweep
+- [x] 13. The Chair's sweep
   - Goal: a model-free `chair.sweep` lists what needs the Chair's attention on the board.
   - Context: requirements R3.3, R3.4; design "The Chair".
   - Read first: `src/coven/host.py` (`failed_tasks`, `review_state`, `plan_waits_for`), `src/coven/board.py` (`read`), `src/coven/flowstats.py`.
