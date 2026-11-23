@@ -176,7 +176,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_chair_dispatch.py tests/test_chair_sweep.py tests/test_host.py`_
   - _Requirements: R3.3, R3.5, R5.3, R5.4, R6.1_
 
-- [ ] 15. Docs and the final check
+- [x] 15. Docs and the final check
   - Goal: the documents describe the new behaviour, and the whole suite passes.
   - Context: AGENTS.md rule 7: keep the docs true.
   - Read first: `docs/ADD.md` §4.2, §4.4 and §6, `docs/requirements.md` §4.5 and §4.9, `README.md` ("Hosts and witches").

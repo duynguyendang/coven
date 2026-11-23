@@ -248,6 +248,21 @@ task is then built from that text on the same render path as S-01 and S-02.
 Constraints ("the donts") from the Part 8 brief: _to be copied in by a person._ Until then they
 bind nothing, and no id above may be read as scope.
 
+### 4.12 Autonomous tasks (spec `autonomous-tasks`)
+
+Detail and acceptance: `.kiro/specs/autonomous-tasks/requirements.md`. Status says what is built today.
+
+| Id | Requirement | Pri | Status |
+| :--- | :--- | :--- | :--- |
+| R1 | The cloud holds each parent task's goal, acceptance, owner host, status and one line per subtask. At host start a reconcile compares every local record with the board (drop what is done, fail what nothing runs, resend what the board lacks, the board wins when newer). It never marks a task done. | Must | Planned |
+| R2 | Every machine reports in real time: refused events are shown to the operator, a run sends a progress `step` at most every 20 s, an interactive session shows like a host's run, a host silent for 2 minutes is offline. | Should | Planned |
+| R3 | One Chair per project, held by a cloud lease (120 s). Her sweep is code (`chair.sweep`, every 5 minutes) and finds stale claims, failures, not-ready subtasks, parents with every subtask done and parents with no owner; a model run is limited by `COVEN_CHAIR_RUNS_PER_HOUR` (6). | Must | Partly built: the sweep (R3.3, R3.4); the lease and the dispatch are planned |
+| R4 | A subtask is ready only when the Dev can finish it. Code gate (`ready.check`): fields, read-first files on the base, narrow paths, installed agent, size (`COVEN_READY_MAX_FILES` 5, `COVEN_READY_MAX_STEPS` 8), verify fails on the base. A dry read for subtasks the Scribe wrote. No manual override. | Must | Partly built: the gate and the dry read; giving the Dev only ready subtasks is planned |
+| R5 | Any dev-team witch may end a run with `NEEDS:` or `SPLIT:`; the host records `needs_clarification` or `needs_split`, not a failure, and stops retrying. Two rounds per subtask, then `held`. The Chair routes both. | Must | Partly built: the outcomes (R5.1, R5.2, R5.5); the Chair's routing is planned |
+| R6 | People still decide: neither reconcile nor sweep marks a task done; Retry, Mark done and abandon stay. | Must | Built |
+| R7 | Every new field is validated in `server/src/events.ts` and listed in ADD §6; text is redacted and at most 400 characters; tests use fakes and no model. | Must | Partly built: ADD §6 lists them; the cloud's validation is planned |
+| R8 | A task whose host is gone (no claim, host silent for `COVEN_TAKEOVER_SECONDS`, default 600) is taken by another host as a new attempt; only the newest attempt changes the board; a returning host gives way; two takeovers at most. | Should | Planned (tasks 16 to 19) |
+
 ## 5. Non-functional requirements
 
 ### 5.1 Privacy and security

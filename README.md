@@ -304,6 +304,15 @@ checked and passed. `coven host reconcile [--dry-run]` (or `./run-host.sh --reco
 backlog the same way: answered with no `changes` verdict, or a branch already in the base. A branch that still
 waits to be merged is never closed this way.
 
+**Autonomous tasks.** A parent task (a goal in the cloud) has subtasks in `tasks.md`; the host that owns the parent runs
+them. A subtask reaches the Dev only when it is ready: fields present, read-first files on the base, narrow paths, the
+agent installed, a size within `COVEN_READY_MAX_FILES` (default 5 files) and `COVEN_READY_MAX_STEPS` (default 8 steps), and a
+verify command that fails on the base. One host per project holds the Chair lease and sweeps the board every 5 minutes
+(code, no model); `COVEN_CHAIR_RUNS_PER_HOUR` (default 6) caps the model runs the sweep may start. A witch that cannot
+finish a task ends with `NEEDS: <question>` or `SPLIT: <pieces>`. The new task states are `needs_clarification`,
+`needs_split`, `replaced` and `held`. People still decide done and merge. See `docs/ADD.md` §4.4.1. Parts of this
+(the lease, the reconcile at start, progress lines) are still being built.
+
 **Your final evaluation.** Without `--auto-merge`, you are the merge gate. Open a submitted task on the
 board: **Accept and merge** asks the host that holds the branch to merge it under the same checks (clean
 merge, `make verify` on the merged tree) and push the base; **Request changes** asks what should change and
