@@ -1760,3 +1760,10 @@ def test_coven_host_reconcile_says_what_it_closed_and_what_the_cloud_refused(rep
     cloud.signoff_refuse = True
     assert cli.main(["host", "reconcile"]) == 1
     assert "refused by the cloud: done is people's word" in capsys.readouterr().out
+
+
+def test_dev_prompt_never_says_read_only():
+    task = {"spec": "autonomous-tasks", "task_id": "4", "title": "t", "paths": ["a.py"], "verify": "true", "line": 3}
+    text = host.prompt_for(task, "green-witch", "h")
+    assert "must not change any" not in text
+    assert "Change only files inside the declared paths" in text

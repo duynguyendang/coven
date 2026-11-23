@@ -238,6 +238,8 @@ def prompt_for(task: dict, agent: str, host: str, notes: list[dict] | None = Non
     if kind == "build" and not cloud_base and (task.get("allow_empty_diff") or task.get("delegated") or specmap.is_sweep(task.get("title"))):
         lines += ["This task may need no change (its verify already passes, or the work it delegated is done). Then change nothing "
                   "and say so: the host checks that itself before it accepts an empty change."]
+    elif kind == "build":
+        pass  # the Dev's write instructions are above; she must never get the read-only line below
     elif kind == "inspect":
         lines += ["", "You may read files and run commands, but must not change any file. Look at the task's code on the base branch and run its tests.",
                   "Finish with your finding in at most 340 characters: what you ran, the result, any break you can reproduce."]
