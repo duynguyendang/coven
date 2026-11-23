@@ -80,7 +80,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `cd server && npm run check && node --test test/chair.test.ts test/board.test.ts && cd .. && PYTHONPATH=src python3 -m pytest -q tests/test_harness.py`_
   - _Requirements: R3.1, R3.2_
 
-- [ ] 7. A host runs the Chair only while it holds the lease
+- [x] 7. A host runs the Chair only while it holds the lease
   - Goal: of two hosts that run the Grey Witch, only the lease holder takes the Chair's work.
   - Context: today any host with `grey-witch` takes chat messages and merge decisions. Requirements R3.1, R3.2.
   - Read first: `src/coven/host.py` (`CHAIR`, `Host.tick`, `can_run`, `presence`), `src/coven/board.py` (`claim`, `host_online`), `src/coven/council.py` (`chair_on_a_host`).

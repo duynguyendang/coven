@@ -48,6 +48,7 @@ DEFAULT_REVIEW_LIMIT = 3
 RUN_TIMEOUT = 1800
 ATTEMPTS = 2          # a build agent gets one more try when its change was refused
 PRESENCE_EVERY = 60
+CHAIR_RENEW_EVERY = 40  # seconds; the cloud lease lasts 120
 
 # runner(cwd, agent, prompt, env, timeout) -> (final text | None, error | None)
 Runner = Callable[[Path, str, str, dict, int], "tuple[str | None, str | None]"]
@@ -2305,7 +2306,9 @@ class Host:
         self._down_step = 0
         self.runner = self._watched(runner)
         have = agents.installed(root)
-        self.can_run = [a for a in have if not only or a in only]
+        self.installed = [a for a in have if not only or a in only]
+        self.chair_held = False  # the Chair role runs only while this host holds the cloud's lease (spec autonomous-tasks, R3.1)
+        self._chair_at: float | None = None
         self.pool = ThreadPoolExecutor(max_workers=self.slots, thread_name_prefix="coven-agent")
         self.running: dict[str, Future] = Runs()  # stamps when each run started, for the witch monitor
         self.process = f"p_{secrets.token_hex(4)}"  # this process: two hosts that share an id still tell apart
@@ -2315,6 +2318,33 @@ class Host:
         self.attempts: dict[str, int] = {}  # ref -> runs of it the board has seen (`doer_attempts`), refreshed each tick
         self._presence_at: float | None = None
         self._recover()
+
+    @property
+    def can_run(self) -> list[str]:
+        """The witches this host starts now: the Chair only while it holds the lease; the others always."""
+        return [a for a in self.installed if a != CHAIR or self.chair_held]
+
+    def _chair_refresh(self, force: bool = False) -> None:
+        """Claim (or renew) the Chair lease every CHAIR_RENEW_EVERY seconds. A failed renewal stops the Chair role at once.
+        A host without the Grey Witch never asks."""
+        if CHAIR not in self.installed:
+            return
+        now = self.clock()
+        if not force and self._chair_at is not None and now - self._chair_at < CHAIR_RENEW_EVERY:
+            return
+        self._chair_at = now
+        try:
+            self.chair_held = bool(board.chair_lease(self.root, "renew" if self.chair_held else "claim")["held"])
+        except Exception:  # noqa: BLE001 - cannot reach the cloud: the lease may lapse, so the role stops
+            self.chair_held = False
+
+    def _chair_release(self) -> None:
+        if CHAIR in self.installed and self.chair_held:
+            self.chair_held = False
+            try:
+                board.chair_lease(self.root, "release")
+            except Exception:  # noqa: BLE001 - the lease lapses by itself
+                pass
 
     def _recover(self) -> None:
         """Runs a previous host process left `running` were cut off: free their tasks (a person can `coven host retry` them)."""
@@ -2736,6 +2766,7 @@ class Host:
 
     def presence(self, force: bool = False) -> None:
         # Announce on schedule, and at once when a run starts or ends, so the monitor follows within one tick.
+        self._chair_refresh(force)
         changed = tuple(sorted(self.running)) != self._announced
         if force or changed or self._presence_at is None or self.clock() - self._presence_at >= PRESENCE_EVERY:
             self._announced = tuple(sorted(self.running))
@@ -2886,6 +2917,7 @@ class Host:
                     return result
                 self._wait(interval)
         finally:
+            self._chair_release()
             self.pool.shutdown(wait=not once)
 
     def status(self) -> dict:

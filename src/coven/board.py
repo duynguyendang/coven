@@ -423,6 +423,28 @@ def host_online(root: Path, agents: list[str], slots: int, running: list[str] | 
     return _member_event(root, "host_online", payload)
 
 
+def chair_lease(root: Path, action: str = "claim") -> dict:
+    """Ask the cloud for the Chair lease (spec autonomous-tasks, R3.1): action `claim`, `renew` or `release`.
+
+    Returns {"held": bool, "holder": host id or None, "until": time or None}. A 409 is an answer (another host holds it).
+    A cloud that does not know the endpoint (404) has no lease: the Chair runs as before. Other failures raise BoardError."""
+    if action not in ("claim", "renew", "release"):
+        raise ValueError(f"unknown chair action: {action}")
+    me = config.host_id(root)
+    url, token = config.cloud_settings(root)
+    if not url or not token:  # no cloud, nobody to share the role with
+        return {"held": action != "release", "holder": me, "until": None}
+    status, body = _call(root, "POST", "/v1/chair", {"project_id": config.project_id(root), "host_id": me, "action": action})
+    if status == 404:
+        return {"held": action != "release", "holder": me, "until": None}
+    if status == 409:
+        return {"held": False, "holder": body.get("holder"), "until": body.get("until")}
+    if status not in (200, 201):
+        raise BoardError(f"chair lease refused ({status}): {body.get('error') or body}", status, body)
+    holder = body.get("holder")
+    return {"held": action != "release" and holder in (me, None), "holder": holder, "until": body.get("until")}
+
+
 def role_warning(root: Path, agent: str, ref: str, produced: str, expected: list[str], key: str | None = None) -> dict:
     """A witch delivered something outside her role (report only: nothing is refused; spec task-keys-and-roles, R4)."""
     payload = {"raw_type": "role_mismatch", "message": f"{agent} produced {produced} on {ref}; her role produces {', '.join(expected)}"[:300],
