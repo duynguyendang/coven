@@ -188,7 +188,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `make verify`_
   - _Requirements: R7.1_
 
-- [ ] 16. The cloud marks orphaned tasks and fences old attempts
+- [x] 16. The cloud marks orphaned tasks and fences old attempts
   - Goal: the board view says which tasks lost their host, and a status from an older attempt no longer changes the board.
   - Context: requirements R8.1, R8.3; design "Takeover of orphaned tasks". Today a `working` task whose host is gone stays `working` forever.
   - Read first: `server/src/board.ts` (`hostOnline`, the `task_status` branch of `apply`, the task view near `doer_state`), `server/src/events.ts`, `docs/ADD.md` §6, `server/test/board.test.ts`.
