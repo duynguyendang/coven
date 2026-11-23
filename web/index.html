@@ -326,7 +326,10 @@
   .stage .sprites { display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-end; gap: 2px 0; transform-style: preserve-3d; }
   .stage .stage-witch { position: relative; display: block; appearance: none; background: none; border: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; padding-block-end: 8px; transform-style: preserve-3d; transform: rotateX(calc(var(--tilt) * -1)); transform-origin: 50% 100%; }
   .stage .stage-witch .av { inline-size: 44px; block-size: 50px; display: block; }
-  .stage .stage-witch .rig { position: relative; display: block; inline-size: 44px; block-size: 50px; transform-style: preserve-3d; }
+  .stage .stage-witch .rig { position: relative; display: block; inline-size: 44px; block-size: 50px; transform-style: preserve-3d; --ry: 0deg; --rx: 0deg;
+    transform: rotateX(var(--rx)) rotateY(var(--ry)); animation: rig-sway 6s ease-in-out infinite; }
+  @keyframes rig-sway { 0%, 100% { transform: rotateX(var(--rx)) rotateY(-8deg); } 50% { transform: rotateX(var(--rx)) rotateY(8deg); } }
+  @media (prefers-reduced-motion: reduce) { .stage .stage-witch .rig { animation: none; } }
   .stage .stage-witch .rig .av { position: relative; }
   .stage .stage-witch .lyr { position: absolute; pointer-events: none; display: block; }
   .stage .stage-witch .lyr-back { inset-inline: 18% ; inset-block: 30% 4%; background: var(--rig-body); border-radius: 40% 40% 12% 12%; opacity: 0.55; transform: translateZ(-4px); }

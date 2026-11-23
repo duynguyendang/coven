@@ -235,6 +235,18 @@ describe("sessions screen", () => {
     assert.deepEqual(css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) ?? [], []);
   });
 
+  test("3D rig: the child .rig carries the transform and sway, never .stage-witch", () => {
+    const html = readFileSync(join(here, "..", "..", "web", "index.html"), "utf8");
+    const rig = html.split("\n").filter((l) => /\.stage-witch \.rig \{/.test(l)).join("\n");
+    assert.match(rig, /transform-style: preserve-3d/);
+    assert.match(html, /\.stage-witch \.rig \{[^}]*--ry[^}]*--rx[^}]*animation: rig-sway/s);
+    assert.match(html, /@keyframes rig-sway/);
+    assert.match(html, /prefers-reduced-motion: reduce\) \{ \.stage \.stage-witch \.rig \{ animation: none; \}/);
+    const witch = html.split("\n").filter((l) => /\.stage \.stage-witch \{/.test(l)).join("\n");
+    assert.match(witch, /transform: rotateX\(calc\(var\(--tilt\) \* -1\)\)/);
+    assert.doesNotMatch(witch, /rig-sway|--ry/);
+  });
+
   test("check 1: the real session's card leads with its last intent, with matching counts", () => {
     const c = card(REAL_RUN);
     assert.ok(c, "a card for the real session");
