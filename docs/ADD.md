@@ -437,6 +437,10 @@ one is dropped and the claim is taken without it. Older events get the key deriv
 renewals, releases, `host_online` and `task_status` carry it, so two hosts with one name are two
 claimants.
 
+### 6.1a Orphaned tasks and fencing
+
+Each task in the board view carries `orphaned` (boolean), `orphaned_since` (ISO time the holding host was last seen, else null) and `takeovers` (count); the view carries `takeover_seconds` once (`COVEN_TAKEOVER_SECONDS`, default 600). A task is `orphaned` when its state is `working`, or `submitted` or `failed` with a `branch_host`, no active claim holds it, and the holding host (`branch_host`, else the newest status's `host_id`) sent no `host_online` for longer than `takeover_seconds`. Fencing: per `task_key` the newest attempt number (`attempt_id` `<key>.<n>`, from claims and statuses) wins; a `task_status` with a lower `n` is kept in the event log but changes nothing on the board. A status without `attempt_id` keeps the old rule. A claim or status with a higher `n` from a different host than the newest attempt adds one to `takeovers`.
+
 ### 6.2 Event types
 
 | Family | Types |

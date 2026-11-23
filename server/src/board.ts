@@ -32,6 +32,12 @@ export const LISTENER_ONLINE_SECONDS = 150;
 /** How often a host announces itself (host_online); the monitor's STALE and DISCONNECTED count missed announcements. */
 export const MONITOR_EVERY = 60;
 
+/** Seconds a task's holder may stay unseen before another host may take the task over (R8.1). Read at use, so a test can set it. */
+export const takeoverSeconds = (): number => {
+  const n = Number((globalThis as any).process?.env?.COVEN_TAKEOVER_SECONDS);
+  return n > 0 ? n : 600;
+};
+
 export const boardRunId = (projectId: string): string => `board_${projectId}`;
 /** Coordination runs: the board's own, and a member's notes and chat answers. Not sessions. */
 export const isBoardRun = (runId: string): boolean => runId.startsWith("board_") || runId.startsWith("member_");
@@ -72,6 +78,7 @@ function keyOf(project: string, p: Json, ref?: unknown): string | null {
   if (typeof ref === "string" && ref.includes("#")) return taskKey(project, "spec", ref.slice(0, ref.indexOf("#")), ref.slice(ref.indexOf("#") + 1));
   return null;
 }
+const attemptNo = (id: string | null): number | null => (id ? Number(id.slice(id.indexOf(".") + 1)) : null);
 const attemptOf = (p: Json): string | null => (typeof p.attempt_id === "string" && /^[0-9a-f]{16}\.[0-9]+$/.test(p.attempt_id) ? p.attempt_id : null);
 
 /** How long a job may wait unclaimed while no online host runs its witch before it reads as expired (COVEN_JOB_EXPIRY, seconds). */
@@ -102,6 +109,7 @@ function cleanFailure(f: any): Json | null {
 }
 
 export class Board {
+  newest = new Map<string, Map<string, { n: number; host: string | null; takeovers: number }>>(); // project -> task ref -> newest attempt seen (fencing, takeovers)
   claims = new Map<string, Json>();          // claim_id -> claim (newest state)
   chair = new Map<string, { host_id: string; until: string }>(); // project -> the host that holds the Chair lease (memory only, like renewals)
   notes = new Map<string, Json[]>();         // project -> notes, oldest first
@@ -128,6 +136,23 @@ export class Board {
     return keyOf(project, p, ref);
   }
 
+  /**
+   * Note an attempt of a task. Returns false when it is older than the newest known (fenced). A higher attempt
+   * from a different host than the newest one counts as a takeover. Attempts without an id do not take part.
+   */
+  private noteAttempt(project: string, ref: string, attemptId: string | null, host: string | null): boolean {
+    const n = attemptNo(attemptId);
+    if (n === null) return true;
+    const all = this.newest.get(project) ?? new Map();
+    const top = all.get(ref);
+    if (top && n < top.n) return false;
+    if (!top) all.set(ref, { n, host, takeovers: 0 });
+    else if (n > top.n) all.set(ref, { n, host: host ?? top.host, takeovers: top.takeovers + (host && top.host && host !== top.host ? 1 : 0) });
+    else if (!top.host && host) top.host = host;
+    this.newest.set(project, all);
+    return true;
+  }
+
   /** Fold one stored event into the board. */
   apply(event: Json): void {
     const project = event.project_id;
@@ -135,6 +160,7 @@ export class Board {
     if (typeof event.member === "string" && event.member) this.seen(project, event.member, event);
     if (event.type === "task_claimed" && typeof p.claim_id === "string") {
       const known = this.claims.get(p.claim_id);
+      if (p.spec) this.noteAttempt(project, `${p.spec}#${p.task_id}`, attemptOf(p), typeof p.host_id === "string" && HOST_ID.test(p.host_id) ? p.host_id : (event.member ?? null));
       this.claims.set(p.claim_id, {
         claim_id: p.claim_id, project_id: project, spec: p.spec ?? null, task_id: String(p.task_id ?? ""),
         kind: CLAIM_KINDS.has(p.kind) ? p.kind : "task", member: p.member, host: p.member, agent: typeof p.agent === "string" ? p.agent : null, paths: Array.isArray(p.paths) ? p.paths : [],
@@ -199,6 +225,8 @@ export class Board {
     } else if (event.type === "task_status" && typeof p.task === "string" && PEOPLE_STATES.has(p.state)) {
       const all = this.statuses.get(project) ?? new Map<string, Json>();
       const known = all.get(p.task);
+      // Fencing (R8.3): a status from an attempt older than the newest known one is kept in the log but changes nothing here.
+      if (!this.noteAttempt(project, p.task, attemptOf(p), typeof p.host_id === "string" && HOST_ID.test(p.host_id) ? p.host_id : (event.member ?? null))) return;
       // A host's sign-off never closes a branch that waits to be merged: only a merge, the branch in the base, or a person does.
       if (p.state === "done" && event.source !== "web" && known?.state === "submitted" && !/\bin base\b/.test(String(p.detail ?? ""))) return;
       // A person's done stays done against later host statuses: only a person's queued (retry) reopens it.
@@ -469,8 +497,10 @@ export class Board {
         const owner = held.find((c) => c.kind === "task");
         const doing = this.statuses.get(projectId)?.get(`${spec}#${t.task_id}`);
         const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
+        const orphan = this.orphan(projectId, `${spec}#${t.task_id}`, doing, held.length > 0, at);
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
         return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null,
+          orphaned: orphan.orphaned, orphaned_since: orphan.since, takeovers: this.newest.get(projectId)?.get(`${spec}#${t.task_id}`)?.takeovers ?? 0,
           doer_parent: doing?.parent ?? null, doer_ready: doing?.ready ?? null, doer_missing: doing?.missing ?? [], doer_step: doing?.step ?? null, doer_question: doing?.question ?? null, doer_pieces: doing?.pieces ?? null, merged: doing?.merged ?? null,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           accept: this.accepts.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
@@ -480,7 +510,7 @@ export class Board {
       }),
     }));
     return {
-      project_id: projectId, at, members, hosts: members, specs, monitor: this.monitor(projectId, specs, at),
+      project_id: projectId, at, takeover_seconds: takeoverSeconds(), members, hosts: members, specs, monitor: this.monitor(projectId, specs, at),
       chair: this.chairHolder(projectId, at),
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
@@ -545,6 +575,21 @@ export class Board {
   runsAgent(projectId: string, agent: unknown, at = new Date().toISOString()): boolean {
     const cutoff = new Date(Date.parse(at) - LISTENER_ONLINE_SECONDS * 1000).toISOString();
     return [...(this.hosts.get(projectId)?.values() ?? [])].some((h) => (h.last_seen || "") >= cutoff && (h.agents || []).includes(agent));
+  }
+
+  /**
+   * R8.1: working, or submitted or failed with a branch on a host; no active claim; and the holding host (the newest
+   * status's host_id, else its member name) unseen for longer than takeoverSeconds. `since` is when it was last seen.
+   */
+  orphan(projectId: string, ref: string, doing: Json | undefined, claimed: boolean, at: string): { orphaned: boolean; since: string | null } {
+    const none = { orphaned: false, since: null };
+    if (!doing || claimed) return none;
+    if (!(doing.state === "working" || ((doing.state === "submitted" || doing.state === "failed") && doing.branch_host))) return none;
+    const id = doing.state === "working" ? doing.host_id : (doing.branch_host ?? doing.host_id);
+    const seen = [...(this.hosts.get(projectId)?.values() ?? [])].filter((h) => (id ? h.host_id === id : h.host === doing.host)).map((h) => h.last_seen || "");
+    const since = seen.sort().pop() || doing.ts || null;
+    if (!since || Date.parse(at) - Date.parse(since) <= takeoverSeconds() * 1000) return none;
+    return { orphaned: true, since };
   }
 
   /** Whether the host with this id announced itself within the last few minutes. */
