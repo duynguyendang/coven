@@ -8,7 +8,7 @@ calls a model. Run `make verify` before calling the whole spec done.
 
 ## Tasks
 
-- [ ] 1. Reconcile the host's records with the board at start
+- [x] 1. Reconcile the host's records with the board at start
   - Goal: a host that starts drops, fails or resends its local records so they match the board, and says so in one line.
   - Context: this host holds 18 stale `failed` records the board no longer agrees with. Requirements R1.3 to R1.5; design "Reconcile at host start".
   - Read first: `src/coven/host.py` (`load`, `_forget`, `_update`, `reconcile`, `Host.run`), `src/coven/board.py` (`read`, `task_status`), `tests/test_host.py` (`FakeCloud`).
