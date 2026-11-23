@@ -242,6 +242,8 @@ describe("sessions screen", () => {
     assert.match(nopref, /\.stage-witch\.picked \.rig \{ animation: rig-turn/);
     assert.match(nopref, /\.stage-witch\.off \.rig \{ animation: none/);
     assert.match(nopref, /\.stage-witch:hover \.rig \{ translate/);
+    assert.match(html, /@keyframes rig-hop \{[^@]*translate:/);
+    assert.doesNotMatch(html.match(/@keyframes rig-hop[^\n]*/)![0], /transform:/);
     for (const k of ["rig-hop", "rig-lean", "rig-turn"]) assert.match(html, new RegExp(`@keyframes ${k}`));
     assert.ok(html.includes(".stage .stage-witch:hover { transform: rotateX(calc(var(--tilt) * -1)) translateY(-4px); }"));
     for (const c of ["working", "picked", "off"]) assert.ok(html.includes(`.stage .stage-witch.${c}`), c);

@@ -330,7 +330,7 @@
     transform: rotateX(var(--rx)) rotateY(var(--ry)); animation: rig-sway 6s ease-in-out infinite; }
   @keyframes rig-sway { 0%, 100% { transform: rotateX(var(--rx)) rotateY(-8deg); } 50% { transform: rotateX(var(--rx)) rotateY(8deg); } }
   @media (prefers-reduced-motion: reduce) { .stage .stage-witch .rig { animation: none; } }
-  @keyframes rig-hop { 0%, 100% { transform: rotateX(var(--rx)) rotateY(var(--ry)) translateY(0); } 40% { transform: rotateX(var(--rx)) rotateY(var(--ry)) translateY(-6px); } }
+  @keyframes rig-hop { 0%, 100% { translate: 0 0; } 40% { translate: 0 -6px; } }
   @keyframes rig-lean { 0%, 100% { transform: rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(0deg); } 50% { transform: rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(-6deg); } }
   @keyframes rig-turn { to { transform: rotateX(var(--rx)) rotateY(360deg); } }
   @media (prefers-reduced-motion: no-preference) {
