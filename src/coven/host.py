@@ -2962,6 +2962,12 @@ class Host:
     def run(self, once: bool = False, interval: float = 15.0) -> dict:
         """Tick until stopped. With `once`: one tick, then wait for the runs it started and settle them."""
         self.presence(force=True)
+        try:
+            start = reconcile_start(self.root)
+            self.out(f"host: reconcile: closed {start['closed']}, resent {start['resent']}, failed {start['failed']}"
+                     + (f"; undecided: {', '.join(start['undecided'])}" if start["undecided"] else ""))
+        except Exception as exc:  # noqa: BLE001 - the records wait; the host runs
+            self.out(f"host: reconcile skipped ({str(exc)[:160]})")
         if self.autonomous and not once:
             # Clear the In review backlog this host may close itself (the cloud decides whether it takes the sign-off).
             try:
@@ -3092,6 +3098,46 @@ def recheck(root: Path, ref: str, task: dict) -> dict:
     _update(root, ref, state="failed", error=(problem or "no change")[:300], finished_at=events.now_iso())
     _status(root, ref, "failed", agent, problem)
     return {"action": "failed", "task": ref, "agent": agent, "error": problem}
+
+
+def reconcile_start(root: Path) -> dict:
+    """At host start: make this host's records agree with the board (spec autonomous-tasks, R1.3 to R1.5).
+
+    Drops the records of tasks the board closed, fails `running` records no live run backs, resends a state the board lacks,
+    and keeps a board state newer than the record. It never sends `done` and never merges."""
+    view = board.read(root) or {}
+    seen: dict[str, dict] = {}
+    for spec in view.get("specs") or []:
+        for task in spec.get("tasks") or []:
+            seen[f"{spec.get('spec')}#{task.get('task_id')}"] = task
+    result = {"closed": 0, "resent": 0, "failed": 0, "undecided": []}
+    for ref, record in load(root).items():
+        task = seen.get(ref) or {}
+        state, local = task.get("doer_state"), record.get("state")
+        if state in ("done", "merged", "replaced", "abandoned") or task.get("merged"):
+            remove_worktree(root, record.get("worktree"))
+            _drop_unused_branch(root, record)
+            _forget(root, ref)
+            result["closed"] += 1
+            continue
+        stamp = record.get("finished_at") or record.get("started_at") or ""
+        if state and task.get("doer_ts") and str(task["doer_ts"]) > str(stamp):
+            continue  # the board is newer: take its state, change nothing else
+        agent = record.get("agent") or agents.DEFAULT
+        if local == "running":
+            reason = "host restarted"
+            _update(root, ref, state="failed", error=reason, finished_at=events.now_iso())
+            record = {**record, "state": "failed", "failure": record.get("failure") or {"cause": "error", "summary": reason}}
+            _update(root, ref, failure=record["failure"])
+            _status(root, ref, "failed", agent, reason, failure=record["failure"])
+            result["failed"] += 1
+        elif local in ("failed", "submitted", "answered") and state != local:
+            _status(root, ref, local, agent, record.get("error"), branch=record.get("branch") if local == "submitted" else None,
+                    failure=record.get("failure"))
+            result["resent"] += 1
+        elif local not in ("failed", "submitted", "answered"):
+            result["undecided"].append(ref)
+    return result
 
 
 def _drop_unused_branch(root: Path, record: dict) -> None:
