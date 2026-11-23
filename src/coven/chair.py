@@ -78,8 +78,8 @@ def sweep(view: dict, now, seen: set[str] | None = None) -> list[dict]:
             elif state == "needs_split":
                 found.append(_finding("needs_split", ref, f"a witch says it is too large: {t.get('doer_detail') or 'no pieces recorded'}", t.get("doer_detail")))
             is_parent = str(t.get("task_id")) in children
-            # Ready means the task names its witch, paths and verify command (the Scribe's list, host.py).
-            missing = [] if is_parent or spec.get("spec") == "council" else [k for k in ("agent", "paths", "verify") if not t.get(k)]
+            # Ready means the task names its witch and paths; the board snapshot (board.tasks_snapshot) does not publish `verify`, so it is not checked here.
+            missing = [] if is_parent or spec.get("spec") == "council" else [k for k in ("agent", "paths") if not t.get(k)]
             if missing and not _closed(t) and state in (None, "queued"):
                 found.append(_finding("not_ready", ref, f"not ready, missing {', '.join(missing) or 'something'}", ",".join(missing)))
             subs = children.get(str(t.get("task_id")))

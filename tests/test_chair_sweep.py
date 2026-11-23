@@ -10,14 +10,14 @@ NOW = "2026-01-01T12:00:00Z"
 
 def view():
     def t(i, **kw):
-        return {"task_id": i, "title": f"t{i}", "status": "not_started", "agent": "green-witch", "paths": ["a"], "verify": "v", **kw}
+        return {"task_id": i, "title": f"t{i}", "status": "not_started", "agent": "green-witch", "paths": ["a"], **kw}
     return {
         "claims": [{"claim_id": "c2", "spec": "s", "task_id": "9", "member": "duy", "lease_until": "2026-01-01T13:00:00Z", "state": "active"}],
         "recent_claims": [{"claim_id": "c1", "kind": "task", "spec": "s", "task_id": "1", "member": "duy", "lease_until": "2026-01-01T11:00:00Z", "state": "expired"},
                           {"claim_id": "c3", "kind": "task", "spec": "s", "task_id": "8", "member": "duy", "lease_until": "2026-01-01T11:00:00Z", "released_at": "x", "state": "released"}],
         "specs": [{"spec": "s", "tasks": [
             t("2", doer_state="failed", doer_failure={"cause": "no_change", "summary": "nothing changed"}),
-            t("3", paths=[], verify=None),
+            t("3", paths=[]),
             t("4", doer_state="needs_clarification", doer_detail="which file?"),
             t("5", doer_state="needs_split", doer_detail="three pieces"),
             t("6"), t("6.1", parent="s#6", doer_state="done"), t("6.2", parent="s#6", status="completed"),
@@ -41,7 +41,7 @@ def test_one_of_each_finding(monkeypatch):
     by = {f["kind"]: f for f in found}
     assert by["stale_claim"]["task"] == "s#1"
     assert "no_change" in by["failed"]["why"]
-    assert "paths" in by["not_ready"]["why"] and "verify" in by["not_ready"]["why"]
+    assert "paths" in by["not_ready"]["why"]
     assert by["parent_complete"]["task"] == "s#6" and by["no_owner"]["task"] == "s#7"
     assert all(f["task"] and f["why"] and f["key"] for f in found)
 
