@@ -58,3 +58,21 @@ describe("task_key and attempt_id", () => {
     } finally { await s.close(); }
   });
 });
+
+describe("chat_run", () => {
+  const run = (p: Json) => validateEvent(ev("chat_run", p));
+  const ok = { ref: "chat#evt_abc", agent: "elder-witch", state: "working" };
+  test("accepts working, answered and failed with a code and note", () => {
+    assert.deepEqual(run(ok), []);
+    assert.deepEqual(run({ ...ok, state: "answered", note: "done" }), []);
+    assert.deepEqual(run({ ...ok, state: "failed", code: "timeout", note: "x".repeat(400) }), []);
+  });
+  test("refuses a task ref, an unknown witch or state, a code off a failed run, an unknown code and a long note", () => {
+    assert.notDeepEqual(run({ ...ok, ref: "spec#1" }), []);
+    assert.notDeepEqual(run({ ...ok, agent: "nobody" }), []);
+    assert.notDeepEqual(run({ ...ok, state: "done" }), []);
+    assert.notDeepEqual(run({ ...ok, code: "timeout" }), []);
+    assert.notDeepEqual(run({ ...ok, state: "failed", code: "boom" }), []);
+    assert.notDeepEqual(run({ ...ok, note: "x".repeat(401) }), []);
+  });
+});

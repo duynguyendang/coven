@@ -116,6 +116,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-H21 | A failed task says why, where a person looks: the host sends the cause, the number and time of runs, whether verify passed, whether the task's paths changed on the base branch since it started, the files outside its paths, the agent's last words (≤300 characters, redacted) and what to do next (`task_status` `failure`). "Waiting for you" and the task dialog show it; a failure from before this has only its one-line reason and says so. | Must | Built |
 | FR-H16 | Hosts announce free slots; the Chair sees who has room, and which ready build tasks share no path (a person may send them to Kiro Web; the Chair never does). | Should | Built |
 | FR-H19 | A host can report that a submitted branch is already in the base (`branch_in_base {task, branch, tip, base}`). Host origin only; `tip` must match the submitted tip; it never overrides a reject and never skips review. | Should | Planned: contract and validation only |
+| FR-H22 | A host says where its run of a chat request stands (`chat_run {ref chat#id, agent, state working\|answered\|failed, code?, note?}`). Host origin only; `code` only on a failed run; `note` ≤ 400 characters, redacted. | Should | Planned: contract and validation only |
 
 ### 4.6 Task status
 
