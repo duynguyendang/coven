@@ -56,7 +56,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_progress.py tests/test_host_live.py tests/test_host.py`_
   - _Requirements: R2.2_
 
-- [ ] 5. Board view: new states, roll-up and an offline host
+- [x] 5. Board view: new states, roll-up and an offline host
   - Goal: the dashboard shows the new states, a parent's roll-up, the live step, and "host offline" for a silent host's running subtasks.
   - Context: requirements R1.1, R2.2, R2.4, R5.1, R5.2. The failed-task section (`failureHtml`) is the pattern to follow.
   - Read first: `web/index.html` (`boardColumns`, `needsYou`, `failureHtml`, `taskCard`, `ONLINE_SECONDS`), `server/src/board.ts` (the board view), `docs/DESIGN.md`.

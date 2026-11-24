@@ -1684,6 +1684,43 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: new states, a parent's roll-up, the live step and an offline host", async () => {
+    const e = (seq: number, type: string, payload: Json) => ({ ...ev("member_nw", "nw", type, payload, seq), member: "nw" });
+    const st = (seq: number, task: string, state: string, extra: Json = {}) => e(seq, "task_status", { task, state, agent: "green-witch", ...extra });
+    await send("nw", "member_nw", [
+      e(1, "spec_artifact_updated", { artifact: "tasks", spec: "ns", total: 6, done: 0, in_progress: 0, queued: 0, optional: 0,
+        tasks: ["1", "2", "3", "4", "5", "6"].map((id) => ({ task_id: id, title: `Task ${id}`, status: "not_started", paths: ["x/"] })) }),
+      st(2, "ns#1", "needs_clarification", { question: "Which database does it use?" }),
+      st(3, "ns#2", "needs_split", { pieces: "the API; the screen" }),
+      st(4, "ns#3", "held", { detail: "the host paused it" }),
+      st(5, "ns#4", "replaced", { detail: "split into smaller tasks" }),
+      ...["a", "b", "c", "d", "e"].map((id, i) => st(7 + i, `ns#9${id}`, i === 3 ? "failed" : "working", { parent: "ns#6" })),
+    ]);
+    // the owner of ns#5 last spoke ten minutes ago
+    await send("nw", "member_gone", [{ ...ev("member_gone", "nw", "task_status", { task: "ns#5", state: "working", agent: "green-witch", step: "editing web/index.html" }, 600), member: "gone" }]);
+    for (const id of ["a", "b", "c"]) assert.equal((await postJson(s.base, "/v1/board/done", { project_id: "nw", task: `ns#9${id}`, author: "duy" })).status, 201);
+    await go("#/board/nw", 600);
+    const need = (ref: string) => doc().querySelector(`[data-key="need-${ref}"]`)!.textContent!.replace(/\s+/g, " ");
+    assert.match(need("ns#1"), /Which database does it use\?/);
+    assert.match(need("ns#2"), /the API; the screen/);
+    assert.match(need("ns#3"), /the host paused it/);
+    assert.equal(doc().querySelector('[data-key="need-ns#4"]'), null, "a replaced task is closed, not waiting");
+    openColumn("done");
+    assert.ok(doc().querySelector('[data-key="row-ns#4"]'), "a replaced task sits in Done");
+    (doc().querySelector('[data-key="need-open-ns#1"]') as HTMLButtonElement).click();
+    closeTask();
+    openColumn("ready");
+    const open = (ref: string) => openTask(ref);
+    const working = open("ns#5");
+    assert.match(working.querySelector("[data-step]")!.textContent!, /editing web\/index\.html/);
+    assert.ok(working.querySelector("[data-host-offline]"), "a working task on a host nobody has seen shows host offline");
+    assert.doesNotMatch(working.querySelector(".state")!.textContent!, /Working/);
+    closeTask();
+    assert.match(open("ns#6").querySelector("[data-rollup]")!.textContent!, /3 of 5 done, 1 failed/);
+    closeTask();
+    await go("#/");
+  });
+
   test("board: a live update refreshes it", async () => {
     await go("#/board/shop", 400);
     assert.equal((await postJson(s.base, "/v1/claims", { project_id: "shop", member: "dee", spec: "shop", task_id: "4", paths: ["docs/"] })).status, 201);
