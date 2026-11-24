@@ -41,3 +41,17 @@ test(`session events with ${EVENTS} events answer under ${LIMIT_MS} ms`, async (
   assert.equal(r.body.events.length, EVENTS);
   assert.ok(elapsed < LIMIT_MS, `took ${elapsed.toFixed(0)} ms`);
 });
+
+test("GET /v1/board lists chat runs with their outcome", async () => {
+  const ts = new Date().toISOString();
+  await s.store.ingest("coven", "run_chat", [
+    event("evt_chat_run_1", "chat_run", { run_id: "run_chat", ts, payload: { ref: "chat#m1", agent: "elf", state: "failed", code: "timeout" } }),
+    event("evt_chat_run_2", "chat_run", { run_id: "run_chat", ts, payload: { ref: "chat#m2", agent: "elf", state: "working" } }),
+  ]);
+  const r = await getJson(s.base, "/v1/board?project_id=coven");
+  assert.equal(r.status, 200);
+  assert.equal(r.body.chat_runs["chat#m1"].state, "failed");
+  assert.equal(r.body.chat_runs["chat#m1"].code, "timeout");
+  assert.equal(r.body.chat_runs["chat#m2"].state, "working");
+  assert.equal(r.body.chat_runs["chat#m2"].ended_at, null);
+});
