@@ -1541,8 +1541,9 @@ def _execute_request(root: Path, message: dict, agent: str, runner: Runner, note
             board.answer(root, reply, f"{agents.info(agent)['label']} is on it, on {host}.", role=agent, kind="working")
         except Exception:  # noqa: BLE001 - the status line is a courtesy
             pass
+    _status(root, ref, "working", agent)
     if agent == SCRIBE:
-        return _scribe_answers(root, reply, ref, agent, message.get("message"), message.get("task"), runner, autonomous=autonomous)
+        return _scribe_answers(root, reply, ref, agent, message.get("message"), message.get("task"), runner, job=ref, autonomous=autonomous)
     path = None
     try:
         prompt = request_prompt(message, agent, host, root, notes)
@@ -1559,6 +1560,7 @@ def _execute_request(root: Path, message: dict, agent: str, runner: Runner, note
             raise HostError(error or "the run gave no answer")
         for step in steps:
             board.answer(root, reply, step, role=agent, kind="answer")
+        _status(root, ref, "answered", agent, steps[0])
         return {"action": "answered", "task": ref, "agent": agent, "steps": len(steps)}
     except Exception as exc:  # noqa: BLE001 - a crashed run must not take the host down
         reason = str(exc)[:300] if isinstance(exc, (HostError, work.WorkError)) else f"{type(exc).__name__}: {exc}"[:300]
@@ -1568,6 +1570,7 @@ def _execute_request(root: Path, message: dict, agent: str, runner: Runner, note
             board.answer(root, reply, f"{agents.info(agent)['label']} could not do it: {council.plain_error(reason)}"[:400], role=agent, kind="error")
         except Exception:  # noqa: BLE001
             pass
+        _status(root, ref, "failed", agent, reason, failure=failure_facts(root, ref, agent, reason))
         return {"action": "failed", "task": ref, "agent": agent, "error": reason}
     finally:
         if path:
@@ -1735,6 +1738,7 @@ def execute_triage(root: Path, message: dict, host: str, runner: Runner, notes: 
     try:
         if message.get("kind") == "do" and reply not in _PAUSE_SAID:
             board.answer(root, reply, f"{agents.label(CHAIR)} is on it, on {host}.", role=CHAIR, kind="working")
+        _status(root, ref, "working", CHAIR)
         context = {**(context or {}), **design_check(root, message, ref, runner, host, context)}
         prompt = triage_prompt(message, host, root, notes, context)
         text, error = runner(root, CHAIR, prompt, _env(root, host, CHAIR, ref), RUN_TIMEOUT)
@@ -1759,6 +1763,7 @@ def execute_triage(root: Path, message: dict, host: str, runner: Runner, notes: 
             lines.append("Each is a task on the board now; a host that runs the witch takes it.")
         for step in steps_of("\n".join(lines)):
             board.answer(root, reply, step, role=CHAIR, kind="answer")
+        _status(root, ref, "answered", CHAIR, summary or "Understood.")
         return {"action": "dispatched", "task": ref, "agent": CHAIR, "jobs": made}
     except Exception as exc:  # noqa: BLE001
         reason = str(exc)[:300] if isinstance(exc, (HostError, work.WorkError)) else f"{type(exc).__name__}: {exc}"[:300]
@@ -1768,6 +1773,7 @@ def execute_triage(root: Path, message: dict, host: str, runner: Runner, notes: 
             board.answer(root, reply, f"{agents.label(CHAIR)} could not dispatch it: {council.plain_error(reason)}"[:400], role=CHAIR, kind="error")
         except Exception:  # noqa: BLE001
             pass
+        _status(root, ref, "failed", CHAIR, reason, failure=failure_facts(root, ref, CHAIR, reason))
         return {"action": "failed", "task": ref, "agent": CHAIR, "error": reason}
     finally:
         work._release_quietly(root, ref, "dispatched")
