@@ -654,6 +654,25 @@ describe("several hosts (spec multi-host)", () => {
     } finally { await s.close(); }
   });
 
+  test("chat_tasks: chat# statuses with their message, read-only, nothing else changes", async () => {
+    const s = await startServer();
+    try {
+      // a task ref allows 20 characters after the #, so the request carries a short event id
+      await send(s.base, [ev("chat_message", { role: "council", kind: "answer", persona: "grey-witch", reply_to: "evt_x", message: "look at the build", to: "elf" }, "wsl-1", "ask1")]);
+      const ref = "chat#evt_mh_ask1";
+      const before = await board(s.base);
+      assert.deepEqual(before.chat_tasks, []);
+      await send(s.base, [ev("task_status", { task: ref, state: "working", agent: "elf" })]);
+      const after = await board(s.base);
+      assert.equal(after.chat_tasks.length, 1);
+      const [row] = after.chat_tasks;
+      assert.deepEqual([row.ref, row.title, row.witch, row.state, row.host], [ref, "look at the build", "elf", "working", "wsl-1"]);
+      assert.ok(row.ts);
+      assert.deepEqual(after.specs, before.specs, "not stored as a spec task");
+      assert.deepEqual(after.unmerged, before.unmerged);
+    } finally { await s.close(); }
+  });
+
   test("decisions need the admin password when one is set; a reader gets 403, not a sign-out", async () => {
     const s = await startServer({ env: { COVEN_TOKENS: "reader", COVEN_ADMIN_TOKEN: "boss" } });
     try {

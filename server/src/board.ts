@@ -534,8 +534,14 @@ export class Board {
           reviewers: held.filter((c) => c.kind === "review").map((c) => c.member) };
       }),
     }));
+    // Chat requests as read-only rows: derived from `chat#<id>` statuses and the chat message, never stored in specs.
+    const chatById = new Map((this.chat.get(projectId) ?? []).map((m) => [m.message_id, m]));
+    const chat_tasks = [...(this.statuses.get(projectId)?.entries() ?? [])].filter(([ref]) => ref.startsWith("chat#")).map(([ref, st]) => {
+      const msg = chatById.get(ref.slice(5));
+      return { ref, title: String(msg?.message ?? ref).slice(0, 160), witch: st.agent ?? msg?.to ?? null, state: st.state, ts: st.ts, host: st.host ?? null };
+    }).sort((a, b) => ((a.ts || "") < (b.ts || "") ? 1 : -1)).slice(0, 50);
     return {
-      project_id: projectId, at, takeover_seconds: takeoverSeconds(), members, hosts: members, specs, monitor: this.monitor(projectId, specs, at),
+      project_id: projectId, at, takeover_seconds: takeoverSeconds(), members, hosts: members, specs, chat_tasks, monitor: this.monitor(projectId, specs, at),
       chair: this.chairHolder(projectId, at), unmerged: this.unmergedOf(projectId, at),
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
