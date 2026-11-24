@@ -340,6 +340,7 @@
     .stage .stage-witch .rig { transition: translate 150ms ease-out; }
     .stage .stage-witch:hover .rig { translate: 0 -3px; }
   }
+  .stage .stage-witch .rig.steer { animation: none; transition: transform 400ms ease-out; }
   .stage .stage-witch .rig .av { position: relative; }
   .stage .stage-witch .lyr { position: absolute; pointer-events: none; display: block; }
   .stage .stage-witch .lyr-back { inset-inline: 18% ; inset-block: 30% 4%; background: var(--rig-body); border-radius: 40% 40% 12% 12%; opacity: 0.55; transform: translateZ(-4px); }
@@ -3353,6 +3354,56 @@
     $("login-error").hidden = true;
     $("token-input").value = "";
     showLogin();
+  });
+
+  /* turn the picked witch: drag or Left/Right sets --ry on her .rig (clamped), then it eases back to 0 */
+  const TURN_MAX = 40;
+  let turn = null; // { btn, x, moved }
+  const turnRig = (btn, deg) => {
+    const rig = btn.querySelector(".rig");
+    if (!rig) return null;
+    clearTimeout(rig._turnTimer);
+    rig.classList.add("steer");
+    rig.style.setProperty("--ry", `${Math.max(-TURN_MAX, Math.min(TURN_MAX, deg))}deg`);
+    return rig;
+  };
+  const turnBack = (btn) => {
+    const rig = btn.querySelector(".rig");
+    if (!rig) return;
+    rig.style.setProperty("--ry", "0deg");
+    clearTimeout(rig._turnTimer);
+    rig._turnTimer = setTimeout(() => rig.classList.remove("steer"), 450);
+  };
+  const turnNow = (btn) => parseFloat(btn.querySelector(".rig")?.style.getPropertyValue("--ry")) || 0;
+  document.addEventListener("pointerdown", (ev) => {
+    const btn = ev.target.closest && ev.target.closest(".stage-witch.picked");
+    if (btn) turn = { btn, x: ev.clientX, moved: false };
+  });
+  document.addEventListener("pointermove", (ev) => {
+    if (!turn) return;
+    const dx = ev.clientX - turn.x;
+    if (Math.abs(dx) > 4) turn.moved = true;
+    if (turn.moved) turnRig(turn.btn, dx * 0.5);
+  });
+  const turnEnd = () => {
+    if (!turn) return;
+    const { btn, moved } = turn;
+    turn = null;
+    if (moved) { turnBack(btn); btn._noClick = true; setTimeout(() => { btn._noClick = false; }, 0); }
+  };
+  document.addEventListener("pointerup", turnEnd);
+  document.addEventListener("pointercancel", turnEnd);
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest && ev.target.closest(".stage-witch");
+    if (btn && btn._noClick) { ev.stopImmediatePropagation(); ev.preventDefault(); }
+  }, true);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    const btn = ev.target.closest && ev.target.closest(".stage-witch.picked");
+    if (!btn) return;
+    ev.preventDefault();
+    const rig = turnRig(btn, turnNow(btn) + (ev.key === "ArrowLeft" ? -10 : 10));
+    if (rig) rig._turnTimer = setTimeout(() => turnBack(btn), 600);
   });
 
   document.addEventListener("keydown", (ev) => {

@@ -235,6 +235,42 @@ describe("sessions screen", () => {
     assert.deepEqual(css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) ?? [], []);
   });
 
+  test("dragging or arrow keys turn the picked witch (--ry, clamped), then ease back", async () => {
+    const d = doc();
+    const host = d.createElement("div");
+    host.innerHTML = `<button type="button" class="stage-witch picked" data-stage-pick="x"><span class="rig"></span></button>`;
+    d.body.appendChild(host);
+    const btn = host.querySelector<HTMLElement>(".stage-witch")!;
+    const rig = btn.querySelector<HTMLElement>(".rig")!;
+    const W = dom.window as unknown as { MouseEvent: typeof MouseEvent };
+    const fire = (type: string, x: number) => btn.dispatchEvent(new W.MouseEvent(type, { bubbles: true, clientX: x }));
+    const ry = () => rig.style.getPropertyValue("--ry");
+    let clicks = 0;
+    btn.addEventListener("click", () => { clicks++; });
+
+    fire("pointerdown", 100); fire("pointermove", 120);
+    assert.equal(ry(), "10deg");
+    fire("pointermove", 400);
+    assert.equal(ry(), "40deg");
+    fire("pointermove", -400);
+    assert.equal(ry(), "-40deg");
+    fire("pointerup", -400);
+    assert.equal(ry(), "0deg");
+    btn.click();
+    assert.equal(clicks, 0, "a drag is not a pick");
+    await wait(20);
+    btn.click();
+    assert.equal(clicks, 1, "a plain click still picks");
+
+    btn.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    assert.equal(ry(), "10deg");
+    for (let i = 0; i < 8; i++) btn.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    assert.equal(ry(), "-40deg");
+    await wait(700);
+    assert.equal(ry(), "0deg");
+    host.remove();
+  });
+
   test("rig animates by witch state under no-preference; stage-witch hover rule is unchanged", () => {
     const html = readFileSync(join(here, "..", "..", "web", "index.html"), "utf8");
     const nopref = html.slice(html.indexOf("@media (prefers-reduced-motion: no-preference) {\n    .stage .stage-witch.working .rig"));
