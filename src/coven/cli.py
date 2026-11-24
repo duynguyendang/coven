@@ -356,6 +356,27 @@ def cmd_host(args: argparse.Namespace) -> int:
             print(f"coven host retry: {exc}", file=sys.stderr)
             return 1
         return 0
+    if command == "prune":
+        try:
+            view = board.read(root)
+        except board.BoardError as exc:
+            print(f"coven host prune: the board is needed to know which tasks are finished: {exc}", file=sys.stderr)
+            return 1
+        done = host.prune_branches(root, view, dry_run=args.dry_run)
+        if done.get("error"):
+            print(f"coven host prune: {done['error']}", file=sys.stderr)
+            return 1
+        verb = "would delete" if args.dry_run else "deleted"
+        print(f"prune: {verb} {len(done['deleted'])} branch(es) and {done['worktrees']} worktree(s): {', '.join(done['deleted']) or 'none'}")
+        for u in done["unmerged"]:
+            print(f"unmerged: {u['branch']} ({u.get('task') or 'no task'}, {u['ahead']} commit(s)): Merge and clean on the board, or keep it")
+        print(f"kept (open tasks): {', '.join(done['kept']) or 'none'}")
+        if not args.dry_run:
+            try:
+                board.branch_report(root, done["unmerged"])
+            except Exception:  # noqa: BLE001 - the host reports again on its next cleanup
+                pass
+        return 0
     if command == "reconcile":
         try:
             done = host.reconcile(root, dry_run=args.dry_run)
@@ -412,7 +433,8 @@ def cmd_host(args: argparse.Namespace) -> int:
         autonomous = autonomous_mode(args.autonomous, args.manual, os.environ)
         runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=lambda line: print(line, flush=True),
                            kiro_web=args.kiro_web or os.environ.get("COVEN_KIRO_WEB_REPO"),
-                           auto_merge=args.auto_merge or os.environ.get("COVEN_AUTO_MERGE") == "1", autonomous=autonomous)
+                           auto_merge=args.auto_merge or os.environ.get("COVEN_AUTO_MERGE") == "1", autonomous=autonomous,
+                           prune=(args.prune_branches or host.prunes_branches()) and not args.keep_branches)
     except host.HostError as exc:
         print(f"coven host run: {exc}", file=sys.stderr)
         return 2
@@ -442,6 +464,9 @@ def cmd_host(args: argparse.Namespace) -> int:
               "Turn it off with --manual or COVEN_AUTONOMOUS=0.", flush=True)
     elif runner.auto_merge:
         print("host: auto-merge on: the host merges and pushes branches all three reviewers passed and the Chair decided to merge.", flush=True)
+    if getattr(runner, "prune", False):
+        print("host: branch cleanup on: finished coven/ branches whose commits are all in the base are deleted here and on origin; "
+              "unmerged work waits for Merge and clean on the board. Turn it off with --keep-branches or COVEN_PRUNE_BRANCHES=0.", flush=True)
     try:
         result = runner.run(once=args.once, interval=args.interval)
     except KeyboardInterrupt:
@@ -783,6 +808,9 @@ def build_parser() -> argparse.ArgumentParser:
     host_run.add_argument("--autonomous", action="store_true", help="auto-merge, plus: the Chair approves plans the Black Hat left with no P0 or P1 objection "
                           "(the cloud must allow it), and the host merges the Scribe's witch-and-paths branches; verify commands, holds and deadlocks "
                           "still go to a person (or set COVEN_AUTONOMOUS=1)")
+    host_run.add_argument("--prune-branches", action="store_true", help="delete finished coven/ branches whose commits are all in the base, "
+                          "with their worktrees, here and on origin (COVEN_PRUNE_BRANCHES=1; ./run-host.sh sets it)")
+    host_run.add_argument("--keep-branches", action="store_true", help="never delete branches, even with COVEN_PRUNE_BRANCHES=1")
     host_run.add_argument("--manual", action="store_true", help="not autonomous, even when COVEN_AUTONOMOUS=1 (as ./run-host.sh sets by default)")
     host_run.add_argument("--interval", type=float, default=15.0)
     host_run.add_argument("--once", action="store_true", help="one pass, wait for the agents it started, then exit")
@@ -790,6 +818,9 @@ def build_parser() -> argparse.ArgumentParser:
     host_reconcile = host_sub.add_parser("reconcile", help="close the In review backlog by the Elder Witch's sign-off: answered with no changes "
                                          "verdict, or the branch already in the base (the cloud must allow it: COVEN_AUTONOMOUS_SIGNOFF)")
     host_reconcile.add_argument("--dry-run", action="store_true", help="list what would be closed; send nothing")
+    host_prune = host_sub.add_parser("prune", help="delete this host's finished, fully merged coven/ branches and their worktrees now; "
+                                     "list the finished tasks' branches with unmerged work (merge them from the board: Merge and clean)")
+    host_prune.add_argument("--dry-run", action="store_true", help="list what would be deleted; delete nothing")
     host_prepare = host_sub.add_parser("prepare", help="the Scribe proposes the witch, paths and verify for tasks that lack them, on a branch to merge")
     host_prepare.add_argument("--only", help="one spec, or one <spec>#<task>")
     host_prepare.add_argument("--note", help="guidance for the Scribe")

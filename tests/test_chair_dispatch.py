@@ -260,3 +260,10 @@ def test_an_old_failure_on_a_finished_task_is_left_alone():
                    {"task_id": "2", "doer_state": "failed", "merged": {"in_base": True}, "doer_failure": {"cause": "error"}},
                    {"task_id": "3", "status": "completed", "doer_state": "needs_clarification", "doer_detail": "which?"}), NOW)
     assert fx.queued == [] and fx.asked == [] and fx.jobs == []
+
+
+def test_an_orphaned_task_is_queued_again_twice_then_a_person_is_asked():
+    fx = Live()
+    for n in range(3):
+        fx.d.act(board({"task_id": "1", "doer_state": "working", "orphaned": True, "orphaned_since": f"2026-01-01T1{n}:00:00Z"}), NOW)
+    assert fx.queued == ["s#1", "s#1"] and [r for r, _ in fx.asked] == ["s#1"]

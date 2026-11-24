@@ -235,6 +235,42 @@ describe("sessions screen", () => {
     assert.deepEqual(css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) ?? [], []);
   });
 
+  test("dragging or arrow keys turn the picked witch (--ry, clamped), then ease back", async () => {
+    const d = doc();
+    const host = d.createElement("div");
+    host.innerHTML = `<button type="button" class="stage-witch picked" data-stage-pick="x"><span class="rig"></span></button>`;
+    d.body.appendChild(host);
+    const btn = host.querySelector<HTMLElement>(".stage-witch")!;
+    const rig = btn.querySelector<HTMLElement>(".rig")!;
+    const W = dom.window as unknown as { MouseEvent: typeof MouseEvent };
+    const fire = (type: string, x: number) => btn.dispatchEvent(new W.MouseEvent(type, { bubbles: true, clientX: x }));
+    const ry = () => rig.style.getPropertyValue("--ry");
+    let clicks = 0;
+    btn.addEventListener("click", () => { clicks++; });
+
+    fire("pointerdown", 100); fire("pointermove", 120);
+    assert.equal(ry(), "10deg");
+    fire("pointermove", 400);
+    assert.equal(ry(), "40deg");
+    fire("pointermove", -400);
+    assert.equal(ry(), "-40deg");
+    fire("pointerup", -400);
+    assert.equal(ry(), "0deg");
+    btn.click();
+    assert.equal(clicks, 0, "a drag is not a pick");
+    await wait(20);
+    btn.click();
+    assert.equal(clicks, 1, "a plain click still picks");
+
+    btn.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    assert.equal(ry(), "10deg");
+    for (let i = 0; i < 8; i++) btn.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    assert.equal(ry(), "-40deg");
+    await wait(700);
+    assert.equal(ry(), "0deg");
+    host.remove();
+  });
+
   test("rig animates by witch state under no-preference; stage-witch hover rule is unchanged", () => {
     const html = readFileSync(join(here, "..", "..", "web", "index.html"), "utf8");
     const nopref = html.slice(html.indexOf("@media (prefers-reduced-motion: no-preference) {\n    .stage .stage-witch.working .rig"));
@@ -1198,6 +1234,39 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: a held merge, an offline host and unmerged work are never hidden; done with no change says so", async () => {
+    const m = (type: string, payload: Json, ago: number) => ({ ...ev("member_wz", "wz", type, payload, ago), member: "wz" });
+    await send("wz", "member_wz", [
+      m("spec_artifact_updated", { artifact: "tasks", spec: "wz", total: 3, done: 0, in_progress: 0, queued: 0, optional: 0,
+        tasks: [1, 2, 3].map((i) => ({ task_id: String(i), title: `Task ${i}`, status: "not_started", paths: [`x${i}/`] })) }, 60),
+      m("host_online", { agents: ["green-witch"], slots: 1, host_id: "h_0000aaaa" }, 1),
+      m("task_status", { task: "wz#1", state: "submitted", agent: "green-witch", branch: "coven/wz-1", branch_host: "h_0000aaaa", host_id: "h_0000aaaa" }, 50),
+      m("task_status", { task: "wz#3", state: "submitted", agent: "green-witch", branch: "coven/wz-3", branch_host: "h_0000cccc", host_id: "h_0000cccc" }, 50),
+    ]);
+    const decide = (path: string, body: Json) => postJson(s.base, path, { project_id: "wz", author: "duy", ...body }, auth());
+    assert.equal((await decide("/v1/board/accept", { task: "wz#1", decision: "accept" })).status, 201);
+    assert.equal((await decide("/v1/board/accept", { task: "wz#3", decision: "accept" })).status, 201);
+    const board = (await getJson(s.base, "/v1/board?project_id=wz", auth())).body;
+    const rid = board.specs[0].tasks.find((t: Json) => t.task_id === "1").accept.request_id;
+    await send("wz", "member_wz", [m("accept_progress", { task: "wz#1", request_id: rid, state: "held", reason: "make verify failed on the merged tree" }, 0)]);
+    assert.equal((await decide("/v1/board/done", { task: "wz#2", reason: "closed after two empty runs" })).status, 201);
+    await send("wz", "member_wz", [m("branch_report", { host_id: "h_0000aaaa", branches: [{ branch: "coven/wz-2", task: "wz#2", ahead: 2, tip: "c".repeat(40) }] }, 0)]);
+    await go("#/board/wz", 700);
+    const need = (ref: string) => doc().querySelector(`[data-key="need-${ref}"]`);
+    assert.match(need("wz#1")!.textContent!.replace(/\s+/g, " "), /The merge was held: make verify failed on the merged tree\. Request changes/);
+    assert.equal(doc().querySelector('[data-key="need-accept-wz#1"]'), null, "no Accept on a held merge: the same check would fail again");
+    assert.match(need("wz#3")!.textContent!.replace(/\s+/g, " "), /host that holds the branch is offline/);
+    const work = doc().querySelector('[data-key="unmerged-coven/wz-2"]');
+    assert.match(work!.textContent!.replace(/\s+/g, " "), /Unmerged work: 2 commits on coven\/wz-2/);
+    assert.ok(work!.querySelector('[data-accept="wz#2"]'), "Merge and clean is a button right there");
+    assert.match(doc().querySelector('[data-key="col-done"]')!.textContent!, /1 with no change/);
+    openColumn("done");
+    assert.match(doc().querySelector('[data-key="row-wz#2"]')!.textContent!, /Closed · no change/);
+    openColumn("review");
+    assert.doesNotMatch(doc().querySelector('[data-key="row-wz#1"]')!.textContent!, /Accept and merge/, "the row offers Request changes, not Accept");
+    await go("#/");
+  });
+
   test("board: a merged task says by whom; a review row shows its verdict", async () => {
     await send("am", "member_am", [
       { ...ev("member_am", "am", "spec_artifact_updated", { artifact: "tasks", spec: "s", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [{ task_id: "1", title: "Cart", status: "not_started", paths: ["x/"] }] }, 4), member: "am" },
@@ -1751,7 +1820,9 @@ describe("keyboard, safety and states", () => {
     await send("shop", "member_ac", [mergeEv("held", 4, { reason: "make verify failed on the merged tree" })]);
     await go("#/"); await go("#/board/shop", 600); openColumn("review"); openTask("evalu#1");
     assert.match(card(), /Held.*make verify failed on the merged tree/);
-    assert.ok(doc().querySelector('[data-key="accept-evalu#1"]'), "held: the buttons are back");
+    // held: Request changes is back; Accept is not (the cloud refuses the same branch again: it would fail the same check)
+    assert.ok(doc().querySelector('[data-key="changes-btn-evalu#1"]'), "held: Request changes is back");
+    assert.equal(doc().querySelector('[data-key="accept-evalu#1"]'), null, "held: no Accept for the same branch");
     closeTask();
     await go("#/");
   });

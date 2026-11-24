@@ -77,7 +77,11 @@ def sweep(view: dict, now, seen: set[str] | None = None) -> list[dict]:
             state = t.get("doer_state")
             if (_closed(t) or t.get("merged")) and state in ("failed", "needs_clarification", "needs_split"):
                 state = None  # ticked, merged or done: an old stop on a finished task needs nobody (never queue it again)
-            if state == "failed":
+            if t.get("orphaned") and not _closed(t) and not t.get("merged"):
+                # `working` (or a branch) on a host that went silent, no live claim (the cloud's flag): queue it again
+                found.append(_finding("orphaned", ref, f"its host went silent at {t.get('orphaned_since') or 'some time'}; no live run",
+                                      t.get("orphaned_since"), t.get("takeovers")))
+            elif state == "failed":
                 failure = t.get("doer_failure") or {}
                 cause = failure.get("cause") or "error"
                 found.append(_finding("failed", ref, f"failed, cause {cause}: {failure.get('summary') or t.get('doer_detail') or 'no summary'}",
@@ -321,6 +325,9 @@ class Dispatcher:
                 self.ask(ref, f"A witch asks about intent on {ref}: {task.get('doer_detail')}"[:400])
                 return {"action": "question"}
             return self._scribe(f, "Answer the witch's question by clarifying the task.")
+        if kind == "orphaned":
+            task = {**task, "doer_failure": {"cause": "error"}}  # the same rule as a run cut off by a restart
+            kind = "failed"
         if kind == "failed":
             cause = (task.get("doer_failure") or {}).get("cause") or "error"
             if cause in TRANSIENT:

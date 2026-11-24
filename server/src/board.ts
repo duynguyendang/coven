@@ -122,6 +122,7 @@ export class Board {
   dispatches = new Map<string, Map<string, Json>>(); // project -> task -> the latest decision of a person (task_dispatch)
   pushes = new Map<string, Map<string, Json>>(); // project -> task ref -> the latest push request and its outcome
   accepts = new Map<string, Map<string, Json>>(); // project -> task ref -> a person's latest final evaluation of its branch
+  unmerged = new Map<string, Map<string, Json>>(); // project -> host id -> its latest branch_report (closed tasks' unmerged branches)
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
   processes = new Map<string, Map<string, Json>>(); // project -> "<host_id or name>/<process>" -> its runs (the witch monitor)
 
@@ -311,13 +312,26 @@ export class Board {
       this.statuses.set(project, all);
       const acc = this.accepts.get(project)?.get(p.task);
       if (acc && acc.accepted) Object.assign(acc, { merge_state: "merged", merge_reason: null, commit: String(p.commit).slice(0, 40) });
+    } else if (event.type === "branch_report" && typeof p.host_id === "string" && HOST_ID.test(p.host_id)) {
+      // A host's whole list each time: what it no longer reports, it merged or deleted.
+      const all = this.unmerged.get(project) ?? new Map<string, Json>();
+      const known = all.get(p.host_id);
+      if (!known || (event.ts || "") >= known.ts) {
+        const branches = (Array.isArray(p.branches) ? p.branches : []).slice(0, 30).map((b: Json) => ({
+          branch: String(b.branch).slice(0, 110), task: typeof b.task === "string" ? b.task.slice(0, 102) : null, ahead: Number(b.ahead) || 1,
+          tip: typeof b.tip === "string" ? b.tip.slice(0, 40) : null }));
+        all.set(p.host_id, { host: event.member ?? null, host_id: p.host_id, branches, ts: event.ts });
+      }
+      this.unmerged.set(project, all);
     } else if (event.type === "branch_in_base" && typeof p.task === "string") {
       this.branchInBase(project, event, p);
     } else if (event.type === "task_accept" && typeof p.task === "string") {
       const all = this.accepts.get(project) ?? new Map<string, Json>();
       // One merge_state per accept request: a new request clears the old one; only an accept has one (changes never merges).
       all.set(p.task, { decision: p.decision, accepted: p.decision === "accept", merge_state: p.decision === "accept" ? "requested" : null, state: "requested", branch: p.branch, host_id: p.host_id, by: String(p.author ?? "someone").slice(0, 40),
-        reason: typeof p.reason === "string" ? p.reason.slice(0, 300) : null, ts: event.ts, request_id: event.event_id });
+        reason: typeof p.reason === "string" ? p.reason.slice(0, 300) : null, ts: event.ts, request_id: event.event_id,
+        // the unmerged branch's tip a person accepted (Merge and clean): a repeat is allowed only once the branch changed
+        report_tip: this.unmergedOf(project).find((b) => b.task === p.task && b.host_id === p.host_id)?.tip ?? null });
       this.accepts.set(project, all);
     } else if (event.type === "accept_progress" && typeof p.task === "string") {
       // The host's word on the request it is working. A stale request_id (an older accept) is ignored, and so is anything after the merge.
@@ -511,7 +525,7 @@ export class Board {
     }));
     return {
       project_id: projectId, at, takeover_seconds: takeoverSeconds(), members, hosts: members, specs, monitor: this.monitor(projectId, specs, at),
-      chair: this.chairHolder(projectId, at),
+      chair: this.chairHolder(projectId, at), unmerged: this.unmergedOf(projectId, at),
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
       plans: [...(this.plans.get(projectId)?.values() ?? [])].sort((a, b) => ((a.proposed_at || "") < (b.proposed_at || "") ? 1 : -1)).slice(0, 20),
@@ -561,9 +575,28 @@ export class Board {
 
   /** The branch and host of a submitted task, for a push request; null when none is waiting on a host. */
   /** A branch that waits for a person's evaluation: submitted for review, on a known host. */
-  acceptableBranch(projectId: string, ref: string): { branch: string; host_id: string } | null {
+  acceptableBranch(projectId: string, ref: string, at = new Date().toISOString()): { branch: string; host_id: string } | null {
     const doing = this.statuses.get(projectId)?.get(ref);
-    return doing?.state === "submitted" ? this.submittedBranch(projectId, ref) : null;
+    if (doing?.state === "submitted") return this.submittedBranch(projectId, ref);
+    // A closed task whose branch still has commits not in the base (a host's branch_report): Merge and clean.
+    const found = this.unmergedOf(projectId, at).filter((b) => b.task === ref).sort((a, b) => Number(b.host_online) - Number(a.host_online))[0];
+    return found ? { branch: found.branch, host_id: found.host_id } : null;
+  }
+
+  /** Every host's unmerged branches of closed tasks, newest report per host. */
+  unmergedOf(projectId: string, at = new Date().toISOString()): Json[] {
+    return [...(this.unmerged.get(projectId)?.values() ?? [])].flatMap((r: Json) => r.branches.map((b: Json) => ({
+      ...b, host: r.host, host_id: r.host_id, reported_at: r.ts, host_online: this.hostOnline(projectId, r.host_id, at) })));
+  }
+
+  /** Why a new Accept would only repeat a held merge, or null. A rework (a newer status) or a newer branch report allows it again. */
+  acceptHeld(projectId: string, ref: string): string | null {
+    const acc = this.accepts.get(projectId)?.get(ref);
+    if (!acc || !acc.accepted || acc.merge_state !== "held") return null;
+    const doing = this.statuses.get(projectId)?.get(ref);
+    const tip = this.unmergedOf(projectId).find((b) => b.task === ref && b.host_id === acc.host_id)?.tip ?? null;
+    if ((doing && (doing.ts || "") > (acc.ts || "")) || (acc.report_tip && tip && tip !== acc.report_tip)) return null;
+    return String(acc.merge_reason || "the last merge was held").slice(0, 200);
   }
 
   submittedBranch(projectId: string, ref: string): { branch: string; host_id: string } | null {

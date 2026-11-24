@@ -452,7 +452,9 @@ export function createHandler(options: HandlerOptions): Handler {
       const body = await readJson(request);
       if (!isObject(body)) throw validation("", "body must be an object");
       const projectId = scopedProject(body);
-      const payload = { task: optionalString(body, "task") ?? "", state: "done", detail: `accepted by ${(optionalString(body, "author") ?? "someone").slice(0, 40)}` };
+      // A failed task closed by hand says why (its branch, if any, waits as unmerged work for Merge and clean).
+      const why = (optionalString(body, "reason") ?? "").trim().slice(0, 140);
+      const payload = { task: optionalString(body, "task") ?? "", state: "done", detail: `accepted by ${(optionalString(body, "author") ?? "someone").slice(0, 40)}${why ? `: ${why}` : ""}` };
       const problems = validateEvent({ event_id: "x", project_id: projectId, run_id: "x", type: "task_status", ts: now(), payload });
       if (problems.length) throw validation("task", problems.join("; "));
       const event = await store.postWebStatus(projectId, redactEvent({ payload }).payload);
@@ -514,8 +516,11 @@ export function createHandler(options: HandlerOptions): Handler {
       const reason = (optionalString(body, "reason") ?? "").trim().slice(0, 300);
       if (decision === "changes" && !reason) throw validation("reason", "say what to change");
       const author = (optionalString(body, "author") ?? "someone").slice(0, 40);
+      // Accepting again what the host just held changes nothing: the same merge fails the same check. Rework it first.
+      const held = decision === "accept" ? store.board.acceptHeld(projectId, task) : null;
+      if (held) throw new HttpError(409, `the last merge was held: ${held}. Request changes (the Dev reworks it) before accepting again`);
       const event = await store.postWebAccept(projectId, task, decision, redactEvent({ payload: { reason } }).payload.reason || "", author);
-      if (!event) throw new HttpError(409, "no submitted branch of that task waits on a host");
+      if (!event) throw new HttpError(409, "no submitted or unmerged branch of that task waits on a host");
       return json(201, { event_id: event.event_id, branch: event.payload.branch, host_id: event.payload.host_id });
     }
 

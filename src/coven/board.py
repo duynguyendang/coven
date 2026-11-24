@@ -478,6 +478,15 @@ def push_done(root: Path, ref: str, branch: str, ok: bool, detail: str | None = 
     return _member_event(root, "push_done", payload)
 
 
+def branch_report(root: Path, branches: list[dict]) -> dict:
+    """This host's finished tasks' branches that still hold commits not in the base: {branch, task, ahead, tip} (at most 30).
+    The whole list each time, also when empty: what is not in it any more was merged or deleted."""
+    payload = {"host_id": config.host_id(root), "branches": [
+        {"branch": b["branch"], "task": b.get("task"), "ahead": max(1, min(10000, int(b.get("ahead") or 1))), **({"tip": b["tip"]} if b.get("tip") else {})}
+        for b in branches[:30]]}
+    return _member_event(root, "branch_report", payload)
+
+
 def accept_progress(root: Path, ref: str, request_id: str, state: str, reason: str | None = None) -> dict:
     """Report how this host handles a person's Accept: `merging`, or `held` with the reason."""
     payload = {"task": ref, "request_id": str(request_id), "state": state, "host_id": config.host_id(root)}
