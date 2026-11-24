@@ -1120,6 +1120,34 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: a task that lost its host says so, who took it over, and when it needs a person", async () => {
+    const KEY = "0123456789abcdef";
+    const m = (member: string, e: Json) => ({ ...e, member });
+    const st = (member: string, ref: string, hostId: string, n: number, secs: number) =>
+      m(member, ev("member_tk", "tk", "task_status", { task: ref, state: "working", agent: "elf", host_id: hostId, attempt_id: `${KEY}.${n}` }, secs));
+    const tasks = ["1", "2", "3", "4"].map((id) => ({ task_id: id, title: `Job ${id}`, status: "not_started", paths: ["a/"], agent: "elf" }));
+    await send("tk", "member_tk", [
+      m("ana", ev("member_tk", "tk", "spec_artifact_updated", { artifact: "tasks", spec: "tk", total: 4, done: 0, in_progress: 0, queued: 0, optional: 0, tasks }, 3000)),
+      // 1: its host went quiet 20 minutes ago
+      st("old-host", "tk#1", "h_0000000a", 1, 1200),
+      // 2: one takeover: attempt 2 on another host, seen just now
+      st("old-host", "tk#2", "h_0000000a", 1, 1500), st("new-host", "tk#2", "h_0000000b", 2, 20),
+      // 3: lost its host twice
+      st("old-host", "tk#3", "h_0000000a", 1, 2400), st("new-host", "tk#3", "h_0000000b", 2, 2000), st("third-host", "tk#3", "h_0000000c", 3, 1200),
+      // 4: working, not orphaned, no live run: the old label stays
+      st("live-host", "tk#4", "h_0000000d", 1, 30),
+    ]);
+    await go("#/board/tk", 600);
+    openColumn("ready");
+    const row = (n: string) => doc().querySelector(`[data-key="row-tk#${n}"]`)!;
+    assert.match(row("1").textContent!, /Host offline · taken over in \d+ min/);
+    assert.match(row("2").textContent!, /Taken over by new-host/);
+    assert.match(row("3").textContent!, /Needs you · lost its host twice/);
+    assert.match(row("4").textContent!, /Working · no live run/);
+    for (const n of ["1", "2", "3"]) assert.doesNotMatch(row(n).textContent!, /no live run/);
+    await go("#/");
+  });
+
   test("board: the stage and the monitor agree: a stale `working` with no live run is not a witch at work", async () => {
     const m = (p: string, e: Json) => ({ ...e, member: "wsl-s" });
     const online = (p: string, runs: Json[], secs: number) => m(p, ev(`member_${p}`, p, "host_online", { agents: ["elf", "raven"], slots: 2, running: runs.map((r) => r.ref), process: "p_0000aaaa", runs }, secs));
