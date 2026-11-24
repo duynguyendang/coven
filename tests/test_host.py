@@ -349,6 +349,32 @@ def test_a_chat_request_is_dispatched_to_the_witch_it_names_and_answered_in_step
     assert not cloud.claims, "the request is released when answered"
 
 
+def test_a_chat_turn_reports_working_then_answered_or_failed_without_step_lines(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do("sa"))
+    host.Host(repo, slots=1, runner=Runner({"elder-witch": lambda cwd, prompt: ("1. Split cli.py.", None)})).run(once=True)
+    mine = [s for s in cloud.statuses if s[0] == "chat#evt_req1"]
+    assert [s[1] for s in mine] == ["working", "answered"] and mine[0][2] == "elder-witch" and not cloud.failures
+
+
+def test_a_failed_chat_turn_reports_failed_with_the_failure_facts(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do("sa"))
+    host.Host(repo, slots=1, runner=Runner({"elder-witch": lambda cwd, prompt: (None, "the run gave no answer")})).run(once=True)
+    mine = [s for s in cloud.statuses if s[0] == "chat#evt_req1"]
+    assert [s[1] for s in mine] == ["working", "failed"]
+    (ref, facts), = [f for f in cloud.failures if f[0] == "chat#evt_req1"]
+    assert facts["cause"] and facts["summary"]
+
+
+def test_a_chair_turn_reports_working_then_failed_or_answered(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do("chair"))
+    host.Host(repo, slots=1, runner=Runner({"grey-witch": lambda cwd, prompt: ("no plan here", None)}), only=["grey-witch"]).run(once=True)
+    assert [s[1] for s in cloud.statuses if s[0] == "chat#evt_req1"] == ["working", "failed"]
+    assert [f[0] for f in cloud.failures] == ["chat#evt_req1"]
+
+
 def test_a_request_waits_for_a_host_that_has_the_witch_and_is_taken_once(repo, monkeypatch):
     cloud = FakeCloud().install(monkeypatch)
     cloud.chat.append(human_do("raven"))
