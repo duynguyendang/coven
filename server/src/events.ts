@@ -69,6 +69,8 @@ export const EVENT_TYPES = new Set([
   // council chat — contract §5.7
   "chat_message",
   "council_listening",
+  // a host says where its run of a chat request stands — contract §6.2
+  "chat_run",
   // a host is up and can run these agents — contract §5.8
   "host_online",
 ]);
@@ -77,6 +79,7 @@ export const EVENT_TYPES = new Set([
 export const PROCESS_ID = /^p_[0-9a-f]{8}$/;
 /** What a host runs: a task, a council job or a chat request (`chat#<message id>`). */
 const FAILURE_CODES = new Set(["no_change", "verify_failed", "outside_paths", "timeout", "no_answer", "kiro_error", "cloud", "error"]);
+const CHAT_RUN_STATES = new Set(["working", "answered", "failed"]);
 const RUN_REF = /^[^#\s]{1,80}#[^#\s]{1,40}$/;
 /** Made by the cloud itself after its conflict check; never accepted from a client. */
 export const HOST_ID = /^h_[0-9a-f]{8}$/;
@@ -226,6 +229,15 @@ export function validateEvent(event: Json): string[] {
         if (r.attempt_id !== undefined && !/^[0-9a-f]{16}\.[0-9]+$/.test(String(r.attempt_id))) errors.push("a run's attempt_id must be <task_key>.<n>");
       }
     }
+  }
+  // A host's run of a chat request (`chat#<message id>`): working, then answered or failed (with a code).
+  if (event.type === "chat_run") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.ref !== "string" || !RUN_REF.test(p.ref) || !p.ref.startsWith("chat#")) errors.push("chat_run ref must be chat#<message id>");
+    if (typeof p.agent !== "string" || !AGENT_SLUGS.has(p.agent)) errors.push("chat_run agent must be a witch");
+    if (!CHAT_RUN_STATES.has(p.state)) errors.push(`chat_run state must be one of ${[...CHAT_RUN_STATES].join(", ")}`);
+    if (p.code !== undefined && (p.state !== "failed" || !FAILURE_CODES.has(p.code))) errors.push(`chat_run code belongs to a failed run and is one of ${[...FAILURE_CODES].join(", ")}`);
+    if (p.note !== undefined && (typeof p.note !== "string" || p.note.length > 400)) errors.push("chat_run note must be text of at most 400 characters");
   }
   if (event.type === "board_note") {
     // The field is `note`, not `text`: redaction drops `text` (where prompts and contents live).
