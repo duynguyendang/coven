@@ -40,7 +40,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Callable
 
-from . import agents, board, brief, chair, config, consult, council, events, redact, specmap, taskkey, verify, work
+from . import agents, board, brief, chair, config, consult, council, events, ready, redact, specmap, taskkey, verify, work
 
 STATE_FILE = "host.json"
 DEFAULT_SLOTS = 2
@@ -2424,6 +2424,7 @@ class Host:
         self.autonomous = autonomous
         self._signoff_refused = False  # the cloud said no to an autonomous sign-off: ask again only in a new process
         self._signed: set[str] = set()  # council jobs this process signed off
+        self._held_said: dict[str, str] = {}  # ref -> what the board was last told about its readiness (once per change)
         self.auto_merge = auto_merge or autonomous  # act on reviewers' verdicts: rework, or the Chair's decision and a qualified merge and push
         self.cloud_runner = run_cloud_agent(kiro_web, runner) if kiro_web else None
         self.root, self.slots, self.review_limit, self.out = root, max(1, slots), review_limit, out
@@ -2805,6 +2806,9 @@ class Host:
                 continue  # a person chose Kiro Web: wait for a host that is set up for it, never run it here instead
             if marked_done(self.root, ref):
                 continue  # a person marked it done since the view was read
+            gate = self._gate(ref, task, agent, view)
+            if gate is None:
+                continue  # held: the board has been told why
             try:
                 self._claim(ref, task, agent)
             except board.BoardError as exc:
@@ -2816,6 +2820,51 @@ class Host:
             self.running[ref] = self.pool.submit(execute, self.root, task, agent, self.cloud_runner if cloud else self.runner, None, notes, None)
             started.append(ref)
         return started
+
+    def _gate(self, ref: str, task: dict, agent: str, view: dict) -> bool | None:
+        """The readiness gate for a build task (R4.2, R4.5). True: ready, claim it. None: held, and the board was told once.
+        A council task from the cloud has no tasks.md fields: only its title, detail, paths and verify are checked."""
+        if agents.kind(agent) != "build":
+            return True
+        if task.get("spec") != COUNCIL_SPEC and not task.get("goal"):
+            # Not written in the ready format (no `Goal:`): it runs as before. Holding it would be a dead end, since no witch
+            # here writes tasks.md; a spec opts in by writing its subtasks with the ready fields (R4.1).
+            return True
+        if task.get("spec") == COUNCIL_SPEC:
+            names = {"title": "title", "detail": "detail", "paths": "paths", "verify": "verify"}
+            missing = [n for n in names if not task.get(n)]
+            result = {"ready": not missing, "missing": missing, "why": {}, "already_done": False}
+        else:
+            open_refs = set(self.running) | {r for r, rec in load(self.root).items() if rec.get("state") in ("running", "submitted")}
+            others = [t for r, t in specmap.load(self.root).items() if r in open_refs]
+            try:
+                result = ready.check(self.root, task, work.base_branch(self.root), others, sorted(self.can_run))
+            except Exception as exc:  # noqa: BLE001 - a gate that cannot run must not hold the board forever
+                self.out(f"host: readiness check of {ref} failed ({str(exc)[:160]}); taking it")
+                return True
+        if result["ready"]:
+            shown = next((t.get("ready") for sp in view.get("specs") or [] if sp.get("spec") == task.get("spec")
+                          for t in sp.get("tasks") or [] if str(t.get("task_id")) == str(task.get("task_id"))), None)
+            if self._held_said.pop(ref, None) is not None or shown == "no":
+                try:  # the board shows it held: say it is ready now, with the claim that follows
+                    board.task_status(self.root, ref, "working", agent=agent, ready="yes")
+                except Exception:  # noqa: BLE001 - a courtesy; the claim follows
+                    pass
+            return True
+        signature = json.dumps([result["missing"], result["already_done"]])
+        if self._held_said.get(ref) != signature:
+            self._held_said[ref] = signature
+            done = result["already_done"]
+            summary = "its verify already passes on the base branch" if done else "not ready: " + ", ".join(result["missing"][:5])
+            try:
+                board.task_status(self.root, ref, "held", agent=agent, detail=summary, ready="no", missing=result["missing"])
+            except Exception:  # noqa: BLE001
+                pass
+            if done:
+                _note(self.root, f"{ref}: its verify already passes on the base branch, so the Dev was not started. Is it already done?",
+                      CHAIR, ref, kind="question", host_says=True)
+            self.out(f"host: holds {ref}: {summary}")
+        return None
 
     def _settle(self, view: dict, chat: dict, notes: list[dict]) -> list[dict]:
         """Auto-merge: act on the verdicts of each submitted build this host holds."""

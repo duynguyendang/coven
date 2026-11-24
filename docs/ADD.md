@@ -365,7 +365,10 @@ hosts. The cloud computes the roll-up (`3 of 5 done, 1 failed`). The cloud never
 
   The Chair's memory (findings seen, rounds, pending jobs, requeue counts, the hour's budget) is kept in
   `.coven/state/chair.json`, so a restart or a new lease holder does not repeat work or reset the caps.
-- **Readiness gate** (`ready.check`, no model). In order, stopping at the first failing group: fields present (goal,
+- **Readiness gate** (`ready.check`, no model; the host runs it before it claims a build task, and holds a task that fails it
+  with `held`, `ready: no` and the missing fields, said once per change). It applies to tasks written in the ready format (a
+  `Goal:` line) and to council build tasks; an older task with no `Goal:` runs as before, since no witch here writes
+  `tasks.md` and holding it would be a dead end. In order, stopping at the first failing group: fields present (goal,
   context, read-first, change steps, paths, acceptance, verify, out of scope, agent); read-first files exist on the base;
   paths narrow and not overlapping another open subtask; the agent is installed on an online host; size within
   `COVEN_READY_MAX_FILES` (5) and `COVEN_READY_MAX_STEPS` (8); the verify command **fails on the base** (passing means

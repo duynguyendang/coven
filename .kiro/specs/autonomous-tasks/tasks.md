@@ -116,7 +116,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_ready.py`_
   - _Requirements: R4.1, R4.2, R4.4, R4.5_
 
-- [ ] 10. Give the Dev only ready subtasks
+- [x] 10. Give the Dev only ready subtasks
   - Goal: the host takes a subtask for the Dev only when `ready.check` passes, and tells the board why not otherwise.
   - Context: the Dev's 10-second "nothing changed" runs. Requirements R4.2, R4.5.
   - Read first: `src/coven/ready.py`, `src/coven/host.py` (`Host.tick`, `ready_builds`, `can_run`), `src/coven/board.py` (`task_status`).
