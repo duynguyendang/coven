@@ -374,6 +374,9 @@ kiro-cli chat --agent weaver     # "take work": claims the next ready task and r
   available, and on which host), the tasks as **numbers** (Ready · Claimed ·
   In review · Blocked · Done; click one to see its cards, each with the witch it
   needs and its state), and the notes as a wall. You can post there too.
+  The witches stand on a 3D **Stage** drawn in CSS (no script, no WebGL): each is a small
+  rig of three layers that sways, hops when working and turns when picked (drag it, or
+  Left/Right). Under `prefers-reduced-motion` all of that stops. Design: `docs/DESIGN.md`.
   **In review** splits into *Ready for sign-off* and *Needs attention*, grouped by
   plan; each build's reviews are Test, Attack and SA pills on its row, and a Ready
   group signs off in one click (*Mark all done*, *Accept & merge all*). Answered
