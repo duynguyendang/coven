@@ -93,7 +93,7 @@ flowchart TD
     CL -->|ok| ST["task_status working"]
     ST --> K{"witch kind"}
     K -->|build: green-witch| W["git worktree\ncoven/spec-task"]
-    W --> RUN["kiro-cli chat --no-interactive\n--agent X --trust-tools=kind"]
+    W --> RUN["kiro-cli chat --no-interactive\n--agent X --agent-engine v3\n--trust-tools=kind"]
     RUN --> CHK{"host checks\n_Paths:_ · _Verify:_"}
     CHK -->|fail, once| RUN
     CHK -->|fail twice| F["task_status failed\nquestion note · release"]

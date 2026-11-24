@@ -110,8 +110,9 @@ and the icons in `OUTFIT`), and `.kiro/agents/<slug>.json`. To add or rename one
 
 Nothing in the test suites calls a model. `tests/test_host.py` passes a fake runner;
 `tests/test_host_live.py` puts a fake `kiro-cli` on `PATH` that asserts the flags a host uses
-(`chat --no-interactive --trust-workspace --trust-tools=… --output-format stream-json --agent …`)
-and answers as each witch would. A real model run (`./run-host.sh`) spends Kiro credits: do it
+(`chat --no-interactive --trust-workspace --trust-tools=… --output-format stream-json --agent … --agent-engine v3`)
+and answers as each witch would. The engine pin cannot be proven without a model: a person runs one live
+dispatch and reads the telemetry to confirm the run used V3 (or V2). A real model run (`./run-host.sh`) spends Kiro credits: do it
 only when the person asks.
 
 ## Known sharp edges
