@@ -1815,3 +1815,16 @@ def test_retry_refuses_a_task_that_is_still_running(repo, monkeypatch):
     host._update(repo, "shop#1", task="shop#1", agent="green-witch", kind="build", state="running")
     with pytest.raises(host.HostError):
         host.retry(repo, "shop#1")
+
+
+def test_local_run_pins_agent_engine_v3(tmp_path, monkeypatch):
+    seen = []
+
+    def fake_stream_run(command, cwd, env, timeout, on_step, every):
+        seen.append(command)
+        return ""
+
+    monkeypatch.setattr(council, "stream_run", fake_stream_run)
+    monkeypatch.setattr(council, "final_text", lambda out: ("ok", None))
+    assert host.run_agent(tmp_path, "green-witch", "go", {}) == ("ok", None)
+    assert seen[0][:4] == ["kiro-cli", "chat", "--no-interactive", "--agent-engine"] and seen[0][4] == "v3"

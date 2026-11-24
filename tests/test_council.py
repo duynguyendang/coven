@@ -89,6 +89,7 @@ def test_the_agent_runs_read_only_in_this_working_copy(root, monkeypatch):
     assert council.run_agent(root, "a prompt") == ("Fine.", None)
     command = seen["command"]
     assert command[:2] == ["kiro-cli", "chat"] and "--no-interactive" in command
+    assert command[3:5] == ["--agent-engine", "v3"]
     assert "--trust-tools=" in command, "nothing is trusted: a write or shell call fails at the permission step"
     assert not any(c.startswith("--trust-all") or c == "-a" for c in command)
     assert command[command.index("--agent") + 1] == "council-chat" and seen["cwd"] == root

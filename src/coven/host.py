@@ -70,7 +70,7 @@ def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_
     if env.get("COVEN_READ_ONLY") == "1" and kind == "build":
         kind = "think"
     trust = os.environ.get(f"COVEN_TRUST_{kind.upper()}", agents.TRUST[kind])
-    command = ["kiro-cli", "chat", "--no-interactive", "--trust-workspace", f"--trust-tools={trust}",
+    command = ["kiro-cli", "chat", "--no-interactive", "--agent-engine", "v3", "--trust-workspace", f"--trust-tools={trust}",
                "--output-format", "stream-json", "--agent", agent, prompt]
     run_env = {**os.environ, **env}
     ref, root = env.get("COVEN_TASK"), env.get("COVEN_ROOT")
