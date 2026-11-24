@@ -2006,6 +2006,19 @@
         <input id="col-filter" class="col-filter" type="search" data-key="col-filter" placeholder="Filter ${esc(label.toLowerCase())} by id, title or witch" autocomplete="off" /></div>
       <div class="tgroups">${body}</div><p class="hint col-none" hidden>No task matches.</p></section>`;
   }
+  /** R8.6: a task that lost its host (orphaned), or was taken over by another. Null when neither applies. */
+  function takeoverLabel(t) {
+    const taken = t.takeovers || 0;
+    if (t.orphaned && taken >= 2) return { kind: "twice", label: "Needs you · lost its host twice", why: "Two hosts lost this task. No host takes it again: a person decides." };
+    if (t.orphaned) {
+      const since = Date.parse(t.orphaned_since || "");
+      const secs = (state.board && state.board.takeover_seconds) || 600;
+      const left = Number.isNaN(since) ? 0 : Math.ceil((since + secs * 1000 - Date.now()) / 60000);
+      return { kind: "offline", label: `Host offline · taken over in ${Math.max(1, left)} min`, why: "The host that held this task has not been seen. Another online host may take it as a new attempt." };
+    }
+    if (taken >= 1 && t.doer_host && ["working", "submitted"].includes(t.doer_state)) return { kind: "taken", label: `Taken over by ${t.doer_host}`, why: "The first host lost this task; another host runs it as a new attempt." };
+    return null;
+  }
   /** One line per task in a column; selecting it opens the task in a dialog. With `pills`, its reviews are Test/Attack/SA pills. */
   function taskRow(t, opts = {}) {
     const need = t.agent || "green-witch";
@@ -2013,9 +2026,11 @@
     const stuck = state.runnable && isStuck(t, state.runnable);
     // `working` with no live run on any host: the host stopped or crashed; say so on the row (the stage does not show her working)
     const stale = t.doer_state === "working" && state.liveRefs && !state.liveRefs.has(t.ref);
+    const lost = takeoverLabel(t);
     const status = t.needs ? `<span class="badge warn needs-you" title="${esc(t.needs.why)}">${esc(t.needs.label)}</span>`
+      : lost ? `<span class="badge warn" data-takeover="${lost.kind}" title="${esc(lost.why)}">${esc(lost.label)}</span>`
       : t.host_offline ? '<span class="badge warn" data-host-offline title="The host that runs this has not been seen for 2 minutes">Host offline</span>'
-      : stale ? '<span class="badge warn" data-stale title="Its status says working, but no online host runs it now">Working · no live run</span>'
+      : stale && !t.orphaned ? '<span class="badge warn" data-stale title="Its status says working, but no online host runs it now">Working · no live run</span>'
       : t.doer_verdict ? `<span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes"}</span>`
       : t.merged ? '<span class="badge accept">Merged</span>'
       : closedNoChange(t) ? '<span class="badge warn" data-no-change title="A person marked it done: no branch was merged and tasks.md is not ticked">Closed · no change</span>'

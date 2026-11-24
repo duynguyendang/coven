@@ -224,7 +224,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_reconcile_start.py tests/test_host.py`_
   - _Requirements: R8.4, R1.5_
 
-- [ ] 19. The board shows offline hosts and takeovers
+- [x] 19. The board shows offline hosts and takeovers
   - Goal: people see that a task lost its host, when another host may take it, and who did.
   - Context: requirement R8.6; design "Takeover of orphaned tasks". Uses task 16's view fields; today the row says "Working · no live run".
   - Read first: `web/index.html` (`taskRow`, the `stale` badge), `docs/DESIGN.md`, `server/test/web.test.ts`.
