@@ -709,7 +709,12 @@
   .need-what .tt { font-weight: 600; }
   .need-what .hint { color: var(--warn-ink); margin-top: 2px; }
   .need-act { display: flex; flex-wrap: wrap; gap: 6px; }
-  .accept-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  /* The action bar of a task card: status lines, then one aligned row of buttons. */
+  .tcard .tactions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .tcard .tactions:empty { display: none; }
+  .tcard .tfacts { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 0.75rem; }
+  .tcard .tfacts li, .tcard .tfacts .fact-in { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+  .tcard .tbuttons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .witch .never { grid-column: 2; margin: 2px 0 0; font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
   .witch .never b { color: var(--bad-ink); font-weight: 600; margin-right: 4px; }
   /* witch monitor: dense rows, like the rest of the board; on a phone each row stacks */
@@ -1851,7 +1856,7 @@
     if (!items.length && !work.length) return "";
     const row = (t) => `<li class="need-row" data-key="need-${esc(t.ref)}"><div class="need-what"><button class="link mono" type="button" data-task-open="${esc(t.ref)}" data-key="need-open-${esc(t.ref)}"
         command="show-modal" commandfor="task-dialog" aria-haspopup="dialog">${esc(t.ref)}</button> <span class="tt">${esc(short(t.title || "", 70))}</span>
-        <div class="hint">${esc(t.needs.why)}</div></div>
+        <div class="hint">${codeSpans(t.needs.why)}</div></div>
       <div class="need-act">${t.needs.accept ? `<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="need-accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>` : ""}
         <button class="act quiet" type="button" data-task-open="${esc(t.ref)}" data-key="need-view-${esc(t.ref)}" command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span>${t.needs.accept ? "Review" : "Open"}</span></button></div></li>`;
     return `<section class="needs" aria-label="Waiting for you"><h2>Waiting for you <span class="hint">· ${plural(items.length + work.length, "task")}</span></h2><ul class="need-list">${items.map(row).join("")}${work.join("")}</ul></section>`;
@@ -1874,13 +1879,20 @@
     return (b.hosts || b.members || []).some((h) => (h.cloud || []).length && secondsSince(h.last_seen) !== null && secondsSince(h.last_seen) < ONLINE_SECONDS);
   }
   /** The person's Kiro Web decision on a task nobody has taken: a button to dispatch it, or the request and a way to take it back. */
+  /* The actions of a task card: `facts` are status lines (a badge and one sentence, each said once), `buttons` all go into
+     one aligned row, `after` is a form that opens under them. */
   function dispatchLine(t, need) {
-    if (need !== "green-witch" || t.claimed_by || t.waits_for || t.status === "completed" || ["done", "failed", "working", "submitted", "answered"].includes(t.doer_state)) return "";
+    const out = { facts: [], buttons: [], after: "" };
+    if (need !== "green-witch" || t.claimed_by || t.waits_for || t.status === "completed" || ["done", "failed", "working", "submitted", "answered"].includes(t.doer_state)) return out;
     if (t.dispatch_via) {
-      return `<div class="who"><span class="badge working">Kiro Web requested</span> <span class="hint">by ${esc(t.dispatch_by || "someone")}</span> <button class="act quiet" type="button" data-undispatch="${esc(t.ref)}" data-key="undispatch-${esc(t.ref)}">${icon("undo")}<span>Cancel</span></button></div>`;
+      out.facts.push(`<span class="badge working">Kiro Web requested</span> <span class="hint">by ${esc(t.dispatch_by || "someone")}</span>`);
+      out.buttons.push(`<button class="act quiet" type="button" data-undispatch="${esc(t.ref)}" data-key="undispatch-${esc(t.ref)}">${icon("undo")}<span>Cancel Kiro Web</span></button>`);
+      return out;
     }
     const ok = state.cloudReady;
-    return `<div class="who"><button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>${icon("cloud")}<span>Run in Kiro Web</span></button>${ok ? "" : ` <span class="hint">no online host is set up for Kiro Web: <code>coven host run --kiro-web owner/name</code></span>`}</div>`;
+    out.buttons.push(`<button class="act" type="button" data-dispatch="${esc(t.ref)}" data-key="dispatch-${esc(t.ref)}" ${ok ? "" : "disabled"}>${icon("cloud")}<span>Run in Kiro Web</span></button>`);
+    if (!ok) out.facts.push(`<span class="hint">Kiro Web needs an online host set up for it: <code>coven host run --kiro-web owner/name</code></span>`);
+    return out;
   }
   const closedThreads = new Set(); // a task's conversation opens with it; folded by a person, it stays folded until the dialog closes
   const threadItems = new Map(); // the last conversation loaded per task, shown at once while a redraw reloads it
@@ -1907,41 +1919,48 @@
   /** The final evaluation of a submitted branch: Accept (the host that holds it merges it under the auto-merge checks)
       or Request changes (the reason goes to the Dev). Shown while the branch waits on a host. */
   function acceptLine(t) {
+    const out = { facts: [], buttons: [], after: "" };
     const a = t.accept;
     const isAccept = !!a && a.decision === "accept";
-    // One row from Accepted to Merged or Held, from the derived merge_state; a new accept starts it over (the cloud resets it).
+    const fact = (stateName, html) => out.facts.push(`<span data-merge-state="${stateName}" class="fact-in">${html}</span>`);
+    // One line from Accepted to Merged or Held, from the derived merge_state; a new accept starts it over (the cloud resets it).
     if (isAccept && a.merge_state === "merged") {
       const sha = String(a.commit || (t.merged && t.merged.commit) || "").slice(0, 40);
       const link = sha ? ` at <a href="#/board/${encodeURIComponent(state.boardProject || "")}" data-commit="${esc(sha)}" data-key="commit-${esc(t.ref)}"><code>${esc(sha.slice(0, 7))}</code></a>` : "";
-      return `<div class="who accept-row" data-merge-state="merged"><span class="badge accept">Merged</span> <span class="hint">accepted by ${esc(a.by || "someone")}${link}</span></div>`;
+      fact("merged", `<span class="badge accept">Merged</span> <span class="hint">accepted by ${esc(a.by || "someone")}${link}</span>`);
+      return out;
     }
-    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return "";
+    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return out;
     if (isAccept && a.merge_state === "merging") {
-      return `<div class="who accept-row" data-merge-state="merging"><span class="badge working">Merging</span> <span class="hint">accepted by ${esc(a.by || "someone")}: the host is merging the branch and running <code>make verify</code> on the result</span></div>`;
+      fact("merging", `<span class="badge working">Merging</span> <span class="hint">accepted by ${esc(a.by || "someone")}: the host is merging the branch and running <code>make verify</code> on the result</span>`);
+      return out;
     }
     if (isAccept && a.merge_state !== "held") {
-      return `<div class="who accept-row" data-merge-state="requested"><span class="badge working">Accepted</span> <span class="hint">by ${esc(a.by || "someone")}: the host that holds the branch merges it once it merges cleanly and <code>make verify</code> passes on the result</span></div>`;
+      fact("requested", `<span class="badge working">Accepted</span> <span class="hint">by ${esc(a.by || "someone")}: the host that holds the branch merges it once it merges cleanly and <code>make verify</code> passes on the result</span>`);
+      return out;
     }
     const asking = state.changesFor === t.ref;
-    const form = asking ? `<form class="changes-form" data-changes-form="${esc(t.ref)}"><label class="sr" for="changes-${esc(t.ref)}">What should change</label>
+    out.after = asking ? `<form class="changes-form" data-changes-form="${esc(t.ref)}"><label class="sr" for="changes-${esc(t.ref)}">What should change</label>
         <input id="changes-${esc(t.ref)}" data-key="changes-${esc(t.ref)}" maxlength="300" required placeholder="What should change? The Dev reads this." />
         <button class="act bad" type="submit">${icon("send")}<span>Send to the Dev</span></button></form>` : "";
-    const held = isAccept ? `<span class="badge warn">Held</span> <span class="hint">${esc(short(a.merge_reason || "the host did not say why", 200))}</span> ` : "";
-    const last = held || (a && a.decision === "changes" ? `<span class="hint">changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span> ` : "");
-    // Held: accepting the same branch again fails the same check (the cloud refuses it); the way on is a rework.
-    const again = isAccept ? `<span class="hint">Request changes so the Dev reworks it; Accept comes back with the new branch.</span> `
-      : `<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>`;
-    return `<div class="who accept-row">${last}${again}
-      <button class="act quiet" type="button" data-changes="${esc(t.ref)}" data-key="changes-btn-${esc(t.ref)}" aria-expanded="${asking}">${icon("undo")}<span>Request changes</span></button></div>${form}`;
+    // Held: the card's first line already says why (Needs you: merge held), so it is not said again here. Accepting the
+    // same branch again fails the same check (the cloud refuses it): the way on is a rework, and Accept comes back with it.
+    if (isAccept && !(t.needs && t.needs.kind === "held")) fact("held", `<span class="badge warn">Held</span> <span class="hint">${esc(short(a.merge_reason || "the host did not say why", 200))}</span>`);
+    if (!isAccept && a && a.decision === "changes") out.facts.push(`<span class="hint">Changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span>`);
+    if (!isAccept) out.buttons.push(`<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>`);
+    out.buttons.push(`<button class="act${isAccept ? " good" : " quiet"}" type="button" data-changes="${esc(t.ref)}" data-key="changes-btn-${esc(t.ref)}" aria-expanded="${asking}">${icon("undo")}<span>Request changes</span></button>`);
+    return out;
   }
   function pushLine(t) {
-    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return "";
+    const out = { facts: [], buttons: [], after: "" };
+    if (t.doer_state !== "submitted" || !t.branch_host || t.status === "completed") return out;
     const p = t.push;
-    if (p && p.state === "requested") return `<div class="who"><span class="badge working">Push requested</span> <span class="hint">by ${esc(p.by || "someone")}</span></div>`;
-    if (p && p.state === "pushed") return `<div class="who"><span class="badge accept">Pushed</span> <span class="hint">${esc(p.branch)} is on origin</span></div>`;
-    const failed = p && p.state === "failed" ? `<span class="hint">push failed: ${esc(short(p.detail || "", 100))}</span> ` : "";
-    const offline = t.branch_host_online === false ? `<span class="hint">its host is offline; the branch is only there.</span> ` : "";
-    return `<div class="who">${failed}${offline}<button class="act" type="button" data-push="${esc(t.ref)}" data-key="push-${esc(t.ref)}">${icon("upload")}<span>Ask host to push</span></button></div>`;
+    if (p && p.state === "requested") { out.facts.push(`<span class="badge working">Push requested</span> <span class="hint">by ${esc(p.by || "someone")}</span>`); return out; }
+    if (p && p.state === "pushed") { out.facts.push(`<span class="badge accept">Pushed</span> <span class="hint"><code>${esc(p.branch)}</code> is on origin</span>`); return out; }
+    if (p && p.state === "failed") out.facts.push(`<span class="badge reject">Push failed</span> <span class="hint">${esc(short(p.detail || "", 100))}</span>`);
+    if (t.branch_host_online === false) out.facts.push(`<span class="hint">Its host is offline; the branch is only there.</span>`);
+    out.buttons.push(`<button class="act" type="button" data-push="${esc(t.ref)}" data-key="push-${esc(t.ref)}">${icon("upload")}<span>Ask host to push</span></button>`);
+    return out;
   }
   /** Ready and its turn has come, but no online host runs the witch it needs: it would wait for ever, unseen. */
   const isStuck = (t, runnable) => !t.claimed_by && !t.waits_for && t.status !== "completed" && !["done", "failed"].includes(t.doer_state)
@@ -2086,12 +2105,29 @@
     // A row opens the dialog itself (command="show-modal"); open it here where invoker commands are missing.
     if (!("commandForElement" in HTMLButtonElement.prototype) && !dialog.open) dialog.showModal();
   }
+  /** One action bar: status lines first, then every button in one aligned row (the main one first, Mark done last), then a form. */
+  function actionsHtml(t, need) {
+    const parts = [dispatchLine(t, need), acceptLine(t), pushLine(t)];
+    const facts = parts.flatMap((x) => x.facts), buttons = parts.flatMap((x) => x.buttons);
+    const retry = t.doer_state === "failed" && !t.claimed_by && t.status !== "completed";
+    if (retry) facts.push(`<span class="hint">Retry: the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again.</span>`);
+    if (retry) buttons.push(`<button class="act good" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}" title="The next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again">${icon("undo")}<span>Retry</span></button>`);
+    if (!isDoneTask(t)) {
+      // the main action of a card is Accept, Request changes or Retry when there is one: Mark done then stays quiet
+      const main = buttons.some((b) => b.includes('class="act good"'));
+      buttons.push(`<button class="act${main ? " quiet" : " good"}" type="button" data-done="${esc(t.ref)}"${t.claimed_by ? ` data-claimed="${esc(t.claimed_by)}"` : ""} data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button>`);
+    }
+    if (!facts.length && !buttons.length) return `<div class="tactions" data-actions="${esc(t.ref)}"></div>`;
+    return `<div class="tactions" data-actions="${esc(t.ref)}">${facts.length ? `<ul class="tfacts">${facts.map((f) => `<li>${f}</li>`).join("")}</ul>` : ""}${buttons.length ? `<div class="tbuttons">${buttons.join("")}</div>` : ""}${parts.map((x) => x.after).join("")}</div>`;
+  }
+  /** Escaped text whose `backticks` (a host's reason quotes commands that way) become <code>. */
+  const codeSpans = (text) => esc(text || "").replace(/`([^`]{1,120})`/g, "<code>$1</code>");
   function taskCard(t) {
     const who = [t.waits_for && !t.claimed_by ? `waits for ${esc(t.waits_for)}` : "", t.claimed_by ? `${esc(t.claimed_agent ? agentName(t.claimed_agent) : t.claimed_by)} is on it` : "", (t.reviewers || []).length ? `reviewing: ${(t.reviewers).map(esc).join(", ")}` : "",
       t.notes ? `${plural(t.notes, "note")}` : ""].filter(Boolean).join(" · ");
     const need = t.agent || "green-witch";
     const holder = t.claimed_agent || (t.claimed_by ? null : need);
-    const needLine = t.needs ? `<div class="state needs-you-line"><span class="badge warn">${esc(t.needs.label)}</span><span class="hint">${esc(t.needs.why)}</span></div>` : "";
+    const needLine = t.needs ? `<div class="state needs-you-line"><span class="badge warn">${esc(t.needs.label)}</span><span class="hint">${codeSpans(t.needs.why)}</span></div>` : "";
     const stateLine = needLine || (t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
       ? `<div class="state"><span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>${t.doer_detail ? `<span class="hint">${esc(short(t.doer_detail, 120))}</span>` : ""}</div>` : "");
     const failureLine = failureHtml(t);
@@ -2101,7 +2137,7 @@
       : t.doer_verdict ? `<div class="state"><span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes needed"}</span>${t.review_of ? `<span class="hint">review of ${esc(t.review_of)}</span>` : ""}</div>` : "";
     const planLine = t.from_plan ? `<div class="hint">from <a href="#/board/${encodeURIComponent(state.boardProject || "")}" data-key="from-plan-${esc(t.ref)}" data-plan-link="${esc(t.from_plan)}">plan ${esc(t.from_plan)}</a>, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
-    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${failureLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}<div class="tactions" data-actions="${esc(t.ref)}">${dispatchLine(t, need)}${acceptLine(t)}${pushLine(t)}${!isDoneTask(t) ? `<div class="who"><button class="act good" type="button" data-done="${esc(t.ref)}"${t.claimed_by ? ` data-claimed="${esc(t.claimed_by)}"` : ""} data-key="done-${esc(t.ref)}">${icon("check")}<span>Mark done</span></button></div>` : ""}${t.doer_state === "failed" && !t.claimed_by && t.status !== "completed" ? `<div class="who"><button class="act" type="button" data-retry="${esc(t.ref)}" data-key="retry-${esc(t.ref)}">${icon("undo")}<span>Retry</span></button> <span class="hint">the next host that runs ${esc(agentName(t.agent || "green-witch"))} takes it again</span></div>` : ""}</div>${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${who ? `<div class="who">${who}</div>` : ""}${threadBox(t)}</div>`;
+    return `<div class="tcard ${t.waits_for && !t.claimed_by ? "waiting" : ""} ${stuck ? "stuck" : ""}" data-key="task-${esc(t.ref)}"><div class="id">${esc(t.ref)}</div><div class="tt">${esc(t.title || "")}</div>${agentLine}${mergedLine}${planLine}${stuckLine}${stateLine}${failureLine}${t.dispatch_via && t.claimed_by ? `<div class="who"><span class="badge working">Kiro Web</span> <span class="hint">runs in the cloud and spends Kiro credits</span></div>` : ""}${actionsHtml(t, need)}${t.delivery && t.delivery !== "answered" ? `<div class="who"><span class="badge ${t.delivery === "expired" || t.delivery === "failed" ? "reject" : "working"}">${esc(DELIVERY[t.delivery] || t.delivery)}</span></div>` : ""}${who ? `<div class="who">${who}</div>` : ""}${threadBox(t)}</div>`;
   }
   /** The whiteboard: newest first, one list. Notes about done tasks are hidden unless a person asks for them; a filter keeps
       holds and questions, or verdicts; the newest WALL_STEP show, then WALL_STEP more per click. */

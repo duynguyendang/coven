@@ -838,7 +838,7 @@ describe("session screen", () => {
     await go("#/board/shop", 600);
     openColumn("ready");
     const button = () => doc().querySelector('[data-key="dispatch-shop#4"]') as HTMLButtonElement;
-    assert.match(openTask("shop#4").textContent!, /no online host is set up for Kiro Web/);
+    assert.match(openTask("shop#4").textContent!, /Kiro Web needs an online host set up for it/);
     assert.ok(button().disabled, "no online host can run Kiro Web");
     closeTask();
     await send("shop", "member_kw", [{ ...ev("member_kw", "shop", "host_online", { agents: ["green-witch"], slots: 1, running: [], cloud: ["acme/shop"] }, 1), member: "kw" }]);
@@ -1000,7 +1000,7 @@ describe("session screen", () => {
     assert.equal(label("done"), "Done: 1 task");
     openColumn("failed");
     const blocked = openTask("lab#L2").textContent!.replace(/\s+/g, " ");
-    assert.match(blocked, /Retry the next host that runs Raven takes it again/, "a blocked task can be sent back to the queue");
+    assert.match(blocked, /Retry: the next host that runs Raven takes it again\./, "a blocked task can be sent back to the queue");
     closeTask();
     assert.match(blocked, /Raven needed/);
     assert.match(blocked, /Failed.*no answer within 5 s/);
@@ -1050,7 +1050,7 @@ describe("session screen", () => {
     openColumn("review");
     openTask("pushy#1");
     const card = () => doc().querySelector('#task-dialog [data-key="task-pushy#1"]')!.textContent!.replace(/\s+/g, " ");
-    assert.match(card(), /its host is offline; the branch is only there\./);
+    assert.match(card(), /Its host is offline; the branch is only there\./);
     (doc().querySelector('[data-key="push-pushy#1"]') as HTMLButtonElement).click();
     await wait(900);
     assert.match(card(), /Push requested by/);
@@ -1803,7 +1803,7 @@ describe("keyboard, safety and states", () => {
     box.value = "name the file after the route";
     box.form!.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
     await wait(900);
-    assert.match(card(), /changes asked by .*name the file after the route/);
+    assert.match(card(), /Changes asked by .*name the file after the route/);
     (doc().querySelector('[data-key="accept-evalu#1"]') as HTMLButtonElement).click();
     await wait(900);
     assert.match(card(), /Accepted by .*merges it once it merges cleanly/);
@@ -1819,7 +1819,8 @@ describe("keyboard, safety and states", () => {
     closeTask();
     await send("shop", "member_ac", [mergeEv("held", 4, { reason: "make verify failed on the merged tree" })]);
     await go("#/"); await go("#/board/shop", 600); openColumn("review"); openTask("evalu#1");
-    assert.match(card(), /Held.*make verify failed on the merged tree/);
+    assert.match(card(), /Needs you: merge held.*make verify failed on the merged tree/);
+    assert.equal(card().split("make verify failed on the merged tree").length - 1, 1, "the reason is said once");
     // held: Request changes is back; Accept is not (the cloud refuses the same branch again: it would fail the same check)
     assert.ok(doc().querySelector('[data-key="changes-btn-evalu#1"]'), "held: Request changes is back");
     assert.equal(doc().querySelector('[data-key="accept-evalu#1"]'), null, "held: no Accept for the same branch");
