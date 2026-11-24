@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { pathsOverlap } from "../src/board.ts";
+import { Board, pathsOverlap } from "../src/board.ts";
 import type { Json } from "../src/events.ts";
 import { DynamoStore, MemoryStore, type TableClient } from "../src/store.ts";
 import { auth, getJson, postJson, startServer } from "./helpers.ts";
@@ -12,6 +12,36 @@ const claim = (base: string, body: Json, token = "dev") => postJson(base, "/v1/c
 const note = (member: string, text: string, extra: Json = {}, id = Math.random().toString(16).slice(2, 12)) => ({
   event_id: `evt_note_${id}`, project_id: "shop", run_id: `sess_${member}`, type: "board_note", ts: new Date().toISOString(),
   source: "relay", member, payload: { note: text, kind: "idea", ...extra },
+});
+
+describe("chat runs", () => {
+  const run = (ts: string, payload: Json, type = "chat_run"): Json => ({ event_id: `e_${ts}`, project_id: "p", type, ts, member: "wsl", payload });
+  const T = (s: number) => new Date(Date.parse("2026-01-01T00:00:00Z") + s * 1000).toISOString();
+
+  test("kept with outcome, not rebuilt by host_online, dropped an hour after the end", () => {
+    const b = new Board();
+    b.apply(run(T(0), { ref: "chat#m1", agent: "grey-witch", state: "working" }));
+    b.apply(run(T(5), { ref: "chat#m2", agent: "elf", state: "working" }));
+    b.apply(run(T(30), { ref: "chat#m1", agent: "grey-witch", state: "failed", code: "timeout" }));
+    b.apply(run(T(40), { ref: "chat#m2", agent: "elf", state: "answered" }));
+    b.apply(run(T(50), { agents: ["elf"], slots: 1, running: [], process: "p_0000aaaa", runs: [] }, "host_online"));
+    let r = b.view("p", T(60)).chat_runs;
+    assert.deepEqual(r["chat#m1"], { agent: "grey-witch", state: "failed", started_at: T(0), ended_at: T(30), code: "timeout" });
+    assert.deepEqual(r["chat#m2"], { agent: "elf", state: "answered", started_at: T(5), ended_at: T(40), code: null });
+    r = b.view("p", T(30 + 3600)).chat_runs;
+    assert.ok(r["chat#m1"], "still there at exactly an hour");
+    r = b.view("p", T(41 + 3600)).chat_runs;
+    assert.ok(!r["chat#m1"] && !r["chat#m2"], "both gone after an hour");
+  });
+
+  test("a run that is still working stays; a retry after an end starts anew", () => {
+    const b = new Board();
+    b.apply(run(T(0), { ref: "chat#m1", agent: "elf", state: "working" }));
+    assert.equal(b.view("p", T(99999)).chat_runs["chat#m1"].state, "working");
+    b.apply(run(T(10), { ref: "chat#m1", agent: "elf", state: "failed", code: "kiro_error" }));
+    b.apply(run(T(20), { ref: "chat#m1", agent: "elf", state: "working" }));
+    assert.deepEqual(b.view("p", T(21)).chat_runs["chat#m1"], { agent: "elf", state: "working", started_at: T(20), ended_at: null, code: null });
+  });
 });
 
 describe("path overlap", () => {

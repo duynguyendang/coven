@@ -31,6 +31,9 @@ const MAX_CHAT = 300;
 export const LISTENER_ONLINE_SECONDS = 150;
 /** How often a host announces itself (host_online); the monitor's STALE and DISCONNECTED count missed announcements. */
 export const MONITOR_EVERY = 60;
+/** A chat run that answered or failed stays on the board this long. */
+export const CHAT_RUN_KEEP_SECONDS = 3600;
+const CHAT_RUN_STATES = new Set(["working", "answered", "failed"]);
 
 /** Seconds a task's holder may stay unseen before another host may take the task over (R8.1). Read at use, so a test can set it. */
 export const takeoverSeconds = (): number => {
@@ -125,6 +128,7 @@ export class Board {
   unmerged = new Map<string, Map<string, Json>>(); // project -> host id -> its latest branch_report (closed tasks' unmerged branches)
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
   processes = new Map<string, Map<string, Json>>(); // project -> "<host_id or name>/<process>" -> its runs (the witch monitor)
+  chatRuns = new Map<string, Map<string, Json>>(); // project -> chat#<id> -> {agent, state, started_at, ended_at, code}; written by chat_run only
 
   /** The key an event carries; else the key of the task it names, as the board knows it; else the derived key. */
   private keyFor(project: string, p: Json, ref?: unknown): string | null {
@@ -386,6 +390,20 @@ export class Board {
         }
         this.processes.set(project, procs);
       }
+    } else if (event.type === "chat_run" && typeof p.ref === "string" && p.ref.startsWith("chat#") && CHAT_RUN_STATES.has(p.state)) {
+      const all = this.chatRuns.get(project) ?? new Map<string, Json>();
+      const known = all.get(p.ref);
+      if (!known || (event.ts || "") >= (known.ended_at ?? known.started_at ?? "")) {
+        const open = p.state === "working";
+        all.set(p.ref, {
+          agent: typeof p.agent === "string" ? p.agent.slice(0, 40) : (known?.agent ?? null), state: p.state,
+          // a `working` after an end is a new run of the request; later states keep the start
+          started_at: open && known?.ended_at ? event.ts : (known?.started_at ?? event.ts),
+          ended_at: open ? null : event.ts,
+          code: p.state === "failed" && typeof p.code === "string" ? p.code.slice(0, 40) : null,
+        });
+      }
+      this.chatRuns.set(project, all);
     } else if (event.type === "council_listening" && typeof event.member === "string" && event.member) {
       const all = this.listeners.get(project) ?? new Map<string, Json>();
       const known = all.get(event.member);
@@ -541,12 +559,25 @@ export class Board {
       return { ref, title: String(msg?.message ?? ref).slice(0, 160), witch: st.agent ?? msg?.to ?? null, state: st.state, ts: st.ts, host: st.host ?? null };
     }).sort((a, b) => ((a.ts || "") < (b.ts || "") ? 1 : -1)).slice(0, 50);
     return {
-      project_id: projectId, at, takeover_seconds: takeoverSeconds(), members, hosts: members, specs, chat_tasks, monitor: this.monitor(projectId, specs, at),
+      project_id: projectId, at, takeover_seconds: takeoverSeconds(), members, hosts: members, specs, chat_tasks, chat_runs: this.chatRunsOf(projectId, at), monitor: this.monitor(projectId, specs, at),
       chair: this.chairHolder(projectId, at), unmerged: this.unmergedOf(projectId, at),
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
       plans: [...(this.plans.get(projectId)?.values() ?? [])].sort((a, b) => ((a.proposed_at || "") < (b.proposed_at || "") ? 1 : -1)).slice(0, 20),
     };
+  }
+
+  /** Chat runs by ref. A run that answered or failed is dropped an hour after it ended; one still working stays. */
+  chatRunsOf(projectId: string, at = new Date().toISOString()): Json {
+    const all = this.chatRuns.get(projectId);
+    const out: Json = {};
+    if (!all) return out;
+    const now = Date.parse(at);
+    for (const [ref, r] of [...all]) {
+      if (r.ended_at && now - Date.parse(r.ended_at) > CHAT_RUN_KEEP_SECONDS * 1000) { all.delete(ref); continue; }
+      out[ref] = { ...r };
+    }
+    return out;
   }
 
   /**
