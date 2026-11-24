@@ -357,6 +357,21 @@ a single flat `box-shadow` step (an extrusion, never a blur or a glow); a statio
 witch bobs three times, a hovered one lifts; both stop under `prefers-reduced-motion`. Colours are Astryx tokens only. Never give
 a stage element the class `sprite`: that is the zero-size icon sheet, and a witch with it is invisible.
 
+**The witch rig.** Each stage witch is a `.rig` (44 × 50 px, `transform-style: preserve-3d`) inside her upright button. It holds the one SVG ghost
+(`avatar()`) between two CSS-only depth layers, made by `rig(key)` in `web/index.html`: `.lyr-back`, a cloak back 4 px behind (`translateZ(-4px)`, 55 % opacity,
+`--rig-body`), and `.lyr-brim`, a hat brim 4 px in front (`translateZ(4px)`, 35 % opacity, `--rig-brim`). Both colours come from the witch's `OUTFIT`
+entry through custom properties; the layers are `aria-hidden` and `pointer-events: none`. The rig turns about Y with `--ry` and tips about X with `--rx`.
+
+Motion, all on the rig, never on the button's upright transform:
+- **Idle:** `rig-sway`, ±8° about Y over 6 s.
+- **Working:** `rig-hop` (6 px, 1.2 s) with `rig-lean` (−6° about Z, 2.4 s).
+- **Picked:** `rig-turn`, one full turn in 12 s. Dragging or Left/Right on the picked witch sets `--ry` (clamped to ±40°) with the `steer` class (no animation, 400 ms ease), and it eases back to 0 on release.
+- **Hover:** the rig lifts 3 px. A witch no host offers (`off`) does not animate and sits at 70 % opacity.
+
+**Reduced motion.** Under `prefers-reduced-motion: reduce` the sway, hop, lean, turn and the button's bob stop, and hover does not lift. Every
+animation above sits in a `prefers-reduced-motion: no-preference` block (the sway is also switched off under `reduce`). Depth layers stay, because they are
+static. Meaning never depends on motion: the working state is also the tinted station and the card text.
+
 ## Shapes
 
 Soft, small radii, from Astryx: 4 px for badges and chips, 6 px for buttons, inputs and nav items,
