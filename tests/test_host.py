@@ -1252,7 +1252,8 @@ def test_no_code_path_pushes_except_a_persons_request():
     text = Path(host.__file__).read_text()
     callers = {m.group(1) for m in _re.finditer(r"^def (\w+)\(", text, _re.M)
                if _re.search(r"\b(merge_into_base|drop_branch)\(", inspect.getsource(getattr(host, m.group(1))).split("\n", 1)[1])}
-    assert callers == {"merge_qualified", "merge_prepare"}, callers
+    # prune_branches deletes on origin only coven/ branches whose commits are all in the base, on a host that prunes (AGENTS.md rule 2)
+    assert callers == {"merge_qualified", "merge_prepare", "prune_branches"}, callers
 
 
 def test_the_chair_sees_free_slots_and_tasks_that_can_run_at_once(repo):

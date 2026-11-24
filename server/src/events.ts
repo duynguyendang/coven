@@ -61,6 +61,8 @@ export const EVENT_TYPES = new Set([
   // the host reports that a submitted branch's tip is already in the base branch — contract §6.2
   "branch_in_base",
   "push_done",
+  // a host lists its coven/ branches with commits not in the base whose task is closed (unmerged work) — contract §6.2
+  "branch_report",
   // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
   "plan_proposed",
   "plan_decision",
@@ -199,6 +201,18 @@ export function validateEvent(event: Json): string[] {
       if (payload[field] !== undefined && !HOST_ID.test(String(payload[field]))) errors.push(`${field} must be h_ and 8 hex characters`);
     }
     if (payload.free_slots !== undefined && !(Number.isInteger(payload.free_slots) && payload.free_slots >= 0 && payload.free_slots <= 16)) errors.push("free_slots must be 0 to 16");
+  }
+  // Unmerged work a host still holds (§6.2): a person may merge it from the web (Merge and clean), never anyone else.
+  if (event.type === "branch_report") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push("branch_report names its host (host_id)");
+    if (!Array.isArray(p.branches) || p.branches.length > 30) errors.push("branch_report branches is a list of at most 30");
+    else for (const b of p.branches) {
+      if (!isObject(b) || typeof b.branch !== "string" || !BRANCH.test(b.branch)) { errors.push("a reported branch must be coven/<name>"); continue; }
+      if (b.task !== null && (typeof b.task !== "string" || !TASK_REF.test(b.task))) errors.push("a reported branch's task is <spec>#<task> or null");
+      if (!(Number.isInteger(b.ahead) && b.ahead >= 1 && b.ahead <= 10000)) errors.push("a reported branch's ahead is 1 to 10000 commits");
+      if (b.tip !== undefined && (typeof b.tip !== "string" || !/^[0-9a-f]{7,40}$/.test(b.tip))) errors.push("a reported branch's tip is a commit id");
+    }
   }
   // The witch monitor (§6.2): which process announces, and the runs it has going, each with its start.
   if (event.type === "host_online" && isObject(payload)) {

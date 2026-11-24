@@ -7,6 +7,7 @@
 #   ./run-host.sh --agents elf,raven      only these witches
 #   ./run-host.sh --slots 3 --once        any other `coven host run` option goes through
 #   ./run-host.sh --manual                not autonomous (as is COVEN_AUTONOMOUS=0 ./run-host.sh)
+#   ./run-host.sh --keep-branches         never delete finished branches (as is COVEN_PRUNE_BRANCHES=0 ./run-host.sh)
 #   ./run-host.sh --reconcile             close the In review backlog by the SA's sign-off once, then exit
 #   ./run-host.sh --root ~/code/app       host another repository (it needs `coven init` first; set its merge check there)
 #
@@ -32,12 +33,15 @@ command -v "${py[0]}" >/dev/null || { echo "run-host: ${py[0]} is not on PATH" >
 agents=""; no_dev=0; extra=(); reconcile=0
 # Autonomous unless the person says otherwise (COVEN_AUTONOMOUS=0, or --manual below).
 export COVEN_AUTONOMOUS="${COVEN_AUTONOMOUS:-1}"
+# Branch cleanup on by default here: finished, fully merged coven/ branches go (here and on origin); --keep-branches keeps them.
+export COVEN_PRUNE_BRANCHES="${COVEN_PRUNE_BRANCHES:-1}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) ;; # the default now; kept so older commands still work
     --no-dev) no_dev=1 ;;
     --agents) agents="${2:?--agents needs a list}"; shift ;;
     --manual) COVEN_AUTONOMOUS=0 ;;
+    --keep-branches) COVEN_PRUNE_BRANCHES=0 ;;
     --reconcile) reconcile=1 ;;
     --root) COVEN_ROOT="$(cd "${2:?--root needs a repository folder}" && pwd)" || exit 1; export COVEN_ROOT; shift ;;
     *) extra+=("$1") ;;

@@ -1674,7 +1674,14 @@
       return { kind: "failed", label: "Failed: needs you", why: `${lead}${f && f.base_changed ? "Its paths changed on the base branch, so the work may already be in. " : ""}Open it to see why, then retry it or mark it done.` };
     }
     if (t.doer_state !== "submitted" || !t.branch_host) return null;
-    if (t.accept && t.accept.state === "requested" && t.accept.decision === "accept") return null; // accepted: the host is merging
+    const acc = t.accept && t.accept.decision === "accept" ? t.accept : null;
+    if (acc && acc.merge_state === "held") {
+      return { kind: "held", label: "Needs you: merge held", why: `The merge was held: ${short(acc.merge_reason || "the host did not say why", 150)}. Request changes so the Dev reworks it.`, accept: false };
+    }
+    if (acc && (acc.merge_state === "requested" || acc.merge_state === "merging")) {
+      if (t.branch_host_online !== false) return null; // accepted: its host is merging
+      return { kind: "offline", label: "Needs you: host offline", why: "Accepted, but the host that holds the branch is offline: it merges when it is back. Start that host.", accept: false };
+    }
     const held = notes.filter((n) => n.task === t.ref && n.kind === "question" && /holds .* for a person/i.test(n.note || "")).pop();
     const reviews = all.filter((x) => x.review_of === t.ref);
     const running = reviews.filter((x) => x.doer_state !== "answered" && x.doer_state !== "failed");
@@ -1690,6 +1697,8 @@
      is left splits into Ready for sign-off and Needs attention, each grouped by the plan it came from. */
   const REVIEW_PILLS = [["white-hat", "Test"], ["black-hat", "Attack"], ["elder-witch", "SA"]];
   const isDoneTask = (t) => !!t && (t.status === "completed" || t.doer_state === "done" || !!t.merged);
+  /** Done on the board by a person's Mark done, with nothing merged and the spec not ticked: the repo does not have it. */
+  const closedNoChange = (t) => !!t && t.doer_state === "done" && !t.merged && t.status !== "completed";
   const boardTasks = (b) => ((b && b.specs) || []).flatMap((s) => (s.tasks || []).map((t) => ({ ...t, spec: s.spec, ref: `${s.spec}#${t.task_id}` })));
   /** The latest review job of each reviewer for `ref`: a later round replaces an earlier one. */
   function latestReviews(ref, all) {
@@ -1831,13 +1840,20 @@
   /** Everything that waits for a person, in one place at the top: what it is, why, and the button that answers it. */
   function waitingForYou(cols) {
     const items = [...cols.review, ...cols.failed].filter((t) => t.needs);
-    if (!items.length) return "";
+    // A finished task's branch that still holds commits not in the base: Merge and clean (the host merges, checks, deletes it).
+    const accepting = new Set(boardTasks(state.board).filter((t) => t.accept && t.accept.decision === "accept" && ["requested", "merging"].includes(t.accept.merge_state)).map((t) => t.ref));
+    const unmerged = ((state.board && state.board.unmerged) || []).filter((u) => u.task);
+    const work = unmerged.map((u) => `<li class="need-row" data-key="unmerged-${esc(u.branch)}"><div class="need-what"><span class="mono">${esc(u.task)}</span>
+        <span class="tt">Unmerged work: ${esc(plural(u.ahead, "commit"))} on <code>${esc(u.branch)}</code></span>
+        <div class="hint">The task is closed but ${esc(u.host || "a host")} still holds commits that are not in the base.${u.host_online ? "" : " That host is offline: it merges when it is back."}</div></div>
+      <div class="need-act">${accepting.has(u.task) ? '<span class="badge working">Merging</span>' : `<button class="act good" type="button" data-accept="${esc(u.task)}" data-key="unmerged-accept-${esc(u.branch)}">${icon("check")}<span>Merge and clean</span></button>`}</div></li>`);
+    if (!items.length && !work.length) return "";
     const row = (t) => `<li class="need-row" data-key="need-${esc(t.ref)}"><div class="need-what"><button class="link mono" type="button" data-task-open="${esc(t.ref)}" data-key="need-open-${esc(t.ref)}"
         command="show-modal" commandfor="task-dialog" aria-haspopup="dialog">${esc(t.ref)}</button> <span class="tt">${esc(short(t.title || "", 70))}</span>
         <div class="hint">${esc(t.needs.why)}</div></div>
       <div class="need-act">${t.needs.accept ? `<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="need-accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>` : ""}
         <button class="act quiet" type="button" data-task-open="${esc(t.ref)}" data-key="need-view-${esc(t.ref)}" command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span>${t.needs.accept ? "Review" : "Open"}</span></button></div></li>`;
-    return `<section class="needs" aria-label="Waiting for you"><h2>Waiting for you <span class="hint">· ${plural(items.length, "task")}</span></h2><ul class="need-list">${items.map(row).join("")}</ul></section>`;
+    return `<section class="needs" aria-label="Waiting for you"><h2>Waiting for you <span class="hint">· ${plural(items.length + work.length, "task")}</span></h2><ul class="need-list">${items.map(row).join("")}${work.join("")}</ul></section>`;
   }
   function planCard(p) {
     const items = (p.tasks || []).map((t) => `<li><b>${esc(t.title)}</b>${t.detail ? ` <span class="hint">${esc(short(t.detail, 200))}</span>` : ""}
@@ -1911,7 +1927,10 @@
         <button class="act bad" type="submit">${icon("send")}<span>Send to the Dev</span></button></form>` : "";
     const held = isAccept ? `<span class="badge warn">Held</span> <span class="hint">${esc(short(a.merge_reason || "the host did not say why", 200))}</span> ` : "";
     const last = held || (a && a.decision === "changes" ? `<span class="hint">changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span> ` : "");
-    return `<div class="who accept-row">${last}<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>
+    // Held: accepting the same branch again fails the same check (the cloud refuses it); the way on is a rework.
+    const again = isAccept ? `<span class="hint">Request changes so the Dev reworks it; Accept comes back with the new branch.</span> `
+      : `<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>`;
+    return `<div class="who accept-row">${last}${again}
       <button class="act quiet" type="button" data-changes="${esc(t.ref)}" data-key="changes-btn-${esc(t.ref)}" aria-expanded="${asking}">${icon("undo")}<span>Request changes</span></button></div>${form}`;
   }
   function pushLine(t) {
@@ -1962,6 +1981,7 @@
       : stale ? '<span class="badge warn" data-stale title="Its status says working, but no online host runs it now">Working · no live run</span>'
       : t.doer_verdict ? `<span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes"}</span>`
       : t.merged ? '<span class="badge accept">Merged</span>'
+      : closedNoChange(t) ? '<span class="badge warn" data-no-change title="A person marked it done: no branch was merged and tasks.md is not ticked">Closed · no change</span>'
       : t.doer_state && t.doer_state !== "done" && t.status !== "completed" && DOER_STATE[t.doer_state]
       ? `<span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>`
       : stuck ? '<span class="badge warn">Needs a host</span>' : t.waits_for && !t.claimed_by ? `<span class="hint">waits for ${esc(t.waits_for)}</span>` : "";
@@ -1977,11 +1997,11 @@
   }
   const PILL_TONE = { pass: "accept", changes: "reject", failed: "reject", pending: "grey" };
   /** A person's Mark done (POST /v1/board/done), and the same for the task's review jobs that are still open. */
-  async function markDone(ref) {
+  async function markDone(ref, reason) {
     const author = localStorage.getItem("coven_author") || undefined;
     const jobs = openReviewJobs(ref, boardTasks(state.board));
-    const post = (task) => api("/v1/board/done", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task, author }) });
-    await post(ref);
+    const post = (task, why) => api("/v1/board/done", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task, author, ...(why ? { reason: why } : {}) }) });
+    await post(ref, reason);
     for (const job of jobs) await post(job);
   }
   /** A batch sign-off: one request at a time (each with its own Idempotency-Key, from api()), progress on the button, stop at the first failure. */
@@ -2271,7 +2291,8 @@
     // A column is always open: the person's choice, else the most urgent one with tasks (review, then blocked, then ready).
     const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => count(k)) || "ready";
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : firstFull;
-    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(count(key), "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${count(key)}</span><span class="l">${label}</span><span class="go ${key === "ready" && stuckCount ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host` : ""}</span></button>`;
+    const noChange = (cols.done || []).filter(closedNoChange).length; // done on the board, not in the repo: said on the tile
+    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(count(key), "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${count(key)}</span><span class="l">${label}</span><span class="go ${(key === "ready" && stuckCount) || (key === "done" && noChange) ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host` : key === "done" && noChange ? `${noChange} with no change` : ""}</span></button>`;
     const detail = !open ? "" : open === "review" ? reviewDetail("In review", lanes) : columnDetail(open, COLUMNS.find(([k]) => k === open)[1], cols[open]);
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";
@@ -2952,9 +2973,16 @@
     root.querySelectorAll("details.stage-box").forEach((el) => el.addEventListener("toggle", () => { if (el.open !== (state.ui.stage !== false)) { state.ui.stage = el.open; saveUi(); } }));
     root.querySelectorAll("[data-done]").forEach((el) => el.addEventListener("click", async () => {
       if (el.dataset.claimed && !window.confirm(`${el.dataset.done} is claimed by ${el.dataset.claimed}. Mark it done anyway?`)) return;
+      // A failed task closed by hand: say why, so the board does not claim work the repo does not have.
+      const task = boardTasks(state.board).find((t) => t.ref === el.dataset.done);
+      let reason;
+      if (task && task.doer_state === "failed") {
+        reason = (window.prompt(`${el.dataset.done} failed. Why is it done? (for example: already in main at abc1234)`) || "").trim();
+        if (!reason) return;
+      }
       el.disabled = true;
       try {
-        await markDone(el.dataset.done);
+        await markDone(el.dataset.done, reason);
         await loadBoard();
         render({ keepScroll: true });
       } catch (error) { el.disabled = false; quiet(error); }

@@ -262,6 +262,7 @@ Detail and acceptance: `.kiro/specs/autonomous-tasks/requirements.md`. Status sa
 | R6 | People still decide: neither reconcile nor sweep marks a task done; Retry, Mark done and abandon stay. | Must | Built |
 | R7 | Every new field is validated in `server/src/events.ts` and listed in ADD §6; text is redacted and at most 400 characters; tests use fakes and no model. | Must | Partly built: ADD §6 lists them; the cloud's validation is planned |
 | R8 | A task whose host is gone (no claim, host silent for `COVEN_TAKEOVER_SECONDS`, default 600) is taken by another host as a new attempt; only the newest attempt changes the board; a returning host gives way; two takeovers at most. | Should | Planned (tasks 16 to 19) |
+| R9 | Finished branches are cleaned up on every host without visiting it: a host that prunes (`./run-host.sh` default) deletes its finished `coven/` branches whose commits are all in the base, here and on origin, with their worktrees; a finished task's branch with unmerged commits is listed on the board (`branch_report`) and a person merges it there with Merge and clean; a held merge cannot be accepted again until the branch changes; a failed task closed by hand says why, and Done says when nothing was merged. | Must | Built |
 
 ## 5. Non-functional requirements
 
