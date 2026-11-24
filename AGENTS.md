@@ -67,7 +67,10 @@ make deploy-cloudflare   # the Cloudflare Worker (only when asked)
    prep branch under those checks and has the Chair approve a plan the Black Hat left with no P0/P1 objection (the
    cloud takes that only when its operator sets `COVEN_AUTONOMOUS_PLANS=1`); `_Verify:_` lines always wait for a person.
    A person's **Accept and merge** on the board (`POST /v1/board/accept`) is the other
-   way: the host that holds the branch merges it under the same checks and pushes the base. An agent working
+   way: the host that holds the branch merges it under the same checks and pushes the base. **Merge and clean** does the
+   same for a finished task's branch that still holds unmerged commits. Branch cleanup is the one deletion a person may turn
+   on per host (`--prune-branches`, `COVEN_PRUNE_BRANCHES=1`, the default of `./run-host.sh`; `--keep-branches` off): the host
+   deletes only its own finished `coven/` branches whose commits are all in the base, here and on origin. An agent working
    on this repo outside a host still follows the rule.
 3. **Events are a contract.** A new event type, field or endpoint goes into
    `docs/ADD.md` §6 in the same change; the harness fails otherwise.

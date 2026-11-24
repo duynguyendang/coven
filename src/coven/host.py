@@ -2146,6 +2146,112 @@ def drop_branch(root: Path, branch: str, remote: bool) -> None:
         subprocess.run(["git", "push", config.remote(root), "--delete", branch], cwd=root, capture_output=True, check=False)
 
 
+# ------------------------------------------------------------------ branch cleanup (no host is visited by hand)
+
+PRUNE_EVERY = 600  # seconds between cleanups on a host that prunes
+CLOSED = ("done", "merged", "replaced", "abandoned")
+# A local record in one of these states still needs its branch: a run, a review, a question, a retry.
+IN_USE = ("running", "submitted", "answered", "needs_clarification", "needs_split", "held", "failed")
+
+
+def prunes_branches() -> bool:
+    """Whether this host deletes its finished coven/ branches by itself (`--prune-branches`, `COVEN_PRUNE_BRANCHES=1`)."""
+    return os.environ.get("COVEN_PRUNE_BRANCHES") == "1"
+
+
+def _branch_tasks(root: Path, view: dict) -> dict[str, str]:
+    """branch -> task ref, from the specs here, the board's council tasks and this host's records."""
+    out = {work.branch_for(t): ref for ref, t in specmap.load(root).items()}
+    for sp in view.get("specs") or []:
+        for t in sp.get("tasks") or []:
+            out.setdefault(t.get("branch") or work.branch_for({"spec": sp.get("spec"), "task_id": t.get("task_id")}), f"{sp.get('spec')}#{t.get('task_id')}")
+    for ref, record in load(root).items():
+        if record.get("branch"):
+            out[record["branch"]] = ref
+    return out
+
+
+def _closed_on_board(task: dict | None) -> bool:
+    t = task or {}
+    return t.get("status") == "completed" or t.get("doer_state") in CLOSED or bool(t.get("merged"))
+
+
+def prune_branches(root: Path, view: dict, running: set[str] | frozenset = frozenset(), dry_run: bool = False) -> dict:
+    """Delete this host's coven/ branches whose task is finished and whose commits are all in the base, here and on origin,
+    with their worktrees; list the finished tasks' branches that still hold unmerged commits (a person merges them from the
+    web: Merge and clean). Never touches the checked-out branch, a running task's, or a branch a local record still uses.
+    Never force-pushes; never deletes a commit that is not in the base."""
+    out: dict = {"deleted": [], "unmerged": [], "kept": [], "worktrees": 0}
+    try:
+        base = work.base_branch(root)
+        here = work.current_branch(root)
+    except work.WorkError as exc:
+        out["error"] = str(exc)[:200]
+        return out
+    refs = _branch_tasks(root, view)
+    tasks = {f"{sp.get('spec')}#{t.get('task_id')}": t for sp in view.get("specs") or [] for t in sp.get("tasks") or []}
+    records = load(root)
+    trees = _worktrees(root)
+    remote = bool(config.remote(root)) and bool(work._git(root, "remote", check=False))
+    for branch in work._git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads/coven/", check=False).splitlines():
+        branch = branch.strip()
+        if not branch or branch == here:
+            continue
+        ref = refs.get(branch)
+        record = records.get(ref) if ref else None
+        if (ref and ref in running) or (record and record.get("state") in IN_USE and not _closed_on_board(tasks.get(ref))):
+            out["kept"].append(branch)
+            continue
+        if ref and not _closed_on_board(tasks.get(ref)) and not branch.startswith("coven/prepare-"):
+            out["kept"].append(branch)  # an open task: its branch may be retried or reworked
+            continue
+        ahead = int(work._git(root, "rev-list", "--count", f"{base}..{branch}", check=False) or 0)
+        if ahead:
+            tip = work._git(root, "rev-parse", branch, check=False)
+            out["unmerged"].append({"branch": branch, "task": ref, "ahead": ahead, **({"tip": tip} if re.fullmatch(r"[0-9a-f]{40}", tip or "") else {})})
+            continue
+        if not dry_run:
+            for path in trees.get(branch, []):
+                remove_worktree(root, path)
+            drop_branch(root, branch, remote)
+            if ref and record:
+                _forget(root, ref)
+        out["deleted"].append(branch)
+    # Throw-away checkouts (merge, review) and worktrees of branches that are gone: nothing runs in them.
+    live = {str(Path(r["worktree"]).resolve()) for ref, r in records.items() if r.get("worktree") and (ref in running or r.get("state") in IN_USE)}
+    for path, branch in _worktree_paths(root):
+        if path in live or (branch and branch in out["kept"]) or (branch and branch in [u["branch"] for u in out["unmerged"]]):
+            continue
+        if not dry_run:
+            remove_worktree(root, path)
+        out["worktrees"] += 1
+    if not dry_run:
+        work._git(root, "worktree", "prune", check=False)
+    return out
+
+
+def _worktree_paths(root: Path) -> list[tuple[str, str | None]]:
+    """(path, branch or None) of every worktree under .coven/worktrees."""
+    inside = str((Path(root) / ".coven" / "worktrees").resolve())
+    found, path = [], None
+    for line in work._git(root, "worktree", "list", "--porcelain", check=False).splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):].strip()
+            if path.startswith(inside):
+                found.append([path, None])
+        elif line.startswith("branch ") and found and found[-1][0] == path:
+            found[-1][1] = line[len("branch "):].strip().removeprefix("refs/heads/")
+    return [(p, b) for p, b in found]
+
+
+def _worktrees(root: Path) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for path, branch in _worktree_paths(root):
+        if branch:
+            out.setdefault(branch, []).append(path)
+    return out
+
+
 def merge_into_base(root: Path, branch: str, base: str, checkout: str, message: str, log_name: str) -> dict:
     """The merge itself, for a task or a prep branch: `--no-ff` in a throw-away checkout of the base (origin's when there is
     one), the project check (`COVEN_MERGE_CHECK`) on the merged tree, a push of the base (never forced), and the working copy
@@ -2305,9 +2411,14 @@ class Host:
 
     def __init__(self, root: Path, slots: int = DEFAULT_SLOTS, review_limit: int = DEFAULT_REVIEW_LIMIT, runner: Runner = run_agent,
                  only: list[str] | None = None, out=print, clock=time.monotonic, sleep=time.sleep, kiro_web: str | None = None,
-                 auto_merge: bool = False, autonomous: bool = False):
+                 auto_merge: bool = False, autonomous: bool = False, prune: bool | None = None):
         # `kiro_web` lets this host run the tasks a person dispatched to Kiro Web; every other task runs here as before.
         self.kiro_web = kiro_web
+        # Prune (a person's choice per host, `--prune-branches`): delete finished, fully merged coven/ branches by itself.
+        # Without it the host still reports unmerged work, so a person can Merge and clean it from the web.
+        self.prune = prunes_branches() if prune is None else prune
+        self._pruned_at: float | None = None
+        self._reported: list | None = None
         # Autonomous (a person's choice per host, `--autonomous`): auto-merge, the Chair approves consensus plans, and the host
         # merges the Scribe's witch-and-paths branches. Verify commands, holds and deadlocks still go to a person.
         self.autonomous = autonomous
@@ -2786,10 +2897,24 @@ class Host:
                 if accept.get("decision") != "accept":
                     continue
                 record = load(self.root).get(ref) or {}
+                if record.get("state") != "submitted" and accept.get("branch") and self._unmerged_here(accept["branch"]):
+                    # Merge and clean: a finished task's branch with commits not in the base. The same checks as any Accept.
+                    try:
+                        base = work.base_branch(self.root)
+                    except work.WorkError as exc:
+                        self._accept_progress(ref, request_id, "held", str(exc)[:200])
+                        continue
+                    record = {**record, "branch": accept["branch"], "base": base, "state": "submitted",
+                              "worktree": (_worktrees(self.root).get(accept["branch"]) or [None])[0],
+                              "agent": record.get("agent") or agents.DEFAULT}
                 if record.get("state") != "submitted" or not record.get("branch"):
                     why = "this host holds no submitted branch of it any more"
                     _note(self.root, f"{ref}: {accept.get('by') or 'a person'} accepted it, but {why}.",
                           CHAIR, ref, kind="question", host_says=True)
+                    self._accept_progress(ref, request_id, "held", why)
+                    continue
+                if accept.get("branch") and record.get("branch") != accept.get("branch"):
+                    why = f"the accepted branch {accept.get('branch')} is not the one this host holds ({record.get('branch')})"
                     self._accept_progress(ref, request_id, "held", why)
                     continue
                 reviews = review_state(view, record.get("review_jobs") or [])
@@ -2805,6 +2930,39 @@ class Host:
                     self._accept_progress(ref, request_id, "held", result.get("why"))
                 done.append(result)
         return done
+
+    def _unmerged_here(self, branch: str) -> bool:
+        """Whether `branch` is a local coven/ branch with commits not in the base."""
+        if not branch.startswith("coven/") or not work._git(self.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False):
+            return False
+        try:
+            base = work.base_branch(self.root)
+        except work.WorkError:
+            return False
+        return bool(work._git(self.root, "rev-list", "--count", f"{base}..{branch}", check=False) not in ("", "0"))
+
+    def _cleanup(self, view: dict, force: bool = False) -> dict | None:
+        """Every PRUNE_EVERY seconds: prune (when this host prunes) and report the unmerged work of finished tasks. Never raises."""
+        now = self.clock()
+        if not force and self._pruned_at is not None and now - self._pruned_at < PRUNE_EVERY:
+            return None
+        self._pruned_at = now
+        try:
+            result = prune_branches(self.root, view, set(self.running), dry_run=not self.prune)
+        except Exception as exc:  # noqa: BLE001 - cleanup is housekeeping; the work goes on
+            self.out(f"host: branch cleanup skipped ({str(exc)[:160]})")
+            return None
+        if self.prune and (result["deleted"] or result["worktrees"]):
+            self.out(f"host: cleanup: deleted {len(result['deleted'])} merged branch(es), {result['worktrees']} worktree(s); "
+                     f"{len(result['unmerged'])} with unmerged work wait for Merge and clean")
+        unmerged = result["unmerged"][:30]
+        if unmerged != self._reported:
+            try:
+                board.branch_report(self.root, unmerged)
+                self._reported = unmerged
+            except Exception:  # noqa: BLE001 - the next cleanup reports again
+                pass
+        return result
 
     def _accept_progress(self, ref: str, request_id: str | None, state: str, reason: str | None = None) -> None:
         """Tell the board how an Accept stands. A courtesy: the merge never waits on it."""
@@ -2886,6 +3044,7 @@ class Host:
         pushed = self._pushes(view)  # a push needs no model: it goes on while paused
         accepted = self._accepts(view)  # nor does a person's Accept: merge, check, push
         self._in_base(view)  # before a merged branch is forgotten below
+        self._cleanup(view)  # no model either: finished branches go, unmerged work is listed for people
         if self.paused():
             # Kiro is down: start nothing that needs a model. Messages and tasks wait; the pause ends by itself.
             finished = self._release_finished(tasks, view)

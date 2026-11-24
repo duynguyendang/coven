@@ -571,7 +571,12 @@ describe("several hosts (spec multi-host)", () => {
       await progress(first, "held", { reason: "make verify failed" });
       a = await acc();
       assert.deepEqual([a.merge_state, a.merge_reason], ["held", "make verify failed"]);
-      await accept({ decision: "accept" });
+      const again = await accept({ decision: "accept" });
+      assert.equal(again.status, 409, "accepting a held merge again only fails the same check");
+      assert.match(again.body.error ?? again.body.detail ?? JSON.stringify(again.body), /make verify failed/);
+      // a rework: the Dev submits again, and the branch may be accepted again
+      await send(s.base, [ev("task_status", { task: "s#1", state: "submitted", agent: "green-witch", branch: "coven/s-1", branch_host: "h_0000000a", host_id: "h_0000000a" })]);
+      assert.equal((await accept({ decision: "accept" })).status, 201);
       a = await acc();
       assert.notEqual(a.request_id, first);
       assert.deepEqual([a.merge_state, a.merge_reason ?? null], ["requested", null], "a new request clears the old state");
@@ -580,6 +585,36 @@ describe("several hosts (spec multi-host)", () => {
       await send(s.base, [ev("task_merged", { task: "s#1", branch: "coven/s-1", commit: "abcdef1", base: "main", reviewers: [], decided_by: "person", author: "duy", host_id: "h_0000000a" })]);
       a = await acc();
       assert.deepEqual([a.merge_state, a.commit], ["merged", "abcdef1"]);
+    } finally { await s.close(); }
+  });
+
+  test("unmerged work: a host's branch_report lists it, Merge and clean accepts it, a held repeat waits for a new tip", async () => {
+    const s = await startServer();
+    try {
+      const tip = (c: string) => c.repeat(40);
+      const report = (branches: Json[]) => send(s.base, [ev("branch_report", { host_id: "h_0000000a", branches })]);
+      await send(s.base, [ev("host_online", { agents: ["green-witch"], slots: 1, host_id: "h_0000000a" })]);
+      await send(s.base, [ev("spec_artifact_updated", { spec: "s", tasks: [{ task_id: "2", title: "x" }] })]);
+      await postJson(s.base, "/v1/board/done", { project_id: "shop", task: "s#2", author: "duy", reason: "closed after two empty runs" }, auth());
+      let view = await board(s.base);
+      assert.match(view.specs.find((x: Json) => x.spec === "s").tasks.find((t: Json) => t.task_id === "2").doer_detail, /accepted by duy: closed after two empty runs/);
+      const merge = () => postJson(s.base, "/v1/board/accept", { project_id: "shop", task: "s#2", decision: "accept", author: "duy" }, auth());
+      assert.equal((await merge()).status, 409, "nothing to merge before a host reports it");
+      assert.equal((await report([{ branch: "nope", task: "s#2", ahead: 1 }])).body.accepted, 0, "a branch is coven/<name>");
+      assert.equal((await report([{ branch: "coven/s-2", task: "s#2", ahead: 0 }])).body.accepted, 0, "ahead is at least one commit");
+      assert.equal((await send(s.base, [ev("branch_report", { branches: [] })])).body.accepted, 0, "a report names its host");
+      await report([{ branch: "coven/s-2", task: "s#2", ahead: 3, tip: tip("a") }]);
+      view = await board(s.base);
+      assert.deepEqual(view.unmerged.map((u: Json) => [u.branch, u.task, u.ahead, u.host_id, u.host_online]), [["coven/s-2", "s#2", 3, "h_0000000a", true]]);
+      const asked = await merge();
+      assert.deepEqual([asked.status, asked.body.branch, asked.body.host_id], [201, "coven/s-2", "h_0000000a"]);
+      const acc = async () => (await board(s.base)).specs.find((x: Json) => x.spec === "s").tasks.find((t: Json) => t.task_id === "2").accept;
+      await send(s.base, [ev("accept_progress", { task: "s#2", request_id: (await acc()).request_id, state: "held", reason: "make verify failed" })]);
+      assert.equal((await merge()).status, 409, "the same tip fails the same check");
+      await report([{ branch: "coven/s-2", task: "s#2", ahead: 4, tip: tip("b") }]);
+      assert.equal((await merge()).status, 201, "a new tip may be merged again");
+      await report([]);
+      assert.deepEqual((await board(s.base)).unmerged, [], "the whole list each time: an empty one clears it");
     } finally { await s.close(); }
   });
 
