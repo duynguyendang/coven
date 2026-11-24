@@ -284,7 +284,7 @@ def stream_run(command: list[str], cwd: Path, env: dict, timeout: int, on_step=N
 
 def run_agent(root: Path, prompt: str, timeout: int = ANSWER_TIMEOUT) -> tuple[str | None, str | None]:
     """One headless, read-only Kiro run in this working copy. Returns (answer, error)."""
-    command = ["kiro-cli", "chat", "--no-interactive", "--trust-workspace", "--trust-tools=",
+    command = ["kiro-cli", "chat", "--no-interactive", "--agent-engine", "v3", "--trust-workspace", "--trust-tools=",
                "--output-format", "stream-json", "--agent", AGENT, prompt]
     try:
         done = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=timeout, check=False)

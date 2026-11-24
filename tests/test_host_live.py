@@ -44,7 +44,7 @@ trust = next(a.split("=", 1)[1] for a in args if a.startswith("--trust-tools="))
 with open(os.environ["FAKE_KIRO_LOG"], "a") as log:
     log.write(json.dumps({"agent": agent, "trust": trust, "cwd": os.getcwd(), "args": args[:-1],
                           "env": {k: os.environ.get(k) for k in ("COVEN_HOST", "COVEN_AGENT", "COVEN_TASK")}}) + "\n")
-assert args[:2] == ["chat", "--no-interactive"] and "--trust-workspace" in args, args
+assert args[:4] == ["chat", "--no-interactive", "--agent-engine", "v3"] and "--trust-workspace" in args, args
 assert args[args.index("--output-format") + 1] == "stream-json", args
 prompt = args[-1]
 if agent == "green-witch" and (os.environ.get("COVEN_TASK") or "").endswith("-1b2"):
