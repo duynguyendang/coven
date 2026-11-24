@@ -1499,14 +1499,39 @@ def _scribe_answers(root: Path, reply: str | None, ref: str, agent: str, guidanc
         work._release_quietly(root, job or ref, "answered")
 
 
+def _chat_run(root: Path, ref: str, agent: str, state: str, code: str | None = None, note: str | None = None) -> None:
+    """Best effort: a cloud error never blocks the answer."""
+    try:
+        board.chat_run(root, ref, agent, state, code, note)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _chat_failure_code(error) -> str:
+    text = str(error or "").lower()
+    if "timed out" in text or "timeout" in text:
+        return "timeout"
+    if "no answer" in text:
+        return "no_answer"
+    if "kiro" in text:
+        return "kiro_error"
+    return "error"
+
+
 def execute_request(root: Path, message: dict, agent: str, runner: Runner = run_agent, notes: list[dict] | None = None,
                     context: dict | None = None, autonomous: bool = False) -> dict:
     """Run the witch on one chat request and answer it in the chat. Never raises."""
     result = {"action": "failed"}
+    ref = request_ref(message)
+    _chat_run(root, ref, agent, "working")
     try:
         result = _execute_request(root, message, agent, runner, notes, context, autonomous)
         return result
     finally:
+        if result.get("action") == "answered":
+            _chat_run(root, ref, agent, "answered")
+        elif result.get("action") != "paused":
+            _chat_run(root, ref, agent, "failed", _chat_failure_code(result.get("error")), result.get("error"))
         # One answer per message. The reply goes through the relay and may reach the cloud after this host's next
         # look at the chat; without this the message still looks open and is taken again (one error per tick).
         # A message paused because Kiro is down is kept: it is answered when Kiro is back.

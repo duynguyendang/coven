@@ -506,6 +506,16 @@ def task_merged(root: Path, ref: str, branch: str, commit: str, base: str, revie
     return _member_event(root, "task_merged", payload)
 
 
+def chat_run(root: Path, ref: str, agent: str, state: str, code: str | None = None, note: str | None = None) -> dict:
+    """Say where this host's run of a chat request stands: `working`, then `answered` or `failed` (with a `code`)."""
+    payload = {"ref": ref, "agent": agent, "state": state}
+    if state == "failed" and code:
+        payload["code"] = code
+    if note:
+        payload["note"] = " ".join(str(note).split())[:400]
+    return _member_event(root, "chat_run", payload)
+
+
 def listening(root: Path, roles: tuple[str, ...] = CHAT_ROLES) -> dict:
     """Tell the coven this member answers the council chat (sent every minute while it listens)."""
     return _member_event(root, "council_listening", {"roles": list(roles)})
