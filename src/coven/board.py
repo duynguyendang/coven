@@ -371,6 +371,8 @@ def task_create(root: Path, spec: str, task_id: str, title: str, agent: str, det
         payload["reply_to"] = reply_to
     if depth:
         payload["depth"] = int(depth)
+    if key is not None and not re.fullmatch(r"[0-9a-f]{16}", str(key)):
+        raise ValueError(f"task_key must be 16 hex characters (taskkey.for_task), not {str(key)[:30]!r}")  # the cloud refuses it
     _stamp(payload, key, None)
     return _member_event(root, "task_created", payload)
 

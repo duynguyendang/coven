@@ -2599,7 +2599,9 @@ class Host:
         root = self.root
         if self._chair_dispatch is None:
             def create(job, title, agent, detail):
-                board.task_create(root, COUNCIL_SPEC, job, title, agent, detail, sender=CHAIR, key=f"chair-{job}")
+                # the task key is the job's own (16 hex, as the cloud requires), never a label: a bad key is refused
+                key = taskkey.for_task(config.project_id(root), {"spec": COUNCIL_SPEC, "task_id": job})
+                board.task_create(root, COUNCIL_SPEC, job, title, agent, detail, sender=CHAIR, key=key)
 
             def ask(ref, text):
                 _note(root, text, CHAIR, ref, kind="question", host_says=True)

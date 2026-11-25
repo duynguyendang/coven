@@ -55,3 +55,14 @@ def test_version_flag_prints_version_and_exits_zero(capsys):
 
     assert exc.value.code == 0
     assert capsys.readouterr().out.strip() == f"coven {__version__}"
+
+
+def test_the_host_log_is_written_wherever_the_host_runs(tmp_path, capsys):
+    """A host started in a terminal left .coven/host.log stale, and a witch read old news from it."""
+    from coven import cli
+    (tmp_path / ".coven").mkdir()
+    out = cli.host_log(tmp_path)
+    out("host: one")
+    out("host: two")
+    assert (tmp_path / ".coven" / "host.log").read_text() == "host: one\nhost: two\n"
+    assert "host: one" in capsys.readouterr().out

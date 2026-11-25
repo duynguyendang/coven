@@ -267,3 +267,37 @@ def test_an_orphaned_task_is_queued_again_twice_then_a_person_is_asked():
     for n in range(3):
         fx.d.act(board({"task_id": "1", "doer_state": "working", "orphaned": True, "orphaned_since": f"2026-01-01T1{n}:00:00Z"}), NOW)
     assert fx.queued == ["s#1", "s#1"] and [r for r, _ in fx.asked] == ["s#1"]
+
+
+def test_a_job_that_never_reached_the_board_is_dropped_and_the_question_goes_again(monkeypatch):
+    fx = Live()
+    asked = {"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "which file?"}
+    fx.d.act(board(asked), NOW)
+    first = fx.jobs[0][0]
+    fx.d.act(board(asked), NOW)
+    assert len(fx.jobs) == 1, "still waiting: the job may yet arrive"
+    later = chair.time.time() + chair.JOB_MISSING + 1
+    monkeypatch.setattr(chair.time, "time", lambda: later)
+    fx.d.act(board(asked), NOW)
+    assert len(fx.jobs) == 2 and fx.jobs[1][0] != first, "the lost job is dropped and a new round asks again"
+
+
+def test_the_chairs_jobs_carry_a_task_key_the_cloud_accepts(tmp_path, monkeypatch):
+    """The host gave the Chair's jobs the key 'chair-<job>': the cloud refused every one, so no question was ever answered."""
+    import re
+    from coven import board, config, host, taskkey
+    monkeypatch.setenv("COVEN_ROOT", str(tmp_path))
+    sent = []
+    monkeypatch.setattr(board, "_member_event", lambda root, type_, payload: sent.append(payload) or payload)
+    monkeypatch.setattr(board, "chair_lease", lambda root, action="claim": {"held": True})
+    h = _host(True, [1000.0])
+    h.root = tmp_path
+    monkeypatch.setattr(chair.Dispatcher, "act", lambda self, view, now: self.create("chab12cd34ef", "Prepare s#1", "scribe", "d") or [])
+    h._chair_sweep({})
+    assert sent and re.fullmatch(r"[0-9a-f]{16}", sent[0]["task_key"]), sent
+    assert sent[0]["task_key"] == taskkey.for_task(config.project_id(tmp_path), {"spec": "council", "task_id": "chab12cd34ef"})
+    try:
+        board.task_create(tmp_path, "council", "x", "t", "scribe", key="chair-x")
+        raise AssertionError("a bad key must be refused here, not by the cloud")
+    except ValueError:
+        pass

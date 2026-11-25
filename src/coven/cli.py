@@ -310,6 +310,36 @@ def cmd_member(args: argparse.Namespace) -> int:
     return 0
 
 
+HOST_LOG_BYTES = 5_000_000  # .coven/host.log is started again (the old one kept as host.log.1) past this size
+
+
+def host_log(root: Path):
+    """The host's output: printed, and appended to .coven/host.log, so the log is current wherever the host runs (a terminal
+    too). Witches and people read that file to see what the host did. Not twice when stdout already is that file."""
+    path = config.coven_dir(root) / "host.log"
+    try:
+        same = path.exists() and os.path.samestat(os.fstat(sys.stdout.fileno()), path.stat())
+    except (OSError, ValueError, AttributeError):
+        same = False
+    if not same:
+        try:
+            if path.exists() and path.stat().st_size > HOST_LOG_BYTES:
+                path.replace(path.with_name("host.log.1"))
+        except OSError:
+            pass
+
+    def out(line: str) -> None:
+        print(line, flush=True)
+        if same:
+            return
+        try:
+            with path.open("a", encoding="utf-8") as log:
+                log.write(f"{line}\n")
+        except OSError:
+            pass  # the log is a courtesy; the host goes on
+    return out
+
+
 def autonomous_mode(flag: bool, manual: bool, env) -> bool:
     """`coven host run` is opt-in: autonomous only with --autonomous or COVEN_AUTONOMOUS=1, and never with --manual."""
     return not manual and (bool(flag) or env.get("COVEN_AUTONOMOUS") == "1")
@@ -431,7 +461,7 @@ def cmd_host(args: argparse.Namespace) -> int:
         return 2
     try:
         autonomous = autonomous_mode(args.autonomous, args.manual, os.environ)
-        runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=lambda line: print(line, flush=True),
+        runner = host.Host(root, slots=args.slots, review_limit=args.review_limit, only=only or None, out=host_log(root),
                            kiro_web=args.kiro_web or os.environ.get("COVEN_KIRO_WEB_REPO"),
                            auto_merge=args.auto_merge or os.environ.get("COVEN_AUTO_MERGE") == "1", autonomous=autonomous,
                            prune=(args.prune_branches or host.prunes_branches()) and not args.keep_branches)

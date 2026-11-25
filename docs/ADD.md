@@ -355,6 +355,8 @@ hosts. The cloud computes the roll-up (`3 of 5 done, 1 failed`). The cloud never
   worktree holds nothing and goes too (a retry makes a fresh one). A throw-away checkout is kept while its job runs and for
   two hours after it was made, so a reviewer's checkout never disappears under her. Every host does this for its own
   branches, so nobody has to visit a host to clean it.
+- **The host log.** `coven host run` prints each line and appends it to `.coven/host.log` (started again past 5 MB, the old
+  one kept as `host.log.1`), so the file is current however the host was started; witches and people read it.
 - **Spec snapshots.** A host publishes a spec's `spec_artifact_updated` snapshot only when it changed since the last one
   this working copy sent (`.coven/state/synced.json`), or six hours after it; `coven board sync` always sends. Sending
   every spec on every tick had made these snapshots 98% of the cloud's store, which it replays into memory at start.
@@ -365,7 +367,8 @@ hosts. The cloud computes the roll-up (`3 of 5 done, 1 failed`). The cloud never
     `tasks.md` (no witch here writes it);
   - a transient failure (cause `timeout`, `kiro_error`, `cloud`, `no_answer` or `error`): `queued` again, at most
     `MAX_REQUEUES` (2) times, then a question; a failure about the work (`verify_failed`, `outside_paths`) is a question;
-  - a failed or held Scribe or Elder job starts the next round instead of waiting forever;
+  - a failed or held Scribe or Elder job starts the next round instead of waiting forever, and so does one that never
+    reached the board within 15 minutes (refused, or lost); the Chair's jobs carry the 16-hex task key the cloud requires;
   - a host restart: `_recover` sends `failed`, cause `error`, "the host restarted while the agent was running", so the board
     stops saying `working` and the Chair queues it again;
   - a council job `working` with no live claim and no live run in the board's run monitor is free to take;
