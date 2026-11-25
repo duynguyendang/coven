@@ -123,6 +123,8 @@ CLOSABLE = ("no_change", "base_changed")
 # the task again, at most MAX_REQUEUES times. verify_failed and outside_paths are about the work: they wait for a person.
 TRANSIENT = ("timeout", "kiro_error", "cloud", "no_answer", "error")
 MAX_REQUEUES = 2
+# How a Chair job asking the Scribe to answer a question begins: the host runs it as an answer, not as her prepare of annotations.
+ANSWER_JOB = "Answer the witch's question by clarifying the task."
 JOB_MISSING = 900  # seconds: a job the Chair made that is still not on the board was lost (refused, or never delivered)
 MEMORY = ("seen", "runs", "rounds", "pending", "checking", "done", "requeues")
 INTENT = re.compile(r"\b(should we|do you want|would you|prefer|intend|intent|want|priority|which behaviou?r|business|product)\b", re.I)
@@ -332,7 +334,7 @@ class Dispatcher:
             if INTENT.search(str(task.get("doer_detail") or "")):
                 self.ask(ref, f"A witch asks about intent on {ref}: {task.get('doer_detail')}"[:400])
                 return {"action": "question"}
-            return self._scribe(f, "Answer the witch's question by clarifying the task.")
+            return self._scribe(f, ANSWER_JOB)
         if kind == "orphaned":
             task = {**task, "doer_failure": {"cause": "error"}}  # the same rule as a run cut off by a restart
             kind = "failed"

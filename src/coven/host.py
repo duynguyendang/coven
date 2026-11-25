@@ -2456,7 +2456,9 @@ def execute_job(root: Path, task: dict, agent: str, runner: Runner = run_agent, 
     reply = (source or {}).get("message_id") or task.get("source")
     runner = consulting(root, ref, agent, runner)
     _status(root, ref, "working", agent)
-    if agent == SCRIBE:
+    # The Scribe prepares annotations (agent, paths, verify) for her jobs, except a question the Chair passes on: that one
+    # she answers like any job; her answer goes back to the Dev's task (the Chair notes it there and queues it again).
+    if agent == SCRIBE and not str(task.get("detail") or "").startswith(chair.ANSWER_JOB):
         guidance = " ".join(x for x in (task.get("title"), task.get("detail"), (source or {}).get("message")) if x)
         return _scribe_answers(root, reply, ref, agent, guidance, None, runner, job=ref, autonomous=autonomous)
     path = None

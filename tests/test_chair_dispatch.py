@@ -301,3 +301,16 @@ def test_the_chairs_jobs_carry_a_task_key_the_cloud_accepts(tmp_path, monkeypatc
         raise AssertionError("a bad key must be refused here, not by the cloud")
     except ValueError:
         pass
+
+
+def test_the_scribe_answers_a_question_the_chair_passes_on_instead_of_preparing_annotations(tmp_path, monkeypatch):
+    """Every such job failed with 'the Scribe proposed nothing usable': the question was sent down the prepare path."""
+    from coven import board, host
+    from tests.test_host import FakeCloud
+    monkeypatch.setenv("COVEN_ROOT", str(tmp_path))
+    FakeCloud().install(monkeypatch)
+    monkeypatch.setattr(host, "_scribe_answers", lambda *a, **k: (_ for _ in ()).throw(AssertionError("the prepare path")))
+    seen = []
+    job = {"task_id": "chab12cd34ef", "title": "Prepare s#1", "agent": "scribe", "detail": f"{chair.ANSWER_JOB} Task s#1: which file?"}
+    done = host.execute_job(tmp_path, job, "scribe", lambda cwd, agent, prompt, env, timeout: seen.append(prompt) or ("1. It is src/cart.py.", None))
+    assert done["action"] == "answered" and "which file?" in seen[0]
