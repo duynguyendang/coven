@@ -453,6 +453,11 @@ describe("session screen", () => {
     assert.match(doc().querySelector(".deviation")!.textContent!, /server\/src\/app\.ts/);
     assert.equal(doc().querySelector(".deviation .row"), null, "the banner must not use the timeline's row class");
     assert.ok(doc().querySelector(".deviation .dev-top"));
+    const main = doc().querySelector("#main")!;
+    const before = (sel: string) => !!(main.querySelector(".deviation")!.compareDocumentPosition(main.querySelector(sel)!) & 4);
+    assert.ok(before("h1"), "the banner comes before the page header");
+    assert.ok(before(".stats"), "and before the summary tiles");
+    assert.ok(before("#session-list"), "and before the session list");
     await go("#/p/atlas");
     assert.match(text(), /Open deviations\s*0/, "the coven deviation is not counted for another project");
     assert.ok(!doc().querySelector(".deviation"), "and its banner is not shown there");

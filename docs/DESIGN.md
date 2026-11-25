@@ -428,7 +428,7 @@ cards, 12 px for the composer, 14 px for chat bubbles, full for pills. The ghost
   available) and where. Working: info border and tint; available: success border; not available:
   dashed border, greyed icon.
 - **Waiting for you:** anything that needs a person is said once, at the top of the board, before the tasks: a warn-tinted row with a 4 px left rule, the task, one sentence on what is needed and what happens next, and the button that answers it (*Accept and merge*, or *Open*). It lists a submitted branch whose reviewers have all answered (all passed: "Accept and merge, or request changes"; any `changes`: "decide"), a branch the host held for a person (the host's note says why), and a failed task. Tasks the witches or hosts still work on (reviewers running, a host merging an accepted branch) are not listed. The same words are the task row's badge (*Needs you: …*) and the first line of its card. Plans waiting for approval keep their own section.
-- **Deviation banner:** advisory, so a soft warning tint with a 4 px amber left rule and an amber caps label; expected vs observed path; *Open session* (primary) and *Dismiss* (quiet).
+- **Deviation banner:** advisory, shown at the top of the page, above the header and the tiles, so a soft warning tint with a 4 px amber left rule and an amber caps label; expected vs observed path; *Open session* (primary) and *Dismiss* (quiet).
 - **Chat bubble:** surface, hairline, 14 px radius, max 680 px; a witch's steps grouped into one
   bubble with her icon; *working…* dots that stop under reduced motion. People's messages align
   to the other side.
