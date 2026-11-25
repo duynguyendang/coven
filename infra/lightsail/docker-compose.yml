@@ -17,12 +17,12 @@ services:
       COVEN_AUTONOMOUS_SIGNOFF: ${COVEN_AUTONOMOUS_SIGNOFF:-}
       # days of events to keep (older ones are deleted; 0 keeps them forever)
       COVEN_TTL_DAYS: ${COVEN_TTL_DAYS:-30}
-      # A restart replays the whole event store into memory; past ~140 MB of events the default heap (about 256 MB under
-      # a 320 MB limit) runs out. The 512 MB plan has 1 GB of swap: give the heap room and let it page while it loads.
-      NODE_OPTIONS: ${COVEN_NODE_OPTIONS:---max-old-space-size=900}
+      # A restart replays the whole event store into memory. On the 1 GB plan (909 MB of RAM and 1 GB of swap) a 900 MB
+      # heap ran out at 475 MB of stored events (2026-11-25): give the heap 1600 MB and let it page while it loads.
+      NODE_OPTIONS: ${COVEN_NODE_OPTIONS:---max-old-space-size=1600}
     volumes: [coven-data:/data]
     expose: ["8080"]
-    mem_limit: ${COVEN_MEM_LIMIT:-1200m}
+    mem_limit: ${COVEN_MEM_LIMIT:-1900m}  # RAM plus most of the swap: the heap above, and the process around it
   caddy:
     image: caddy:2
     restart: unless-stopped
