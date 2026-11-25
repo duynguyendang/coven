@@ -63,6 +63,23 @@ class HostError(Exception):
 # ------------------------------------------------------------------ the agent run
 
 
+def pinned(name: str, agent: str) -> str | None:
+    """COVEN_<name>_<SLUG> (slug upper-cased, '-' as '_'), else COVEN_<name>, else None."""
+    slug = agent.upper().replace("-", "_")
+    return os.environ.get(f"COVEN_{name}_{slug}") or os.environ.get(f"COVEN_{name}") or None
+
+
+def agent_command(agent: str, prompt: str, trust: str) -> list[str]:
+    """The one kiro-cli command line of a host run. --model and --effort come before --agent; the prompt is last."""
+    command = ["kiro-cli", "chat", "--no-interactive", "--agent-engine", "v3", "--trust-workspace", f"--trust-tools={trust}",
+               "--output-format", "stream-json"]
+    for flag, name in (("--model", "MODEL"), ("--effort", "EFFORT")):
+        value = pinned(name, agent)
+        if value:
+            command += [flag, value]
+    return command + ["--agent", agent, prompt]
+
+
 def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_TIMEOUT) -> tuple[str | None, str | None]:
     """One headless Kiro run as `agent`, trusting only the tools its kind needs."""
     # A consultation answer is read-only whatever the witch's kind (the Dev answering about the code changes nothing).
@@ -70,8 +87,7 @@ def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_
     if env.get("COVEN_READ_ONLY") == "1" and kind == "build":
         kind = "think"
     trust = os.environ.get(f"COVEN_TRUST_{kind.upper()}", agents.TRUST[kind])
-    command = ["kiro-cli", "chat", "--no-interactive", "--agent-engine", "v3", "--trust-workspace", f"--trust-tools={trust}",
-               "--output-format", "stream-json", "--agent", agent, prompt]
+    command = agent_command(agent, prompt, trust)
     run_env = {**os.environ, **env}
     ref, root = env.get("COVEN_TASK"), env.get("COVEN_ROOT")
     on_step = None
