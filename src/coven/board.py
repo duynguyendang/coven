@@ -595,11 +595,14 @@ def drift(tasks: dict[str, dict], view: dict) -> list[str]:
     """Differences between the repo's `tasks.md` (`tasks`, from specmap) and the board's spec tasks (`view["specs"]`), as text.
 
     The board's own record of a task is its snapshot `status`; `doer_state` is how a run went, not the checkbox.
-    Compared per spec: the task ids, each task's done or open state, and the done and open counts. Empty: no drift."""
+    Compared per spec that has a `tasks.md`: the task ids, each task's done or open state, and the done and open counts. Empty: no drift."""
     found = []
     seen = set()
+    repo_specs = {t["spec"] for t in tasks.values() if t.get("spec")}
     for spec in view.get("specs") or []:
         name = spec.get("spec")
+        if name not in repo_specs:
+            continue  # a spec made on the board (a council, a review job) has no tasks.md to match
         seen.add(name)
         on_board = {str(t.get("task_id")): t.get("status") == "completed" for t in spec.get("tasks") or []}
         in_repo = {t["task_id"]: t["status"] == "completed" for t in tasks.values() if t.get("spec") == name}
