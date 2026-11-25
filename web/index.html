@@ -2462,7 +2462,9 @@
     if (m.role === "council" && m.kind === "working") {
       // Only while the work is going on: once the answer is in, the answer says it all.
       if (ctx.final.has(m.reply_to)) return "";
-      return `<li class="msg working" data-key="msg-${esc(m.message_id)}">${avatar(m.persona)}<span>${esc(m.message.replace(/\.$/, ""))}<span class="dots" aria-hidden="true"></span></span></li>`;
+      // The host says Kiro is down (council.KIRO_PAUSED): the ghost shrugs instead of working.
+      const down = /^Kiro models are unavailable/i.test(m.message || "");
+      return `<li class="msg working${down ? " kiro-down" : ""}" data-key="msg-${esc(m.message_id)}">${down ? `<span class="ghost-mood shrug" aria-hidden="true">${avatar(m.persona)}</span>` : avatar(m.persona)}<span>${esc(m.message.replace(/\.$/, ""))}<span class="dots" aria-hidden="true"></span></span></li>`;
     }
     if (m.role === "council") {
       const asked = byId.get(m.reply_to);
