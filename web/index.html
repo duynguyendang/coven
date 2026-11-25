@@ -452,6 +452,9 @@
   .sticky .note-more { font-size: 0.75rem; align-self: flex-start; }
   .lane { margin: 4px 0 12px; }
   .lane > h4 { margin: 4px 0 6px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .chat-lane .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 8px; }
+  .chat-lane .tcard { margin-bottom: 0; }
+  .chat-lane .tcard .state .badge.failed { color: var(--bad-ink); border-color: var(--bad-line); background: var(--bad-bg); }
   .lane > h4 .n { font-family: var(--mono); font-weight: 400; letter-spacing: 0; }
   .tgroup > summary .batch { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 6px; }
   .tgroup.tdrawer { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
@@ -2338,6 +2341,16 @@
       <details class="duty" data-key="duty-${slug}"><summary>Responsibilities</summary><dl>${row("Owns", r.owns.join("; "))}${row("Produces", r.produces.join("; "))}
       ${row("Hands off to", who(r.hands_off_to))}${row("Never", r.never.join("; "))}</dl></details>`;
   }
+  /** Chat runs from the snapshot as read-only cards: witch, state, age. Working first, then the newest. No actions. */
+  function chatLane(b) {
+    const runs = Object.entries(b.chat_runs || {}).map(([ref, r]) => ({ ref, ...r }))
+      .sort((x, y) => (x.state === "working" ? 0 : 1) - (y.state === "working" ? 0 : 1) || ((y.started_at || "") < (x.started_at || "") ? -1 : 1));
+    if (!runs.length) return "";
+    const one = (r) => `<article class="tcard" data-key="chat-run-${esc(r.ref)}"><div class="id">${esc(r.ref)}</div>
+        <div class="agent">${avatar(r.agent)}<span>${esc(agentName(r.agent) || "a witch")}</span></div>
+        <div class="state"><span class="badge ${esc(r.state)}">${esc(r.state)}${r.code ? ` · ${esc(r.code)}` : ""}</span>${agoTag(r.started_at)}</div></article>`;
+    return `<section class="lane chat-lane" data-lane="chat" aria-label="Chat"><h4>Chat<span class="n">${runs.length}</span></h4><div class="cards">${runs.map(one).join("")}</div></section>`;
+  }
   function boardView() {
     const project = defaultBoardProject();
     const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Coven board" }];
@@ -2384,6 +2397,7 @@
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : voice("No task list yet.", "It appears when a member's Kiro starts or finishes a spec task.", "grey-witch", true)}
+      ${chatLane(b)}
       ${decidedList(decidedPlans, b)}
       <h2>Whiteboard</h2>${compose}
       ${wallHtml(b, cols)}`;

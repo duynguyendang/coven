@@ -901,6 +901,21 @@ describe("session screen", () => {
     assert.equal(doc().querySelector(".host-drop"), null);
     await go("#/");
   });
+  test("board: chat runs are read-only cards with witch, state and age", async () => {
+    const run = (id: string, agent: string, state: string, secs: number, extra: Json = {}) =>
+      ({ ...ev("member_wsl-7", "lab", "chat_run", { ref: `chat#${id}`, agent, state, ...extra }, secs), member: "wsl-7" });
+    await send("lab", "member_wsl-7", [run("m1", "grey-witch", "working", 30), run("m2", "elder-witch", "answered", 90), run("m3", "elf", "failed", 60)]);
+    await go("#/board/lab", 600);
+    const lane = doc().querySelector('.lane[data-lane="chat"]') as HTMLElement;
+    assert.ok(lane, "a Chat lane");
+    const cards = [...lane.querySelectorAll(".tcard")] as HTMLElement[];
+    assert.deepEqual(cards.map((c) => c.dataset.key), ["chat-run-chat#m1", "chat-run-chat#m3", "chat-run-chat#m2"]);
+    assert.match(cards[0].textContent!.replace(/\s+/g, " "), /Grey Witch.*working/);
+    assert.match(cards[1].textContent!, /Elf\s*failed/);
+    assert.ok(cards[0].querySelector("time[data-ago]"), "an age");
+    assert.equal(lane.querySelectorAll("button, a, input, select, textarea").length, 0, "no actions");
+    await go("#/");
+  });
   test("board: a plan shows every task with its paths and verify; a person approves it and the Dev's tasks appear", async () => {
     await send("shop", "member_wsl-8", [{ ...ev("member_wsl-8", "shop", "task_created", { task: "council#rp1-1", title: "Plan the cart total", agent: "elder-witch", plan: true }, 3), member: "wsl-8" },
       { ...ev("member_wsl-8", "shop", "plan_proposed", { plan: "council#rp1-1", summary: "Two small steps.", tasks: [
