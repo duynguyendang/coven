@@ -105,3 +105,27 @@ def test_is_write_only_matches_mutating_tools():
     assert events.is_write({"type": "tool_call", "payload": {"tool": "str_replace"}})
     assert not events.is_write({"type": "tool_call", "payload": {"tool": "fs_read"}})
     assert not events.is_write({"type": "tool_call", "payload": {}})
+
+
+def test_post_compact_maps_to_context_compacted_without_summary_text():
+    secret = "SUMMARY-TEXT-MARKER"
+    payload = {"hook_event_name": "PostCompact", "trigger": "auto", "summary": secret + " more"}
+    built = events.normalize_hook(payload, project_id="p", run_id="r")
+
+    assert len(built) == 1
+    event = built[0]
+    assert event["type"] == "context_compacted"
+    assert event["payload"]["phase"] == "post"
+    assert event["payload"]["trigger"] == "auto"
+    assert event["payload"]["summary_chars"] == len(secret + " more")
+    assert secret not in json.dumps(event)
+
+
+def test_pre_compact_has_phase_and_no_summary_chars():
+    payload = {"hook_event_name": "PreCompact", "trigger": "manual", "summary": "x"}
+    event = events.normalize_hook(payload, project_id="p", run_id="r")[0]
+
+    assert event["type"] == "context_compacted"
+    assert event["payload"]["phase"] == "pre"
+    assert event["payload"]["trigger"] == "manual"
+    assert "summary_chars" not in event["payload"]
