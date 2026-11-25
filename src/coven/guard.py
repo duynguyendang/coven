@@ -41,6 +41,21 @@ def _inside(p: Path, root: Path) -> bool:
     return p == root or root in p.parents
 
 
+def _secret_path(p: str, root: Path) -> bool:
+    """Secret check on the real path, relative to root when inside it."""
+    q = _resolve(p, root)
+    if _inside(q, root):
+        rel = q.relative_to(root).as_posix()
+        if _is_secret(rel):
+            return True
+    elif _is_secret(q.as_posix()):
+        return True
+    raw = p.replace("\\", "/")
+    if not os.path.isabs(raw) and not raw.startswith("~") and ".." not in raw.split("/"):
+        return _is_secret(raw)
+    return False
+
+
 def _paths(tool_input: Any) -> list[str]:
     out: list[str] = []
     if isinstance(tool_input, dict):
@@ -69,12 +84,12 @@ def decide(payload: Any, root: str | os.PathLike[str]) -> dict[str, str] | None:
     tin = payload.get("tool_input", payload.get("toolInput", payload.get("input")))
     is_write = any(w in tool.lower() for w in WRITE_WORDS)
     for p in _paths(tin):
-        if _is_secret(p):
+        if _secret_path(p, base):
             return _deny("secret file")
         if is_write and not _inside(_resolve(p, base), base):
             return _deny("write outside the workspace")
     if isinstance(tin, dict) and isinstance(tin.get("command"), str):
         for tok in _TOKEN.findall(tin["command"]):
-            if _is_secret(tok):
+            if _secret_path(tok, base):
                 return _deny("secret file")
     return None
