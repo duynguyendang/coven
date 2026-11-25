@@ -1597,7 +1597,7 @@
     return `${r.done} of ${r.total} done${r.failed ? `, ${r.failed} failed` : ""}${r.held ? `, ${r.held} held` : ""}`;
   }
   function boardColumns(b) {
-    const cols = { ready: [], claimed: [], review: [], failed: [], done: [] };
+    const cols = { ready: [], claimed: [], review: [], failed: [], done: [], closed: [] };
     const wanted = new Set((b.notes || []).filter((n) => n.kind === "review-wanted" && n.task).map((n) => n.task));
     for (const spec of b.specs || []) {
       const leaves = spec.tasks.filter((t) => t.leaf && !t.optional);
@@ -1622,7 +1622,8 @@
           drift: t.doer_state === "done" || t.merged ? null : ((b.notes || []).find((n) => n.task === ref && n.kind === "note" && /^branch_in_base ignored/.test(n.note || "")) || {}).note || null,
           notes: (b.notes || []).filter((n) => n.task === ref && n.kind !== "review-wanted").length };
         card.host_offline = t.doer_state === "working" && hostSilent(b, t.doer_host);
-        if (t.status === "completed" || t.doer_state === "done" || t.doer_state === "replaced") cols.done.push(card);
+        if (closedNoChange(card)) cols.closed.push(card);
+        else if (t.status === "completed" || t.doer_state === "done" || t.doer_state === "replaced") cols.done.push(card);
         else if ((t.doer_state === "failed" || WAITING_STATES.includes(t.doer_state)) && !t.claimed_by) cols.failed.push(card);
         else if ((t.reviewers || []).length || (wanted.has(ref) && t.claimed_by) || ["submitted", "answered"].includes(t.doer_state)) cols.review.push(card);
         else if (t.claimed_by) cols.claimed.push(card);
@@ -1720,7 +1721,7 @@
     if (changes.length) return { kind: "changes", label: "Needs you: decide", why: `${plural(changes.length, "reviewer")} asked for changes. Request changes (the Dev reworks it) or accept it anyway.`, accept: true };
     return { kind: "accept", label: "Needs you: accept", why: reviews.length ? "Every reviewer passed it. Accept and merge, or request changes." : "Submitted, with no review recorded. Accept and merge, or request changes.", accept: true };
   }
-  const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"]];
+  const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"], ["closed", "Closed without merge"]];
   /* ------------------------------------------- In review, decluttered (no contract change: GET /v1/board fields only)
      Review jobs fold onto their task as pills; answered Q&A jobs and the reviews of done tasks go to a closed drawer; what
      is left splits into Ready for sign-off and Needs attention, each grouped by the plan it came from. */
@@ -2201,7 +2202,7 @@
   /** {list, hiddenDone, hiddenLogs, counts}: the notes a filter shows (newest first, as the board sends them). The Verdicts pill shows
       verdicts whether or not witch logs are on: that is what it is for. */
   function wallNotes(b, cols, filter = "all", withDone = false, withLogs = false) {
-    const done = new Set((cols.done || []).map((t) => t.ref));
+    const done = new Set([...(cols.done || []), ...(cols.closed || [])].map((t) => t.ref));
     const all = (b && b.notes) || [];
     const live = withDone ? all : all.filter((n) => !(n.task && done.has(n.task)));
     const shown = (k) => live.filter((n) => WALL_MATCH[k](n) && (withLogs || k === "verdicts" || !isWitchLog(n)));
@@ -2378,10 +2379,9 @@
     const waitingPlans = waiting.length;
     // The board shows numbers only; a click on a number opens that column's tasks below.
     // A column is always open: the person's choice, else the most urgent one with tasks (review, then blocked, then ready).
-    const firstFull = ["review", "failed", "ready", "claimed", "done"].find((k) => count(k)) || "ready";
+    const firstFull = ["review", "failed", "ready", "claimed", "done", "closed"].find((k) => count(k)) || "ready";
     const open = COLUMNS.some(([k]) => k === state.boardOpen) ? state.boardOpen : firstFull;
-    const noChange = (cols.done || []).filter(closedNoChange).length; // done on the board, not in the repo: said on the tile
-    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(count(key), "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${count(key)}</span><span class="l">${label}</span><span class="go ${(key === "ready" && stuckCount) || (key === "done" && noChange) ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host` : key === "done" && noChange ? `${noChange} with no change` : ""}</span></button>`;
+    const tile = ([key, label]) => `<button class="tile" type="button" data-col="${key}" data-key="col-${key}" aria-expanded="${open === key}" aria-controls="col-detail" aria-label="${label}: ${plural(count(key), "task")}${key === "ready" && stuckCount ? `, ${stuckCount} ${stuckCount === 1 ? "needs" : "need"} a host` : ""}"><span class="n">${count(key)}</span><span class="l">${label}</span><span class="go ${(key === "ready" && stuckCount) ? "warn" : ""}">${key === "ready" && stuckCount ? `${stuckCount} need a host` : ""}</span></button>`;
     const detail = !open ? "" : open === "review" ? reviewDetail("In review", lanes) : columnDetail(open, COLUMNS.find(([k]) => k === open)[1], cols[open]);
     const tasks = (b.specs || []).flatMap((s) => s.tasks.filter((t) => t.leaf).map((t) => `${s.spec}#${t.task_id}`));
     const author = localStorage.getItem("coven_author") || "";

@@ -1012,7 +1012,8 @@ describe("session screen", () => {
     (dom.window as any).confirm = realConfirm;
     closeTask();
     assert.equal(label("review"), "In review: 0 tasks", "accepted by a person: it leaves review");
-    assert.equal(label("done"), "Done: 1 task");
+    assert.equal(label("done"), "Done: 0 tasks", "Mark done with nothing merged is not Done");
+    assert.equal(label("closed"), "Closed without merge: 1 task");
     openColumn("failed");
     const blocked = openTask("lab#L2").textContent!.replace(/\s+/g, " ");
     assert.match(blocked, /Retry: the next host that runs Raven takes it again\./, "a blocked task can be sent back to the queue");
@@ -1090,7 +1091,7 @@ describe("session screen", () => {
 
   test("board: a task's conversation opens in one thread", async () => {
     await go("#/board/lab", 600);
-    openColumn("done");
+    openColumn("closed");
     openTask("lab#L1");
     const box = () => doc().querySelector('[data-key="thread-lab#L1"]') as HTMLDetailsElement;
     assert.ok(box() && box().open, "the conversation opens with the task");
@@ -1316,8 +1317,9 @@ describe("session screen", () => {
     const work = doc().querySelector('[data-key="unmerged-coven/wz-2"]');
     assert.match(work!.textContent!.replace(/\s+/g, " "), /Unmerged work: 2 commits on coven\/wz-2/);
     assert.ok(work!.querySelector('[data-accept="wz#2"]'), "Merge and clean is a button right there");
-    assert.match(doc().querySelector('[data-key="col-done"]')!.textContent!, /1 with no change/);
-    openColumn("done");
+    assert.match(doc().querySelector('[data-key="col-closed"]')!.textContent!, /1\s*Closed without merge/);
+    assert.match(doc().querySelector('[data-key="col-done"]')!.textContent!, /0\s*Done/, "a closed-no-change task is not Done");
+    openColumn("closed");
     assert.match(doc().querySelector('[data-key="row-wz#2"]')!.textContent!, /Closed · no change/);
     openColumn("review");
     assert.doesNotMatch(doc().querySelector('[data-key="row-wz#1"]')!.textContent!, /Accept and merge/, "the row offers Request changes, not Accept");
