@@ -76,3 +76,18 @@ describe("chat_run", () => {
     assert.notDeepEqual(run({ ...ok, note: "x".repeat(401) }), []);
   });
 });
+
+describe("context_compacted", () => {
+  const run = (payload: Json) => validateEvent(ev("context_compacted", payload) as any);
+  test("phase, trigger and summary_chars are checked; no free text", () => {
+    assert.deepEqual(run({ phase: "pre", trigger: "auto" }), []);
+    assert.deepEqual(run({ phase: "post", trigger: "manual", summary_chars: 0 }), []);
+    assert.notDeepEqual(run({}), []);
+    assert.notDeepEqual(run({ phase: "during" }), []);
+    assert.notDeepEqual(run({ phase: "pre", trigger: "two words" }), []);
+    assert.notDeepEqual(run({ phase: "pre", trigger: "x".repeat(41) }), []);
+    assert.notDeepEqual(run({ phase: "post", summary_chars: -1 }), []);
+    assert.notDeepEqual(run({ phase: "post", summary_chars: "12" }), []);
+    assert.notDeepEqual(run({ phase: "post", summary: "the whole summary" }), []);
+  });
+});

@@ -19,6 +19,8 @@ export const EVENT_TYPES = new Set([
   "tool_call",
   "file_changed",
   "token_usage",
+  // Kiro compacted the session's context (PreCompact / PostCompact): phase, how it was triggered and a length, never the summary
+  "context_compacted",
   "agent_spawned",
   "agent_finished",
   "spec_artifact_updated",
@@ -204,6 +206,16 @@ export function validateEvent(event: Json): string[] {
       if (payload[field] !== undefined && !HOST_ID.test(String(payload[field]))) errors.push(`${field} must be h_ and 8 hex characters`);
     }
     if (payload.free_slots !== undefined && !(Number.isInteger(payload.free_slots) && payload.free_slots >= 0 && payload.free_slots <= 16)) errors.push("free_slots must be 0 to 16");
+  }
+  // A context compaction (§6.2): typed fields only; the summary's text is never sent, only its length.
+  if (event.type === "context_compacted") {
+    const p = isObject(payload) ? payload : {};
+    if (p.phase !== "pre" && p.phase !== "post") errors.push("context_compacted phase must be pre or post");
+    if (p.trigger !== undefined && !(typeof p.trigger === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(p.trigger))) errors.push("context_compacted trigger must be a short word (letters, digits, _ -)");
+    if (p.summary_chars !== undefined && !(Number.isInteger(p.summary_chars) && p.summary_chars >= 0 && p.summary_chars <= 100000000)) errors.push("context_compacted summary_chars must be a whole number of characters");
+    for (const key of Object.keys(p)) {
+      if (!["phase", "trigger", "summary_chars"].includes(key)) errors.push(`context_compacted has no field ${JSON.stringify(key.slice(0, 40))}`);
+    }
   }
   // Unmerged work a host still holds (§6.2): a person may merge it from the web (Merge and clean), never anyone else.
   if (event.type === "branch_report") {

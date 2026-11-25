@@ -617,6 +617,7 @@
   .row .side { display: flex; gap: 8px; align-items: baseline; font-family: var(--mono); font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
   .row.fail { background: var(--bad-soft); }
   .row.dev { background: var(--warn-soft); }
+  .row.compacted { background: var(--info-soft); border-left: 3px solid var(--info-line); }
   .row.fresh { animation: fresh 1.6s ease-out; }
   @keyframes fresh { from { background: var(--info-bg); } to { background: transparent; } }
   @media (prefers-reduced-motion: reduce) { .row.fresh { animation: none; } }
@@ -2776,6 +2777,7 @@
   function markOf(e) {
     const p = e.payload || {};
     if (e.type === "spec_deviation") return ["!", "possible deviation", ""];
+    if (e.type === "context_compacted") return ["⟲", "context compacted", ""];
     if (e.type !== "tool_call") return ["•", e.type.replace(/_/g, " "), ""];
     if (p.success === false) return ["✗", "failed", "bad"];
     if (p.success === true) return ["✓", "succeeded", "ok"];
@@ -2805,6 +2807,11 @@
       case "run_finished": return `Session ended${p.reason ? ` (${esc(p.reason)})` : ""}`;
       case "run_failed": return `<span class="bad">Session failed${p.exit_code != null ? ` (exit ${esc(p.exit_code)})` : ""}</span>`;
       case "file_changed": return `${esc(p.change || "changed")} <span class="mono">${esc(p.path || "")}</span>`;
+      case "context_compacted": {
+        const post = p.phase === "post";
+        const detail = [p.trigger ? `${p.trigger}` : "", post && Number.isFinite(p.summary_chars) ? `summary ${p.summary_chars} characters` : ""].filter(Boolean).join(" · ");
+        return `Context compacted${post ? "" : " (starting)"}${detail ? `<span class="sub">${esc(detail)}</span>` : ""}`;
+      }
       case "spec_artifact_updated": return `Spec progress <span class="mono">${esc(p.spec || "")}</span><span class="sub">${esc(specSummary(p))}</span>`;
       case "warning": return `<span class="hint">${esc(p.reason || p.raw_trigger || p.raw_type || "warning")}</span>`;
       default: return `<span class="hint">${esc(e.type)}</span>`;
@@ -2825,7 +2832,7 @@
     ].filter(Boolean).join(" ");
     const dismiss = e.type === "spec_deviation" && !e.dismissed
       ? ` <button class="act quiet sm row-act" type="button" data-dismiss="${esc(e.event_id)}">${icon("eyeoff")}<span>Dismiss</span></button>` : "";
-    return `<li><button class="row ${p.success === false ? "fail" : ""} ${e.type === "spec_deviation" ? "dev" : ""} ${fresh}" type="button" data-event="${index}" data-key="ev-${esc(e.event_id)}">
+    return `<li><button class="row ${p.success === false ? "fail" : ""} ${e.type === "spec_deviation" ? "dev" : ""} ${e.type === "context_compacted" ? "compacted" : ""} ${fresh}" type="button" data-event="${index}" data-key="ev-${esc(e.event_id)}">
       <span class="time">${esc(clock(e.ts))}</span><span class="mark ${tone}" aria-hidden="true">${mark}</span>
       <span class="what"><span class="sr">${esc(label)}: </span>${rowText(e)}</span><span class="side">${side}</span>
     </button>${dismiss}</li>`;

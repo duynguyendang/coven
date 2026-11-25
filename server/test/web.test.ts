@@ -522,6 +522,21 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("a context compaction shows as a marker row with its trigger and summary length, and no text", async () => {
+    await send("compact", "run_compact", [
+      ev("run_compact", "compact", "context_compacted", { phase: "pre", trigger: "auto" }, 20),
+      ev("run_compact", "compact", "context_compacted", { phase: "post", trigger: "auto", summary_chars: 1234 }, 10),
+    ]);
+    await go("#/run/run_compact");
+    const rows = [...doc().querySelectorAll(".row.compacted")];
+    assert.equal(rows.length, 2);
+    const t = rows.map((r) => r.textContent!.replace(/\s+/g, " "));
+    const pre = t.find((x) => x.includes("(starting)"))!, post = t.find((x) => x.includes("summary 1234 characters"))!;
+    assert.ok(pre.includes("context compacted") && pre.includes("auto"), pre);
+    assert.ok(post && post !== pre, "the finished compaction shows the summary length");
+    await go("#/");
+  });
+
   test("a write row shows how much was written, a read row how much came back", async () => {
     await go(`#/run/${RUN_IDS["coven-live"]}`);
     const sides = (needle: string) => [...doc().querySelectorAll(".row")].filter((r) => r.textContent!.includes(needle)).map((r) => r.querySelector(".side")!.textContent!.trim());
