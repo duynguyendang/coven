@@ -1350,15 +1350,50 @@ describe("session screen", () => {
     assert.equal(need("wr#1"), null, "reviewers still at work: nothing for a person yet");
     assert.match(doc().querySelector('[data-key="need-wp#1"]')!.closest("section")!.querySelector("h2")!.textContent!, /Waiting for you · 2 tasks/);
     openColumn("review");
-    assert.match(doc().querySelector('[data-key="row-wp#1"]')!.textContent!, /Needs you: accept/);
+    assert.match(doc().querySelector('[data-key="row-wp#1"]')!.textContent!, /Needs you · Accept/);
     assert.doesNotMatch(doc().querySelector('[data-key="row-wr#1"]')!.textContent!, /Needs you/);
     assert.match(doc().querySelector('[data-key="row-wp#1"] [data-review-pills]')!.textContent!, /Test pass/, "the row keeps its needs-you badge and shows the review as a pill");
     assert.match(doc().querySelector('[data-key="row-wc#1"] [data-review-pills]')!.textContent!, /Test changes/);
     assert.match(doc().querySelector('[data-key="row-wr#1"] [data-review-pills]')!.textContent!, /Test pending/);
     assert.doesNotMatch(doc().querySelector('[data-key="row-wp#1"] [data-flow-chips]')!.textContent!, /White Hat Witch pass/, "said once: the pill, not a chip as well");
     assert.equal(doc().querySelector('[data-key="row-council#wp-t"]'), null, "a review job is a pill on its task, not a row of its own");
-    assert.match(openTask("wc#1").textContent!.replace(/\s+/g, " "), /Needs you: decide.*asked for changes/);
+    assert.match(openTask("wc#1").textContent!.replace(/\s+/g, " "), /Needs you · Decide.*asked for changes/);
     closeTask();
+    await go("#/");
+  });
+
+  test("board: one wording, the Chair's own jobs are hers, old pills and lost runs do not show, closed lane is build tasks only", async () => {
+    const m = (type: string, payload: Json, ago: number, member = "wq") => ({ ...ev(`member_${member}`, "wq", type, payload, ago), member });
+    await send("wq", "member_wq", [
+      m("spec_artifact_updated", { artifact: "tasks", spec: "wq", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0,
+        tasks: [{ task_id: "1", title: "Asks a question", status: "not_started", paths: ["x/"] }] }, 60),
+      m("host_online", { agents: ["green-witch", "white-hat"], slots: 2, host_id: "h_0000eeee", process: "p_0000eeee",
+        runs: [{ ref: "wq#1", agent: "green-witch", started_at: new Date(Date.now() - 30000).toISOString() }] }, 1),
+      m("task_created", { task: "council#wq1-t", title: "Test wq#1", agent: "white-hat", review_of: "wq#1", branch: "coven/wq-1", expects: "review" }, 50),
+      m("task_status", { task: "council#wq1-t", state: "working", agent: "white-hat" }, 49),
+      m("task_status", { task: "wq#1", state: "needs_clarification", agent: "green-witch", question: "which file holds the cart?" }, 40),
+      m("task_created", { task: "council#ch0123456789", title: "Prepare wq#1", agent: "scribe", from: "grey-witch" }, 30),
+      m("task_status", { task: "council#ch0123456789", state: "failed", agent: "scribe", detail: "the Scribe proposed nothing usable" }, 29),
+      m("task_created", { task: "council#wq2-d", title: "Design review", agent: "elder-witch", review_of: "wq#9", expects: "review" }, 20),
+    ]);
+    // a review job a person closed: Done, not "closed without merge"
+    assert.equal((await postJson(s.base, "/v1/board/done", { project_id: "wq", task: "council#wq2-d", author: "duy" }, auth())).status, 201);
+    // a run of a process that went silent long ago: not "going"
+    await send("wq", "member_wq-old", [m("host_online", { agents: ["white-hat"], slots: 1, host_id: "h_0000ffff", process: "p_0000ffff",
+      runs: [{ ref: "wq#1", agent: "white-hat", started_at: new Date(Date.now() - 3000000).toISOString() }] }, 1800, "wq-old")]);
+    await go("#/board/wq", 700);
+    const need = doc().querySelector('[data-key="need-wq#1"]');
+    assert.match(need!.textContent!.replace(/\s+/g, " "), /which file holds the cart\?/);
+    assert.equal(doc().querySelector('[data-key="need-council#ch0123456789"]'), null, "the Chair's own job is hers, not a second thing for a person");
+    const monitor = doc().querySelector("ol.monitor")!;
+    assert.equal(monitor.querySelectorAll("li").length, 1, "only the live run");
+    assert.doesNotMatch(monitor.textContent!, /runs twice/);
+    assert.match(doc().querySelector("[data-mon-gone]")!.textContent!, /1 run that ended or lost its host/);
+    openColumn("failed");
+    const row = doc().querySelector('[data-key="row-wq#1"]')!;
+    assert.match(row.textContent!, /Needs you · Question/);
+    assert.equal(row.querySelector("[data-review-pills]"), null, "no review pills on a task that waits for an answer");
+    assert.equal(doc().querySelector('[data-key="col-closed"]'), null, "a closed review job is not closed without merge");
     await go("#/");
   });
 
@@ -2048,7 +2083,7 @@ describe("keyboard, safety and states", () => {
     closeTask();
     await send("shop", "member_ac", [mergeEv("held", 4, { reason: "make verify failed on the merged tree" })]);
     await go("#/"); await go("#/board/shop", 600); openColumn("review"); openTask("evalu#1");
-    assert.match(card(), /Needs you: merge held.*make verify failed on the merged tree/);
+    assert.match(card(), /Needs you · Merge held.*make verify failed on the merged tree/);
     assert.equal(card().split("make verify failed on the merged tree").length - 1, 1, "the reason is said once");
     // held: Request changes is back; Accept is not (the cloud refuses the same branch again: it would fail the same check)
     assert.ok(doc().querySelector('[data-key="changes-btn-evalu#1"]'), "held: Request changes is back");

@@ -1702,31 +1702,34 @@
   }
   function needsYou(t, all, notes) {
     if (t.status === "completed" || t.doer_state === "done" || t.merged) return null;
+    // The Chair's own jobs (her sweep's Scribe and Elder Witch rounds, ids ch…): she retries, re-asks or holds the task
+    // they serve, and that task is what waits for a person; the job itself is not a second thing to answer.
+    if (t.spec === "council" && t.from === "grey-witch" && /^ch[0-9a-f]{10}$/.test(String(t.task_id))) return null;
     if (t.doer_state === "failed" && !t.claimed_by) {
       const f = t.doer_failure;
       const lead = f ? `${FAILURE_LABEL[f.cause] || f.cause}${f.summary && f.cause !== "no_change" ? `: ${short(f.summary, 110)}` : ""}. ` : (t.doer_detail ? `${short(t.doer_detail, 140)}. ` : "");
-      return { kind: "failed", label: "Failed: needs you", why: `${lead}${f && f.base_changed ? "Its paths changed on the base branch, so the work may already be in. " : ""}Open it to see why, then retry it or mark it done.` };
+      return { kind: "failed", label: "Needs you · Failed", why: `${lead}${f && f.base_changed ? "Its paths changed on the base branch, so the work may already be in. " : ""}Open it to see why, then retry it or mark it done.` };
     }
-    if (t.doer_state === "needs_clarification") return { kind: "clarify", label: "Needs you: answer", why: short(t.doer_question || t.doer_detail || "The Dev asked a question.", 200) };
-    if (t.doer_state === "needs_split") return { kind: "split", label: "Needs you: split", why: short(t.doer_pieces || t.doer_detail || "The Dev says the task is too big.", 200) };
-    if (t.doer_state === "held" && !t.claimed_by) return { kind: "host_held", label: "Needs you: held", why: short(t.doer_detail || "The host held this for a person.", 200) };
+    if (t.doer_state === "needs_clarification") return { kind: "clarify", label: "Needs you · Question", why: short(t.doer_question || t.doer_detail || "The Dev asked a question.", 200) };
+    if (t.doer_state === "needs_split") return { kind: "split", label: "Needs you · Split", why: short(t.doer_pieces || t.doer_detail || "The Dev says the task is too big.", 200) };
+    if (t.doer_state === "held" && !t.claimed_by) return { kind: "host_held", label: "Needs you · Held", why: short(t.doer_detail || "The host held this for a person.", 200) };
     if (t.doer_state !== "submitted" || !t.branch_host) return null;
     const acc = t.accept && t.accept.decision === "accept" ? t.accept : null;
     if (acc && acc.merge_state === "held") {
-      return { kind: "held", label: "Needs you: merge held", why: `The merge was held: ${short(acc.merge_reason || "the host did not say why", 150)}. Request changes so the Dev reworks it.`, accept: false };
+      return { kind: "held", label: "Needs you · Merge held", why: `The merge was held: ${short(acc.merge_reason || "the host did not say why", 150)}. Request changes so the Dev reworks it.`, accept: false };
     }
     if (acc && (acc.merge_state === "requested" || acc.merge_state === "merging")) {
       if (t.branch_host_online !== false) return null; // accepted: its host is merging
-      return { kind: "offline", label: "Needs you: host offline", why: "Accepted, but the host that holds the branch is offline: it merges when it is back. Start that host.", accept: false };
+      return { kind: "offline", label: "Needs you · Host offline", why: "Accepted, but the host that holds the branch is offline: it merges when it is back. Start that host.", accept: false };
     }
     const held = notes.filter((n) => n.task === t.ref && n.kind === "question" && /holds .* for a person/i.test(n.note || "")).pop();
     const reviews = all.filter((x) => x.review_of === t.ref);
     const running = reviews.filter((x) => x.doer_state !== "answered" && x.doer_state !== "failed");
     const changes = reviews.filter((x) => x.doer_verdict === "changes");
-    if (held) return { kind: "held", label: "Needs you: held", why: short(held.note.replace(/^.*?holds \S+ for a person:\s*/i, ""), 180) || "The host held this for a person.", accept: true };
+    if (held) return { kind: "held", label: "Needs you · Held", why: short(held.note.replace(/^.*?holds \S+ for a person:\s*/i, ""), 180) || "The host held this for a person.", accept: true };
     if (running.length) return null; // the reviewers are still on it
-    if (changes.length) return { kind: "changes", label: "Needs you: decide", why: `${plural(changes.length, "reviewer")} asked for changes. Request changes (the Dev reworks it) or accept it anyway.`, accept: true };
-    return { kind: "accept", label: "Needs you: accept", why: reviews.length ? "Every reviewer passed it. Accept and merge, or request changes." : "Submitted, with no review recorded. Accept and merge, or request changes.", accept: true };
+    if (changes.length) return { kind: "changes", label: "Needs you · Decide", why: `${plural(changes.length, "reviewer")} asked for changes. Request changes (the Dev reworks it) or accept it anyway.`, accept: true };
+    return { kind: "accept", label: "Needs you · Accept", why: reviews.length ? "Every reviewer passed it. Accept and merge, or request changes." : "Submitted, with no review recorded. Accept and merge, or request changes.", accept: true };
   }
   const COLUMNS = [["ready", "Ready"], ["claimed", "Claimed"], ["review", "In review"], ["failed", "Blocked"], ["done", "Done"], ["closed", "Closed without merge"]];
   /* ------------------------------------------- In review, decluttered (no contract change: GET /v1/board fields only)
@@ -1735,7 +1738,9 @@
   const REVIEW_PILLS = [["white-hat", "Test"], ["black-hat", "Attack"], ["elder-witch", "SA"]];
   const isDoneTask = (t) => !!t && (t.status === "completed" || t.doer_state === "done" || !!t.merged);
   /** Done on the board by a person's Mark done, with nothing merged and the spec not ticked: the repo does not have it. */
-  const closedNoChange = (t) => !!t && t.doer_state === "done" && !t.merged && t.status !== "completed";
+  const closedNoChange = (t) => !!t && t.doer_state === "done" && !t.merged && t.status !== "completed" && isBuildTask(t);
+  /** A task whose result is a branch: a spec task, or a build step of an approved plan. Review, plan and answer jobs are not. */
+  const isBuildTask = (t) => !!t && (t.spec !== "council" || !!t.from_plan);
   const boardTasks = (b) => ((b && b.specs) || []).flatMap((s) => (s.tasks || []).map((t) => ({ ...t, spec: s.spec, ref: `${s.spec}#${t.task_id}` })));
   /** The latest review job of each reviewer for `ref`: a later round replaces an earlier one. */
   function latestReviews(ref, all) {
@@ -1979,7 +1984,7 @@
     out.after = asking ? `<form class="changes-form" data-changes-form="${esc(t.ref)}"><label class="sr" for="changes-${esc(t.ref)}">What should change</label>
         <input id="changes-${esc(t.ref)}" data-key="changes-${esc(t.ref)}" maxlength="300" required placeholder="What should change? The Dev reads this." />
         <button class="act bad" type="submit">${icon("send")}<span>Send to the Dev</span></button></form>` : "";
-    // Held: the card's first line already says why (Needs you: merge held), so it is not said again here. Accepting the
+    // Held: the card's first line already says why (Needs you · Merge held), so it is not said again here. Accepting the
     // same branch again fails the same check (the cloud refuses it): the way on is a rework, and Accept comes back with it.
     if (isAccept && !(t.needs && t.needs.kind === "held")) fact("held", `<span class="badge warn">Held</span> <span class="hint">${esc(short(a.merge_reason || "the host did not say why", 200))}</span>`);
     if (!isAccept && a && a.decision === "changes") out.facts.push(`<span class="hint">Changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span>`);
@@ -2061,7 +2066,8 @@
       ? `<span class="badge ${esc(t.doer_state)}">${esc(DOER_STATE[t.doer_state])}</span>`
       : stuck ? '<span class="badge warn">Needs a host</span>' : t.waits_for && !t.claimed_by ? `<span class="hint">waits for ${esc(t.waits_for)}</span>` : "";
     const drift = t.drift ? `<span class="badge warn" data-drift title="${esc(t.drift)}">Drift: repo and board disagree</span>` : "";
-    const s = opts.pills ? t.signoff || null : null;
+    // pills say how the review of a submitted branch stands; on a task that waits for something else they are old news
+    const s = opts.pills && (t.doer_state === "submitted" || !t.doer_state) ? t.signoff || null : null;
     const pills = s && s.pills ? `<span class="rpills" data-review-pills>${s.pills.map((p) => `<span class="badge ${PILL_TONE[p.state]}" data-pill="${esc(p.agent)}" title="${esc(agentName(p.agent))}: ${esc(p.state)}">${esc(p.label)} ${esc(p.state)}</span>`).join("")}</span>` : "";
     const chips = (t.chips || []).filter((c) => !(s && s.pills && c.review));
     const why = s && s.why ? `<span class="hint" data-why>${esc(s.why)}</span>` : "";
@@ -2329,7 +2335,11 @@
   function monitorHtml(b) {
     const m = b.monitor;
     if (!m) return "";
-    const rows = m.runs || [];
+    // Live runs only: a run whose task is done, or whose host process went silent (DISCONNECTED), is not "going". They are
+    // folded under one line, so a stopped host's runs do not read as two witches on the same work.
+    const all = m.runs || [];
+    const rows = all.filter((r) => r.heartbeat !== "DISCONNECTED" && r.stage !== "done");
+    const gone = all.length - rows.length;
     const row = (r) => {
       const task = r.ref.startsWith("chat#")
         ? `<a href="#/chat/${encodeURIComponent(b.project_id)}" data-key="mon-task-${esc(r.ref)}-${esc(r.process)}">chat request</a>`
@@ -2344,10 +2354,12 @@
         <span class="mon-beat"><span class="health"><span class="dot ${esc(HEARTBEAT_TONE[r.heartbeat] || "")}" aria-hidden="true"></span>${r.heartbeat === "fresh" ? "heartbeat" : esc(r.heartbeat)}</span> ${agoTag(r.last_seen)}</span>
       </li>`;
     };
-    const twice = rows.filter((r) => r.duplicate).length;
-    const live = liveRuns(b).length; // the same runs the stage puts at a station; DISCONNECTED rows stay listed until they drop
+    const refs = rows.map((r) => r.ref);
+    const twice = rows.filter((r) => refs.indexOf(r.ref) !== refs.lastIndexOf(r.ref)).length; // twice among live runs only
+    for (const r of rows) r.duplicate = refs.indexOf(r.ref) !== refs.lastIndexOf(r.ref);
+    const live = rows.length;
     return `<h2>Monitor <span class="hint">· every active run on every host, read only</span></h2>
-      ${live ? `<p class="hint mon-count">${plural(live, "run")} going${twice ? `, <b class="bad">${twice} on the same work</b>` : ""}</p>` : '<p class="hint mon-empty">No witch is working right now.</p>'}${rows.length ? `<ol class="monitor" aria-label="Runs going now">${rows.map(row).join("")}</ol>` : ""}`;
+      ${live ? `<p class="hint mon-count">${plural(live, "run")} going${twice ? `, <b class="bad">${twice} on the same work</b>` : ""}</p>` : '<p class="hint mon-empty">No witch is working right now.</p>'}${rows.length ? `<ol class="monitor" aria-label="Runs going now">${rows.map(row).join("")}</ol>` : ""}${gone ? `<p class="hint mon-gone" data-mon-gone>${plural(gone, "run")} that ended or lost ${gone === 1 ? "its" : "their"} host in the last hour ${gone === 1 ? "is" : "are"} not shown.</p>` : ""}`;
   }
   /** A witch's responsibilities, folded: what she owns, produces, hands off and never does. */
   function roleCard(slug) {
@@ -2422,7 +2434,7 @@
       ${monitorHtml(b)}
       ${stageHtml(members)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
-      <h2>Tasks</h2>${boardBar(project, specFilter)}${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
+      <h2>Tasks</h2>${boardBar(project, specFilter)}${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => !["failed", "closed"].includes(k) || (cols[k] || []).length || open === k).map(tile).join("")}</div>${detail}`
         : voice("No task list yet.", "It appears when a member's Kiro starts or finishes a spec task.", "grey-witch", true)}
       ${chatLane(b)}
       ${decidedList(decidedPlans, b)}
