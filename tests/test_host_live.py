@@ -321,3 +321,13 @@ def test_a_branch_merged_by_hand_resolves_in_one_poll_and_unblocks_the_next_step
     assert git(root, "merge-base", "--is-ancestor", tip, "coven/council-pm-1b2") == ""
     assert "src/cart/tax.py" in git(root, "show", "--name-only", "--format=", "coven/council-pm-1b2")
     assert council()[1]["pm-1b2"]["doer_state"] == "submitted"
+
+
+def test_resume_id_goes_before_the_prompt_and_only_when_given(monkeypatch):
+    plain = host.agent_command("green-witch", "PROMPT", "fs_read")
+    assert "--resume-id" not in plain
+    cmd = host.agent_command("green-witch", "PROMPT", "fs_read", "sess-1")
+    assert cmd[-1] == "PROMPT" and cmd[cmd.index("--resume-id") + 1] == "sess-1" and cmd.index("--resume-id") < cmd.index("PROMPT")
+    assert host.resume_id({"COVEN_RESUME_ID": "abc_1"}) == "abc_1" and host.resume_id({}) is None
+    with pytest.raises(host.HostError):
+        host.resume_id({"COVEN_RESUME_ID": "a b; rm"})

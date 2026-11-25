@@ -308,6 +308,8 @@ host deletes its finished `coven/` branches whose commits are all in the base (h
 branches that still hold unmerged commits under **Waiting for you** with **Merge and clean** (`--keep-branches` or
 `COVEN_PRUNE_BRANCHES=0` turns the deleting off). With both switches on, a chat message can
 reach the base branch with no person deciding, so leave `COVEN_AUTONOMOUS_PLANS` unset on a cloud others post to.
+`COVEN_RESUME_ID=<id>` (default unset) continues that Kiro session: `--resume-id <id>` before the prompt, and `--resume --resume-id <id>` on a Kiro Web (`--cloud`) run.
+
 `COVEN_SANDBOX=1` (default off) passes `--sandbox` to every headless Kiro run; the host's own commit, merge and push
 still run outside the agent process.
 With `COVEN_AUTONOMOUS_SIGNOFF=1` on the cloud (unset, it follows `COVEN_AUTONOMOUS_PLANS`), an autonomous host
