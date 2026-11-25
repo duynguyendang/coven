@@ -306,7 +306,7 @@ export function validateEvent(event: Json): string[] {
   if (event.type === "task_accept") {
     const p = isObject(payload) ? payload : {};
     if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_accept needs task as <spec>#<task>");
-    if (!["accept", "changes"].includes(p.decision)) errors.push("task_accept decision is accept or changes");
+    if (!["accept", "changes", "discard"].includes(p.decision)) errors.push("task_accept decision is accept, changes or discard");
     if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("task_accept branch must be coven/<name>");
     if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push("task_accept names the host that holds the branch");
     if (p.reason !== undefined && (typeof p.reason !== "string" || p.reason.length > 300)) errors.push("task_accept reason is at most 300 characters");

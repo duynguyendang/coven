@@ -512,7 +512,11 @@ export function createHandler(options: HandlerOptions): Handler {
       const task = optionalString(body, "task") ?? "";
       if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
       const decision = optionalString(body, "decision") ?? "";
-      if (!["accept", "changes"].includes(decision)) throw validation("decision", "accept or changes");
+      if (!["accept", "changes", "discard"].includes(decision)) throw validation("decision", "accept, changes or discard");
+      // Discard: only a finished task's unmerged branch (branch_report), never a submitted one that waits for review.
+      if (decision === "discard" && !store.board.unmergedOf(projectId).some((b: Json) => b.task === task)) {
+        throw new HttpError(409, "only a finished task's unmerged branch can be discarded; a submitted branch is accepted or sent back");
+      }
       const reason = (optionalString(body, "reason") ?? "").trim().slice(0, 300);
       if (decision === "changes" && !reason) throw validation("reason", "say what to change");
       const author = (optionalString(body, "author") ?? "someone").slice(0, 40);

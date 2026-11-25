@@ -305,7 +305,8 @@ plan waits for you. Verify commands (`coven/prepare-verify-*`), holds and deadlo
 `coven host run` is opt-in; **`./run-host.sh` starts autonomous by default**: turn it off with
 `./run-host.sh --manual` or `COVEN_AUTONOMOUS=0 ./run-host.sh`. It also cleans up branches by default: every 10 minutes the
 host deletes its finished `coven/` branches whose commits are all in the base (here and on origin), and lists finished tasks'
-branches that still hold unmerged commits under **Waiting for you** with **Merge and clean** (`--keep-branches` or
+branches that still hold unmerged commits under **Waiting for you** with **Merge and clean** or **Discard** (a git bundle
+is kept in `.coven/archive/`) (`--keep-branches` or
 `COVEN_PRUNE_BRANCHES=0` turns the deleting off). With both switches on, a chat message can
 reach the base branch with no person deciding, so leave `COVEN_AUTONOMOUS_PLANS` unset on a cloud others post to.
 `COVEN_RESUME_ID=<id>` (default unset) continues that Kiro session: `--resume-id <id>` before the prompt, and `--resume --resume-id <id>` on a Kiro Web (`--cloud`) run.

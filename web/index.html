@@ -1872,11 +1872,16 @@
     const items = [...cols.review, ...cols.failed].filter((t) => t.needs);
     // A finished task's branch that still holds commits not in the base: Merge and clean (the host merges, checks, deletes it).
     const accepting = new Set(boardTasks(state.board).filter((t) => t.accept && t.accept.decision === "accept" && ["requested", "merging"].includes(t.accept.merge_state)).map((t) => t.ref));
+    const discarding = new Set(boardTasks(state.board).filter((t) => t.accept && t.accept.decision === "discard" && t.accept.state === "requested").map((t) => t.ref));
+    const heldOf = new Map(boardTasks(state.board).filter((t) => t.accept && t.accept.decision === "accept" && t.accept.merge_state === "held").map((t) => [t.ref, t.accept.merge_reason]));
     const unmerged = ((state.board && state.board.unmerged) || []).filter((u) => u.task);
     const work = unmerged.map((u) => `<li class="need-row" data-key="unmerged-${esc(u.branch)}"><div class="need-what"><span class="mono">${esc(u.task)}</span>
         <span class="tt">Unmerged work: ${esc(plural(u.ahead, "commit"))} on <code>${esc(u.branch)}</code></span>
-        <div class="hint">The task is closed but ${esc(u.host || "a host")} still holds commits that are not in the base.${u.host_online ? "" : " That host is offline: it merges when it is back."}</div></div>
-      <div class="need-act">${accepting.has(u.task) ? '<span class="badge working">Merging</span>' : `<button class="act good" type="button" data-accept="${esc(u.task)}" data-key="unmerged-accept-${esc(u.branch)}">${icon("check")}<span>Merge and clean</span></button>`}</div></li>`);
+        <div class="hint">${heldOf.has(u.task) ? `The merge was held: ${codeSpans(short(heldOf.get(u.task) || "the host did not say why", 140))}. Discard it (a copy is kept on the host), or fix the branch.`
+          : `The task is closed but ${esc(u.host || "a host")} still holds commits that are not in the base.`}${u.host_online ? "" : " That host is offline: it acts when it is back."}</div></div>
+      <div class="need-act">${accepting.has(u.task) ? '<span class="badge working">Merging</span>' : discarding.has(u.task) ? '<span class="badge working">Discarding</span>'
+        : `${heldOf.has(u.task) ? "" : `<button class="act good" type="button" data-accept="${esc(u.task)}" data-key="unmerged-accept-${esc(u.branch)}">${icon("check")}<span>Merge and clean</span></button>`}
+        <button class="act quiet" type="button" data-discard="${esc(u.task)}" data-branch="${esc(u.branch)}" data-key="unmerged-discard-${esc(u.branch)}">${icon("undo")}<span>Discard</span></button>`}</div></li>`);
     if (!items.length && !work.length) return "";
     const row = (t) => `<li class="need-row" data-key="need-${esc(t.ref)}"><div class="need-what"><button class="link mono" type="button" data-task-open="${esc(t.ref)}" data-key="need-open-${esc(t.ref)}"
         command="show-modal" commandfor="task-dialog" aria-haspopup="dialog">${esc(t.ref)}</button> <span class="tt">${esc(short(t.title || "", 70))}</span>
@@ -3138,6 +3143,11 @@
       await loadBoard();
       render({ keepScroll: true });
     };
+    root.querySelectorAll("[data-discard]").forEach((el) => el.addEventListener("click", async () => {
+      if (!window.confirm(`Discard ${el.dataset.branch}? The host deletes it here and on origin and keeps a git bundle of it in .coven/archive.`)) return;
+      el.disabled = true;
+      try { await evaluate(el.dataset.discard, "discard"); } catch (error) { el.disabled = false; quiet(error); }
+    }));
     root.querySelectorAll("[data-accept]").forEach((el) => el.addEventListener("click", async () => {
       el.disabled = true;
       try { await evaluate(el.dataset.accept, "accept"); } catch (error) { el.disabled = false; quiet(error); }
