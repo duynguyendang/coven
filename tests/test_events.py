@@ -79,6 +79,16 @@ def test_stream_unknown_record_is_kept_as_warning():
     assert event["type"] == "warning"
 
 
+def test_stream_run_error_becomes_warning_with_stage_and_message():
+    record = {"type": "runError", "data": {"stage": "agent_load", "message": "x" * 500}}
+    event = events.normalize_stream(record, project_id="p", run_id="r")[0]
+
+    assert event["type"] == "warning"
+    assert event["payload"]["raw_type"] == "runError"
+    assert event["payload"]["stage"] == "agent_load"
+    assert event["payload"]["message"] == "x" * 300
+
+
 def test_stream_chatter_is_dropped():
     assert events.normalize_stream({"type": "message", "text": "hi"}, project_id="p", run_id="r") == []
     assert events.normalize_stream({"type": "assistant"}, project_id="p", run_id="r") == []
