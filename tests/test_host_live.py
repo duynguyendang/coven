@@ -130,6 +130,22 @@ def world(cloud, tmp_path, monkeypatch):
     return {"root": root, "project": project, "push": push, "calls": calls}
 
 
+def test_sandbox_flag_is_opt_in_and_the_hosts_git_steps_stay_outside_the_agent(world, monkeypatch):
+    assert "--sandbox" not in host.agent_command("green-witch", "PROMPT", "fs_read"), "off by default"
+    monkeypatch.setenv("COVEN_SANDBOX", "1")
+    cmd = host.agent_command("green-witch", "PROMPT", "fs_read")
+    assert cmd.index("--sandbox") < cmd.index("--agent") < len(cmd) - 1 and cmd[-1] == "PROMPT"
+
+    root = world["root"]
+    host.Host(root, slots=3, out=lambda line: None).run(once=True)
+    calls = world["calls"]()
+    assert {c["agent"] for c in calls} >= {"green-witch", "elf"}
+    assert all("--sandbox" in c["args"] for c in calls), "every headless run is sandboxed"
+    # The fake model runs no git; the commit on the task branch is the host's own step, outside the agent process.
+    assert git(root, "log", "-1", "--format=%s", "coven/shop-1") == "coven: shop#1 Cart totals"
+    assert not any(w in c["args"] for c in calls for w in ("commit", "merge", "push"))
+
+
 def test_a_host_takes_requests_and_tasks_runs_each_witch_and_the_cloud_sees_it_all(world, cloud):
     root, project, push = world["root"], world["project"], world["push"]
     asked = api(cloud, "/v1/chat", {"project_id": project, "kind": "do", "message": "is the build healthy?", "author": "duy"})["message_id"]
