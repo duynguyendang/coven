@@ -444,6 +444,9 @@
   .tile .go:empty { display: none; }
   .tile .go.warn { color: var(--warn-ink); font-weight: 600; }
   [data-board-project] { padding: 3px 8px; }
+  .board-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 8px; }
+  .board-bar .spec-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border: 1px solid var(--line); border-radius: var(--radius-inner); background: var(--well); font-size: 0.8125rem; }
+  .board-bar .keys { color: var(--muted); font-size: 0.8125rem; }
   .wall-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 8px; }
   .wall-bar .filters { margin: 0; }
   .wall-bar label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 0.8125rem; cursor: pointer; min-block-size: var(--target-size); }
@@ -1125,7 +1128,7 @@
     }
     if (parts[0] === "deviations") return { ...base, view: "deviations", filter: "all" };
     if (parts[0] === "flows") return { ...base, view: "flows", filter: "all" };
-    if (parts[0] === "board") return { ...base, view: "board", project: parts[1] || null, filter: "all" };
+    if (parts[0] === "board") return { ...base, view: "board", project: parts[1] || null, spec: new URLSearchParams(query).get("spec") || null, filter: "all" };
     if (parts[0] === "chat") return { ...base, view: "chat", project: parts[1] || null, filter: "all" };
     if (parts[0] === "flow" && parts[1]) return { ...base, view: "flow", flowId: parts[1], filter: "all" };
     if (parts[0] === "councils") return { ...base, view: "councils", filter: "all" };
@@ -1135,6 +1138,8 @@
     return { ...base, view: "sessions" };
   }
   const go = (hash) => { location.hash = hash; };
+  /** The hash of a board, optionally narrowed to one spec. */
+  const boardHash = (project, spec = null) => `#/board/${encodeURIComponent(project)}${spec ? `?spec=${encodeURIComponent(spec)}` : ""}`;
   /** The hash of a list page. The filter lives in the URL so it survives reload and Back. */
   function listHash({ project = null, spec = null, filter = "all" } = {}) {
     const path = project ? `#/p/${encodeURIComponent(project)}${spec ? `/s/${encodeURIComponent(spec)}` : ""}` : "#/";
@@ -1167,7 +1172,8 @@
     // Draw the new place at once (its own "Loading…" if its data is not here yet), then fill it in:
     // the old panel must never stay on screen under a new URL while a request is on its way.
     if (changed) {
-      if (next.view === "board") state.board = null;
+      // a change of spec alone keeps the board on screen: it is only filtered differently
+      if (next.view === "board" && (prev.view !== "board" || next.project !== prev.project)) state.board = null;
       if (next.view === "chat") state.chat = null;
       if (next.view === "session") { state.run = null; state.events = []; state.council = null; state.seen = new Set(); state.paused = false; state.held = []; }
       render();
@@ -1408,7 +1414,7 @@
       const here = r.project === id;
       const expanded = open.has(id) && specs.length > 0;
       const subs = expanded ? `<ul class="nav-sub" aria-label="Specs of ${esc(id)}">${specs.map((sp) => `<li>
-        <a class="nav-item" href="${specHash(id, sp.spec)}" data-key="nav-s-${esc(id)}-${esc(sp.spec)}"${here && r.spec === sp.spec ? ' aria-current="page"' : ""}>
+        <a class="nav-item" href="${r.view === "board" ? boardHash(id, sp.spec) : specHash(id, sp.spec)}" data-key="nav-s-${esc(id)}-${esc(sp.spec)}"${here && r.spec === sp.spec ? ' aria-current="page"' : ""}>
         <span class="label">${esc(sp.spec)}</span> <span class="count">${Number(sp.done) || 0}/${Number(sp.total) || 0}</span></a></li>`).join("")}</ul>` : "";
       return `<li><div class="nav-row">
         <button class="caret-btn ${specs.length ? "" : "none"}" type="button" data-caret="${esc(id)}" aria-expanded="${expanded}" aria-label="Specs of ${esc(id)}" ${specs.length ? "" : 'tabindex="-1" aria-hidden="true"'}>${expanded ? "▾" : "▸"}</button>
@@ -2003,7 +2009,10 @@
     const quiet = { ready: EMPTY.waiting.say, claimed: EMPTY.waiting.say,
       review: "Nothing waits for review: every branch has been judged.", failed: "Nothing is blocked.", done: "Nothing is done yet: the first merge lands here." };
     if (!list.length) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<div class="hint p-1">${esc(quiet[key] || "No tasks here.")}</div></section>`;
-    if (list.length <= LONG_COLUMN) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">${head}<ul class="tlist">${list.map(taskRow).join("")}</ul></section>`;
+    if (list.length <= LONG_COLUMN) return `<section class="column-detail" id="col-detail" aria-label="${esc(label)}">
+      <div class="col-head">${head}<label class="sr" for="col-filter">Filter ${esc(label)}</label>
+        <input id="col-filter" class="col-filter" type="search" data-key="col-filter" aria-keyshortcuts="${esc(SHORTCUTS.search)}" placeholder="Filter ${esc(label.toLowerCase())} by id, title or witch" autocomplete="off" /></div>
+      <ul class="tlist">${list.map(taskRow).join("")}</ul><p class="hint col-none" hidden>No task matches.</p></section>`;
     const groups = new Map();
     for (const t of list) groups.set(t.spec, [...(groups.get(t.spec) || []), t]);
     const newest = (g) => g.reduce((m, t) => ((t.created_at || "") > m ? t.created_at || "" : m), "");
@@ -2362,6 +2371,12 @@
         <div class="state"><span class="badge ${esc(r.state)}">${esc(r.state)}${r.code ? ` · ${esc(r.code)}` : ""}</span>${agoTag(r.started_at)}</div></article>`;
     return `<section class="lane chat-lane" data-lane="chat" aria-label="Chat"><h4>Chat<span class="n">${runs.length}</span></h4><div class="cards">${runs.map(one).join("")}</div></section>`;
   }
+  /** Key hints for the board, and the spec the board is narrowed to (with a way to clear it). */
+  function boardBar(project, spec) {
+    const chip = spec ? `<span class="spec-chip" data-key="board-spec" role="status">Spec <b class="mono">${esc(spec)}</b>
+        <a class="act quiet" href="${boardHash(project)}" data-key="board-spec-clear" aria-label="Show every spec again">${icon("x")}<span>Clear</span></a></span>` : "";
+    return `<div class="board-bar">${chip}<span class="keys board-keys"><kbd class="kbd">${esc(SHORTCUTS.search)}</kbd> filter tasks · <kbd class="kbd">${esc(SHORTCUTS.nav)}</kbd> hide or show the sidebar</span></div>`;
+  }
   function boardView() {
     const project = defaultBoardProject();
     const crumbs = [{ label: "Sessions", href: "#/" }, { label: "Coven board" }];
@@ -2372,6 +2387,8 @@
     const picker = names.length > 1 ? `<label class="hint">Project <select data-board-project aria-label="Board project">${names.map((p) => `<option ${p === project ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
     const members = witchRoster(b);
     const cols = boardColumns(b);
+    const specFilter = state.route.spec;
+    if (specFilter) for (const k of Object.keys(cols)) cols[k] = cols[k].filter((t) => t.spec === specFilter);
     const lanes = reviewLanes(cols, b);
     const count = (key) => (key === "review" ? lanes.count : (cols[key] || []).length); // review jobs shown as pills and the drawer are not counted
     state.runnable = runnableWitches(b);
@@ -2405,7 +2422,7 @@
       ${monitorHtml(b)}
       ${stageHtml(members)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
-      <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
+      <h2>Tasks</h2>${boardBar(project, specFilter)}${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : voice("No task list yet.", "It appears when a member's Kiro starts or finishes a spec task.", "grey-witch", true)}
       ${chatLane(b)}
       ${decidedList(decidedPlans, b)}
@@ -3126,13 +3143,15 @@
       const q = input.value.trim().toLowerCase();
       const section = input.closest(".column-detail");
       let any = false;
-      section.querySelectorAll("details.tgroup").forEach((g) => {
+      const groups = section.querySelectorAll("details.tgroup");
+      groups.forEach((g) => {
         let hits = 0;
         g.querySelectorAll(".tlist > li").forEach((li) => { const hit = !q || li.textContent.toLowerCase().includes(q); li.hidden = !hit; if (hit) hits += 1; });
         g.hidden = hits === 0;
         if (q && hits) g.open = true;
         any = any || hits > 0;
       });
+      if (!groups.length) section.querySelectorAll(".tlist > li").forEach((li) => { const hit = !q || li.textContent.toLowerCase().includes(q); li.hidden = !hit; any = any || hit; });
       section.querySelector(".col-none").hidden = any;
     }));
     root.querySelectorAll(".col-filter").forEach((input) => { if (state.colFilter) { input.value = state.colFilter; input.dispatchEvent(new Event("input")); } }); // a live redraw keeps the filter
@@ -3518,7 +3537,8 @@
     const active = document.activeElement;
     const tag = (active && active.tagName) || "";
     const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(tag);
-    if (ev.key === SHORTCUTS.search && !typing && $("q")) { ev.preventDefault(); $("q").focus(); return; }
+    const finder = $("q") || $("col-filter");
+    if (ev.key === SHORTCUTS.search && !typing && finder) { ev.preventDefault(); finder.focus(); return; }
     if (ev.key === SHORTCUTS.nav && !typing && !ev.ctrlKey && !ev.metaKey) { toggleNav(); return; }
     if (ev.key !== "Escape") return;
     if ($("task-dialog").open) return; // the native dialog handles its own Esc
