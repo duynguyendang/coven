@@ -113,6 +113,8 @@ TEMPLATE = [
     ("coven-task-start", "PreTaskExec", None, "Mark the current spec task so the dashboard can flag off-spec work."),
     ("coven-task-end", "PostTaskExec", None, "Close the current spec task."),
     ("coven-turn-end", "Stop", None, "Mark the end of each agent turn so the dashboard can group tool calls into turns."),
+    ("coven-precompact", "PreCompact", None, "Mark the start of a context compaction."),
+    ("coven-postcompact", "PostCompact", None, "Mark the end of a context compaction."),
     ("coven-session-end", "SessionEnd", None, "Seal the run when the Kiro session ends."),
 ]
 HOOK_FILE = "telemetry.json"
@@ -130,7 +132,7 @@ def _template_hooks(command: str) -> list[dict]:
 
 
 def _add_missing(root: Path | None, command: str) -> list[tuple[str, str, str]]:
-    """Give a repository without Coven hooks the standard six, in `.kiro/hooks/telemetry.json`."""
+    """Give a repository without Coven hooks the standard hooks, in `.kiro/hooks/telemetry.json`."""
     folder = hooks_dir(root)
     path = folder / HOOK_FILE
     data: dict = {"version": "v1", "hooks": []}

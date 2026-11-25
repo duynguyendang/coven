@@ -140,17 +140,17 @@ def test_last_received_counts_todays_lines(repo):
 # ----------------------------------------------- onboarding a repo that has no hooks yet
 
 
-def test_install_gives_a_new_repo_the_six_hooks(tmp_path):
+def test_install_gives_a_new_repo_the_eight_hooks(tmp_path):
     (tmp_path / ".kiro").mkdir()
 
     changes = hooks.install(tmp_path)
 
-    assert len(changes) == 6 and {c[0] for c in changes} == {"telemetry.json"}
+    assert len(changes) == 8 and {c[0] for c in changes} == {"telemetry.json"}
     data = json.loads((tmp_path / ".kiro" / "hooks" / "telemetry.json").read_text())
-    assert [h["trigger"] for h in data["hooks"]] == ["SessionStart", "PostToolUse", "PreTaskExec", "PostTaskExec", "Stop", "SessionEnd"]
+    assert [h["trigger"] for h in data["hooks"]] == ["SessionStart", "PostToolUse", "PreTaskExec", "PostTaskExec", "Stop", "PreCompact", "PostCompact", "SessionEnd"]
     assert data["hooks"][1]["matcher"] == "*"
     assert all(h["action"]["command"] == hooks.absolute_command() for h in data["hooks"])
-    assert len(hooks.commands(tmp_path, only_ours=True)) == 6
+    assert len(hooks.commands(tmp_path, only_ours=True)) == 8
     assert hooks.install(tmp_path) == [], "a second run changes nothing"
 
 
@@ -164,7 +164,7 @@ def test_install_adds_to_the_users_own_hook_file_without_touching_their_hooks(tm
 
     data = json.loads((folder / "telemetry.json").read_text())
     assert data["hooks"][0] == own
-    assert len(data["hooks"]) == 7
+    assert len(data["hooks"]) == 9
 
 
 def test_install_never_overwrites_a_hook_file_it_cannot_read(tmp_path):
