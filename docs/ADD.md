@@ -355,6 +355,9 @@ hosts. The cloud computes the roll-up (`3 of 5 done, 1 failed`). The cloud never
   worktree holds nothing and goes too (a retry makes a fresh one). A throw-away checkout is kept while its job runs and for
   two hours after it was made, so a reviewer's checkout never disappears under her. Every host does this for its own
   branches, so nobody has to visit a host to clean it.
+- **Spec snapshots.** A host publishes a spec's `spec_artifact_updated` snapshot only when it changed since the last one
+  this working copy sent (`.coven/state/synced.json`), or six hours after it; `coven board sync` always sends. Sending
+  every spec on every tick had made these snapshots 98% of the cloud's store, which it replays into memory at start.
 - **No task without a next step.** Every stopped task ends in `queued`, `held` or a question to a person, never in nothing:
   - a question (`NEEDS`): Scribe, then the Elder Witch's check, then a note on the task with both answers (the Dev's next
     prompt shows it as untrusted text) and `task_status queued`; the same question again is a new round; after

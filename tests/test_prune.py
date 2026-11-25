@@ -179,3 +179,18 @@ def test_a_reviewer_who_cannot_run_commands_gets_the_diff_in_her_prompt(repo, mo
     host.execute_job(repo, job, "elder-witch", lambda cwd, agent, prompt, env, timeout: seen.append(prompt) or ("1. ok\nVERDICT: pass", None))
     assert "The change under review, from the host" in seen[0] and "coven_shop-1.txt" in seen[0] and "```diff" in seen[0]
     assert "You cannot run commands. The host gives you the diff below" in seen[0]
+
+
+def test_sync_sends_a_spec_only_when_it_changed(repo, monkeypatch):  # noqa: F811
+    """Every tick used to send every spec's whole task list: 98% of the cloud's store. Now only a change goes."""
+    from coven import emit
+    sent = []
+    monkeypatch.setattr(emit, "deliver", lambda event, root: sent.append(event["payload"]["spec"]))
+    monkeypatch.setattr(board, "member", lambda root: "wsl-1")
+    assert board.sync(repo) == ["shop"] and board.sync(repo) == [], "unchanged: nothing sent"
+    tasks = repo / ".kiro" / "specs" / "shop" / "tasks.md"
+    tasks.write_text(tasks.read_text().replace("- [ ] 1. Cart totals", "- [x] 1. Cart totals"))
+    assert board.sync(repo) == ["shop"], "a change is sent"
+    assert board.sync(repo, force=True) == ["shop"], "a person's coven board sync always sends"
+    monkeypatch.setattr(board, "SYNC_AGAIN", 0)
+    assert board.sync(repo) == ["shop"], "and an unchanged spec is sent again after SYNC_AGAIN"

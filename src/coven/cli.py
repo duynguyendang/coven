@@ -302,7 +302,7 @@ def cmd_member(args: argparse.Namespace) -> int:
             print(f"coven member join: {exc}", file=sys.stderr)
             return 2
         print(f"this working copy is member {name!r} of project {config.project_id(root)!r}")
-        specs = board.sync(root)
+        specs = board.sync(root, force=True)
         if specs:
             print(f"published the task list of {', '.join(specs)} to the coven board")
         return 0
@@ -329,7 +329,7 @@ def cmd_host(args: argparse.Namespace) -> int:
         print(f"this working copy is host {name!r} of project {config.project_id(root)!r}")
         have = agents.installed(root)
         print(f"it can run {len(have)} agent(s): {', '.join(have) or 'none (add .kiro/agents/<name>.json)'}")
-        specs = board.sync(root)
+        specs = board.sync(root, force=True)
         if specs:
             print(f"published the task list of {', '.join(specs)} to the coven board")
         return 0
@@ -541,7 +541,7 @@ def cmd_board(args: argparse.Namespace) -> int:
                 print(f"{t['spec']}#{t['task_id']}  {t.get('title') or ''}  paths: {', '.join(t.get('paths') or []) or 'none declared'}")
             return 0
         if action == "sync":
-            specs = board.sync(root)
+            specs = board.sync(root, force=True)  # a person asked: publish every spec now
             print(f"published {', '.join(specs)}" if specs else "no specs in .kiro/specs/")
             return 0
         if action == "next":

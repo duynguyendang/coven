@@ -16,6 +16,7 @@ Standard library only: hooks and flow steps run under the system Python.
 from __future__ import annotations
 
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -622,18 +623,46 @@ def drift(tasks: dict[str, dict], view: dict) -> list[str]:
     return found
 
 
-def sync(root: Path) -> list[str]:
-    """Publish every spec's task list and progress to the whiteboard now (ids, status, paths only)."""
+SYNC_FILE = "synced.json"
+SYNC_AGAIN = 6 * 3600  # an unchanged spec is published again after this long, in case the cloud lost it
+
+
+def sync(root: Path, force: bool = False) -> list[str]:
+    """Publish each spec's task list and progress to the whiteboard (ids, status, paths only), when it changed.
+
+    A host calls this every tick: sending every spec every time filled the cloud's store (each snapshot is a whole task
+    list, and the cloud replays them all at start). So a spec goes only when its snapshot differs from the last one sent
+    from this working copy, or SYNC_AGAIN seconds after it, or with `force`."""
     tasks = specmap.load(root)
     sent = []
+    path = config.state_dir(root) / SYNC_FILE
+    try:
+        last = json.loads(path.read_text(encoding="utf-8"))
+        last = last if isinstance(last, dict) else {}
+    except (OSError, ValueError):
+        last = {}
+    now = time.time()
+    project = config.project_id(root)
     for spec in sorted({t["spec"] for t in tasks.values() if t.get("spec")}):
         summary = specmap.progress(tasks, spec)
         if not summary:
             continue
-        event = events.make_event(
-            project_id=config.project_id(root), run_id=f"member_{member(root)}"[:120], type="spec_artifact_updated",
-            source="coven-cli", payload_extra={"artifact": "tasks", "path": f".kiro/specs/{spec}/tasks.md", **summary,
-                                               "tasks": tasks_snapshot(tasks, spec)})
+        payload = {"artifact": "tasks", "path": f".kiro/specs/{spec}/tasks.md", **summary, "tasks": tasks_snapshot(tasks, spec)}
+        digest = hashlib.sha256(json.dumps([project, payload], sort_keys=True).encode()).hexdigest()[:24]
+        seen = last.get(spec) or {}
+        if not force and seen.get("digest") == digest and now - float(seen.get("at") or 0) < SYNC_AGAIN:
+            continue
+        event = events.make_event(project_id=project, run_id=f"member_{member(root)}"[:120], type="spec_artifact_updated",
+                                  source="coven-cli", payload_extra=payload)
         emit.deliver(redact_event(event), root)
+        last[spec] = {"digest": digest, "at": now}
         sent.append(spec)
+    if sent:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(last, indent=1) + "\n", encoding="utf-8")
+            temporary.replace(path)
+        except OSError:
+            pass  # without the memory the next tick sends again: more events, never a lost one
     return sent
