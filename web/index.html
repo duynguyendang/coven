@@ -745,6 +745,9 @@
   .ghost-mood { display: inline-flex; flex: none; }
   .ghost-mood .av { margin: 0; }
   .ghost-mood.think { animation: bob 1.6s ease-in-out infinite; }
+  .ghost-mood.peeks { inline-size: 28px; block-size: 16px; overflow: hidden; vertical-align: middle; margin-inline-end: 6px; } /* merge done: its own clip, apart from the global .peek */
+  .ghost-mood.peeks .av { width: 28px; height: 28px; animation: peeks-up 1.4s ease-out 0.2s both; }
+  @keyframes peeks-up { 0% { translate: 0 100%; } 60%, 100% { translate: 0 6%; } }
   .ghost-mood.shrug .av { animation: shrug 0.9s ease-in-out 2; transform-origin: 50% 90%; }
   @keyframes bob { 50% { translate: 0 -3px; } }
   @keyframes shrug { 25% { rotate: -9deg; } 75% { rotate: 9deg; } }
@@ -806,7 +809,8 @@
   .login .install button { flex: none; color: var(--coven-stage-ink); background: transparent; border: 1px solid color-mix(in srgb, var(--coven-stage-ink) 30%, transparent); border-radius: var(--radius-inner); padding: 4px 10px; font: inherit; font-size: 0.75rem; cursor: pointer; }
   .login #login-why { color: var(--coven-stage-muted); font-size: 0.75rem; }
   @media (prefers-reduced-motion: reduce) {
-    .ghost-mood.think, .ghost-mood.shrug .av, .msg.arrive, .peek .av, .login-panel .ghost-peek.peeking .av, .login.busy .ghost-peek .av, .badge.live::before { animation: none; }
+    .ghost-mood.think, .ghost-mood.shrug .av, .msg.arrive, .peek .av, .login-panel .ghost-peek.peeking .av, .login.busy .ghost-peek .av, .badge.live::before, .ghost-mood.peeks .av { animation: none; }
+    .ghost-mood.peeks .av { translate: 0 6%; }
     .login-panel .ghost-peek .av { transition: none; }
     .login.wrong .ghost-peek .av { translate: none; animation: none; }
     .login .hero .type, .login .hero::after { animation: none; }
@@ -2171,7 +2175,7 @@
     const failureLine = failureHtml(t);
     const agentLine = `<div class="agent">${avatar(holder || need)}<span>${esc(agentName(holder || need))}${t.claimed_by ? ` on ${esc(t.claimed_by)}` : t.merged || t.status === "completed" || t.doer_state === "done" ? "" : " needed"}</span></div>`;
     const stuck = state.runnable && isStuck(t, state.runnable);
-    const mergedLine = t.merged ? `<div class="state"><span class="badge accept">Merged</span> <span class="hint">into <code>${esc(t.merged.base)}</code> at <code>${esc(String(t.merged.commit).slice(0, 7))}</code> · passed by ${(t.merged.reviewers || []).map((r) => esc(agentName(r))).join(", ")} · decided by ${esc(agentName("grey-witch"))}</span></div>`
+    const mergedLine = t.merged ? `<div class="state"><span class="ghost-mood peeks" aria-hidden="true">${avatar("grey-witch")}</span><span class="badge accept">Merged</span> <span class="hint">into <code>${esc(t.merged.base)}</code> at <code>${esc(String(t.merged.commit).slice(0, 7))}</code> · passed by ${(t.merged.reviewers || []).map((r) => esc(agentName(r))).join(", ")} · decided by ${esc(agentName("grey-witch"))}</span></div>`
       : t.doer_verdict ? `<div class="state"><span class="badge ${t.doer_verdict === "pass" ? "accept" : "reject"}">${t.doer_verdict === "pass" ? "Pass" : "Changes needed"}</span>${t.review_of ? `<span class="hint">review of ${esc(t.review_of)}</span>` : ""}</div>` : "";
     const planLine = t.from_plan ? `<div class="hint">from <a href="#/board/${encodeURIComponent(state.boardProject || "")}" data-key="from-plan-${esc(t.ref)}" data-plan-link="${esc(t.from_plan)}">plan ${esc(t.from_plan)}</a>, approved by ${esc(t.approved_by || "a person")}</div>` : "";
     const stuckLine = stuck ? `<div class="stuck-why"><b>No online host runs ${esc(agentName(need))}.</b> It waits until one does: <code>./run-host.sh --agents ${esc(need)}</code></div>` : "";
