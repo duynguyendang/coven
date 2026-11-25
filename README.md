@@ -133,6 +133,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven run -- <cmd>` | Mint a run id, export `COVEN_RUN_ID`, stream and normalise `stream-json` |
 | `coven logs [hooks\|events\|path]` | Read the local capture: raw hook payloads, normalised events, file locations |
 | `coven hooks check` / `install [--portable]` | Run the Kiro hooks like Kiro does and say what fails; write PATH-independent hook commands |
+| `coven --version` | Print `coven ` and the installed version |
 | `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |

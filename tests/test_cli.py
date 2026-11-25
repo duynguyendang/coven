@@ -43,3 +43,15 @@ def test_doctor_reports_a_stopped_relay(root, capsys):
     out = capsys.readouterr().out
     assert "relay: stopped" in out
     assert "events: 0 not yet pushed / 0 in the local log" in out
+
+
+def test_version_flag_prints_version_and_exits_zero(capsys):
+    import pytest
+
+    from coven import __version__
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == f"coven {__version__}"

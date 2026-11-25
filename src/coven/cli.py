@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import config, emit, events
+from . import __version__, config, emit, events
 
 TYPE_MAP = {
     "run_started": "SessionStart",
@@ -706,6 +706,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="coven", description="Telemetry for Kiro coding-agent runs")
+    parser.add_argument("--version", action="version", version=f"coven {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     login = sub.add_parser("login", help="store the cloud endpoint and token")
