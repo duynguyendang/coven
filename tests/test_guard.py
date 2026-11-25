@@ -47,3 +47,46 @@ def test_never_mutates_input(tmp_path):
     before = copy.deepcopy(p)
     decide(p, tmp_path)
     assert p == before
+
+
+def test_worktree_under_dot_coven_allowed(tmp_path):
+    wt = tmp_path / ".coven" / "worktrees" / "t1"
+    wt.mkdir(parents=True)
+    assert decide(req("fs_read", path="src/a.py"), wt) is None
+    assert decide(req("fs_write", path=str(wt / "src" / "a.py")), wt) is None
+
+
+def test_worktree_secret_still_denied(tmp_path):
+    wt = tmp_path / ".coven" / "worktrees" / "t1"
+    wt.mkdir(parents=True)
+    r = decide(req("fs_read", path=str(wt / ".env")), wt)
+    assert r and r["decision"] == "deny"
+
+
+def test_traversal_into_tokens_denied(tmp_path):
+    (tmp_path / ".coven").mkdir()
+    (tmp_path / "sub").mkdir()
+    r = decide(req("fs_read", path="sub/../.coven/tokens"), tmp_path)
+    assert r and r["decision"] == "deny"
+
+
+def test_traversal_from_worktree_denied(tmp_path):
+    wt = tmp_path / ".coven" / "worktrees" / "t1"
+    wt.mkdir(parents=True)
+    (tmp_path / ".env").write_text("x")
+    r = decide(req("fs_read", path="../../../.env"), wt)
+    assert r and r["decision"] == "deny"
+
+
+def test_symlink_to_secret_denied(tmp_path):
+    (tmp_path / ".coven").mkdir()
+    (tmp_path / ".coven" / "tokens").write_text("x")
+    (tmp_path / "link").symlink_to(tmp_path / ".coven" / "tokens")
+    r = decide(req("fs_read", path="link"), tmp_path)
+    assert r and r["decision"] == "deny"
+
+
+def test_command_with_absolute_worktree_path_allowed(tmp_path):
+    wt = tmp_path / ".coven" / "worktrees" / "t1"
+    wt.mkdir(parents=True)
+    assert decide(req("execute_bash", command=f"ls {wt}/src"), wt) is None
