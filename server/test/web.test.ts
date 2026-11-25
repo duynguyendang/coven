@@ -2054,6 +2054,24 @@ describe("council chat", () => {
     assert.ok(errors[0].querySelector(".ghost-mood.shrug"), "the ghost shrugs");
   });
 
+  test("while the host reports Kiro down, the ghost shrugs on the paused message", async () => {
+    type("chat-text", "Is Kiro back yet?");
+    await submit();
+    const chat = (await getJson(s.base, "/v1/chat?project_id=shop")).body;
+    const asked = chat.messages.find((m: any) => m.message === "Is Kiro back yet?");
+    assert.ok(asked, "the question is stored");
+    const paused = "Kiro models are unavailable right now: the council is paused and your message is kept. It answers by itself when Kiro is back.";
+    await postJson(s.base, "/v1/events", { project_id: "shop", run_id: "member_wsl-down", events: [
+      { event_id: "evt_down_1", project_id: "shop", run_id: "member_wsl-down", type: "chat_message", ts: new Date(Date.now() + 10).toISOString(), member: "wsl-9",
+        payload: { role: "council", kind: "working", message: paused, reply_to: asked.message_id, persona: "grey-witch" } }] });
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    const down = doc().querySelector(".chat .msg.working.kiro-down");
+    assert.ok(down, "the paused message is marked");
+    assert.ok(down!.querySelector(".ghost-mood.shrug"), "the ghost shrugs");
+    assert.ok(!doc().querySelector(".chat .msg.working:not(.kiro-down) .ghost-mood.shrug"), "no other working line shrugs");
+  });
+
   test("Do it sends work to a witch: it says when no host runs her, then who takes it, then the answer in steps", async () => {
     await go("#/chat/shop");
     // the Dev builds only from a task, so a message to her is a question (`ask`), never work
