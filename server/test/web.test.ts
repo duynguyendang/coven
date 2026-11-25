@@ -733,6 +733,56 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: '[' and '/' hints are shown, '/' focuses the task filter, and typing in an input is ignored", async () => {
+    await go("#/board/shop", 600);
+    const hints = [...doc().querySelectorAll(".board-bar kbd.kbd")].map((k) => k.textContent);
+    assert.deepEqual(hints, ["/", "["], "both key hints are on the board");
+    (doc().querySelector('button.tile[data-col="ready"]') as HTMLButtonElement).click();
+    await wait(100);
+    const filter = doc().getElementById("col-filter") as HTMLInputElement;
+    assert.ok(filter, "an open column has a filter box");
+    assert.equal(filter.getAttribute("aria-keyshortcuts"), "/");
+    key("/");
+    assert.equal(doc().activeElement, filter, "'/' focuses the board filter");
+    // a "/" typed into an input stays text: it neither moves focus nor is swallowed
+    const note = doc().getElementById("note-text") as HTMLTextAreaElement;
+    note.focus();
+    const typed = new dom.window.KeyboardEvent("keydown", { key: "/", bubbles: true, cancelable: true });
+    note.dispatchEvent(typed);
+    assert.equal(typed.defaultPrevented, false);
+    assert.equal(doc().activeElement, note);
+    filter.value = "zzz-nothing";
+    filter.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    assert.equal(doc().querySelector<HTMLElement>("#col-detail .col-none")!.hidden, false, "the filter hides rows that do not match");
+    await go("#/");
+  });
+
+  test("board: a sidebar spec link filters the board to that spec, shows it active, and a control clears it", async () => {
+    await go("#/board/shop", 600);
+    const link = doc().querySelector<HTMLAnchorElement>('#nav a[data-key="nav-s-shop-shop"]')!;
+    assert.ok(link, "the project's spec is listed in the sidebar");
+    assert.equal(link.getAttribute("href"), "#/board/shop?spec=shop", "on the board a spec link stays on the board");
+    assert.equal(doc().querySelector('[data-key="board-spec"]'), null, "no filter chip before a spec is picked");
+    link.click();
+    await wait(500);
+    assert.equal(dom.window.location.hash, "#/board/shop?spec=shop");
+    assert.equal(doc().querySelector("#main h1")!.textContent, "Coven board · shop");
+    assert.equal(doc().querySelector('#nav [data-key="nav-s-shop-shop"]')!.getAttribute("aria-current"), "page", "the spec link is active");
+    assert.match(doc().querySelector('[data-key="board-spec"]')!.textContent!, /shop/);
+    const tile = (label: string) => doc().querySelector(`button.tile[aria-label^="${label}:"]`) as HTMLButtonElement;
+    assert.equal(tile("Ready").querySelector(".n")!.textContent, "1");
+    await go("#/board/shop?spec=no-such-spec", 500);
+    assert.equal(tile("Ready").querySelector(".n")!.textContent, "0", "tasks of other specs are hidden");
+    assert.equal(tile("Done").querySelector(".n")!.textContent, "0");
+    const clear = doc().querySelector<HTMLAnchorElement>('[data-key="board-spec-clear"]')!;
+    assert.equal(clear.getAttribute("href"), "#/board/shop");
+    clear.click();
+    await wait(500);
+    assert.equal(doc().querySelector('[data-key="board-spec"]'), null, "the chip is gone");
+    assert.equal(tile("Ready").querySelector(".n")!.textContent, "1", "every spec is back");
+    await go("#/");
+  });
+
   test("the page has a skip link and landmarks", () => {
     assert.equal(doc().querySelector("a.skip")!.getAttribute("href"), "#main");
     for (const sel of ["aside#sidebar", "nav#nav", "header.topbar", "main#main", "footer"]) assert.ok(doc().querySelector(sel), sel);
