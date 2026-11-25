@@ -467,6 +467,10 @@ one is dropped and the claim is taken without it. Older events get the key deriv
 renewals, releases, `host_online` and `task_status` carry it, so two hosts with one name are two
 claimants.
 
+### 6.1b Board and `tasks.md` stay level (S-01)
+
+No event or field changes. A task's done or open state on the board is the `status` in the last `spec_artifact_updated` snapshot (`tasks`), which `coven sync` builds from `tasks.md`; `doer_state` is how a run went and is not the checkbox. The host syncs at the start of a tick; a merge or accept in the same tick may tick a task afterwards. At the end of the tick the host compares the cloud's board with `tasks.md` (`board.drift`: ids, done and open per task, counts per spec; specs made on the board have no `tasks.md` and are skipped), syncs again when they differ, and reports what still differs in the tick result (`drift`) and once in its log.
+
 ### 6.1a Orphaned tasks and fencing
 
 Each task in the board view carries `orphaned` (boolean), `orphaned_since` (ISO time the holding host was last seen, else null) and `takeovers` (count); the view carries `takeover_seconds` once (`COVEN_TAKEOVER_SECONDS`, default 600). A task is `orphaned` when its state is `working`, or `submitted` or `failed` with a `branch_host`, no active claim holds it, and the holding host (`branch_host`, else the newest status's `host_id`) sent no `host_online` for longer than `takeover_seconds`. Fencing: per `task_key` the newest attempt number (`attempt_id` `<key>.<n>`, from claims and statuses) wins; a `task_status` with a lower `n` is kept in the event log but changes nothing on the board. A status without `attempt_id` keeps the old rule. A claim or status with a higher `n` from a different host than the newest attempt adds one to `takeovers`.

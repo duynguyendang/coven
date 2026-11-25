@@ -591,6 +591,37 @@ def tasks_snapshot(tasks: dict[str, dict], spec: str) -> list[dict]:
              "leaf": t["task_id"] not in parents} for t in mine][:200]
 
 
+def drift(tasks: dict[str, dict], view: dict) -> list[str]:
+    """Differences between the repo's `tasks.md` (`tasks`, from specmap) and the board's spec tasks (`view["specs"]`), as text.
+
+    The board's own record of a task is its snapshot `status`; `doer_state` is how a run went, not the checkbox.
+    Compared per spec that has a `tasks.md`: the task ids, each task's done or open state, and the done and open counts. Empty: no drift."""
+    found = []
+    seen = set()
+    repo_specs = {t["spec"] for t in tasks.values() if t.get("spec")}
+    for spec in view.get("specs") or []:
+        name = spec.get("spec")
+        if name not in repo_specs:
+            continue  # a spec made on the board (a council, a review job) has no tasks.md to match
+        seen.add(name)
+        on_board = {str(t.get("task_id")): t.get("status") == "completed" for t in spec.get("tasks") or []}
+        in_repo = {t["task_id"]: t["status"] == "completed" for t in tasks.values() if t.get("spec") == name}
+        for tid in sorted(set(in_repo) - set(on_board)):
+            found.append(f"{name}#{tid}: in tasks.md, not on the board")
+        for tid in sorted(set(on_board) - set(in_repo)):
+            found.append(f"{name}#{tid}: on the board, not in tasks.md")
+        for tid in sorted(set(in_repo) & set(on_board)):
+            if in_repo[tid] != on_board[tid]:
+                found.append(f"{name}#{tid}: tasks.md says {'done' if in_repo[tid] else 'open'}, the board says {'done' if on_board[tid] else 'open'}")
+        counts = (sum(in_repo.values()), len(in_repo) - sum(in_repo.values()))
+        shown = (sum(on_board.values()), len(on_board) - sum(on_board.values()))
+        if counts != shown:
+            found.append(f"{name}: done/open is {counts[0]}/{counts[1]} in tasks.md, {shown[0]}/{shown[1]} on the board")
+    for name in sorted({t["spec"] for t in tasks.values() if t.get("spec")} - seen):
+        found.append(f"{name}: in the repo, not on the board")
+    return found
+
+
 def sync(root: Path) -> list[str]:
     """Publish every spec's task list and progress to the whiteboard now (ids, status, paths only)."""
     tasks = specmap.load(root)

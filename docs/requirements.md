@@ -218,7 +218,7 @@ here is built or planned until they do.
 
 | Id | Requirement | Pri | Status |
 | :--- | :--- | :--- | :--- |
-| S-01 | Board state matches the repo: a task's done or open state on the board equals its checkbox in the spec's `tasks.md`. A test compares the board's tasks with the repo's `tasks.md` and fails on any difference. _Drafted by Elder Witch, a person confirms._ | Should | Proposed |
+| S-01 | Board state matches the repo: a task's done or open state on the board equals its checkbox in the spec's `tasks.md`. A test compares the board's tasks with the repo's `tasks.md` and fails on any difference (`board.drift`, `tests/test_host.py`). The host checks the same at the end of each tick against the cloud's board: it publishes again when they differ, and reports (once) what still differs (`Host._converge`). _Drafted by Elder Witch, a person confirms._ | Should | Proposed |
 | S-02 | _To be written by a person._ | | Proposed |
 | E-01 | _To be written by a person._ | | Proposed |
 | E-02 | _To be written by a person._ | | Proposed |

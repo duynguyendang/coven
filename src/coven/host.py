@@ -2474,6 +2474,7 @@ class Host:
         self.running: dict[str, Future] = Runs()  # stamps when each run started, for the witch monitor
         self.process = f"p_{secrets.token_hex(4)}"  # this process: two hosts that share an id still tell apart
         self._announced: tuple = ()
+        self._drift_said: list[str] = []  # the last board-vs-tasks.md difference told, so it is told once
         self._in_base_sent: set[tuple[str, str, str]] = set()  # (ref, tip, base) already reported as in base
         self.host_id = config.host_id(root)
         self.attempts: dict[str, int] = {}  # ref -> runs of it the board has seen (`doer_attempts`), refreshed each tick
@@ -3140,9 +3141,26 @@ class Host:
         waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
         taken = self._take(view, notes, waiting)
         self.presence()  # runs started in this tick: the monitor hears it now, not in a minute
+        drifted = self._converge()
         return {"finished": finished, "requests": asked, "reworked": reworked, "taken": taken, "running": sorted(self.running),
                 **({"pushed": pushed} if pushed else {}), **({"settled": settled} if settled else {}), **({"accepted": accepted} if accepted else {}),
-                **({"signed": signed} if signed else {}), **({"swept": swept} if swept else {})}
+                **({"signed": signed} if signed else {}), **({"swept": swept} if swept else {}), **({"drift": drifted} if drifted else {})}
+
+    def _converge(self) -> list[str]:
+        """S-01: the board shows what `tasks.md` says. The tick syncs first, then a merge or accept may tick a task; so look at
+        the board again, and when it differs from the repo publish once more and look once more. Returns what still differs."""
+        try:
+            tasks = specmap.load(self.root)
+            found = board.drift(tasks, board.read(self.root))
+            if found:
+                board.sync(self.root)
+                found = board.drift(tasks, board.read(self.root))
+        except board.BoardError:
+            return []  # offline: the next tick tries again
+        if found and found != self._drift_said:
+            self.out("board differs from tasks.md: " + "; ".join(found[:5]))
+        self._drift_said = found
+        return found[:20]
 
     def _signoff(self, view: dict) -> list[str]:
         """An autonomous host's final sign-off, by the Elder Witch (FR-ST2, with the cloud operator's consent):

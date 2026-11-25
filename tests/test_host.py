@@ -1855,3 +1855,101 @@ def test_local_run_pins_agent_engine_v3(tmp_path, monkeypatch):
     monkeypatch.setattr(council, "final_text", lambda out: ("ok", None))
     assert host.run_agent(tmp_path, "green-witch", "go", {}) == ("ok", None)
     assert seen[0][:4] == ["kiro-cli", "chat", "--no-interactive", "--agent-engine"] and seen[0][4] == "v3"
+
+
+DRIFT_TASKS = """- [x] 1. Done already
+  - _Paths: `src/a/`_
+- [ ] 2. Independent top-level task
+  - _Paths: `src/b/`_
+- [ ] 3. A parent
+  - [x] 3.1 First step, done
+  - [ ] 3.2 Second step
+  - [ ]* 3.4 Optional
+"""
+
+
+def write_tasks(root, text):
+    path = root / ".kiro" / "specs" / "demo" / "tasks.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+def snapshot_view(tasks, spec="demo"):
+    """What the board holds after `coven sync`: the snapshot the client sends, as the board's spec task list."""
+    return {"specs": [{"spec": spec, "tasks": board.tasks_snapshot(tasks, spec)}]}
+
+
+def test_the_board_matches_tasks_md_in_ids_and_done_and_open_counts(tmp_path):
+    write_tasks(tmp_path, DRIFT_TASKS)
+    tasks = specmap.load(tmp_path)
+    view = snapshot_view(tasks)
+    assert board.drift(tasks, view) == []
+    rows = view["specs"][0]["tasks"]
+    assert sum(t["status"] == "completed" for t in rows) == sum(t["status"] == "completed" for t in tasks.values())
+    assert sorted(t["task_id"] for t in rows) == sorted(t["task_id"] for t in tasks.values())
+
+
+def test_a_board_that_differs_from_tasks_md_is_reported(tmp_path):
+    write_tasks(tmp_path, DRIFT_TASKS)
+    tasks = specmap.load(tmp_path)
+    view = snapshot_view(tasks)
+    rows = view["specs"][0]["tasks"]
+    rows[1]["status"] = "completed"  # ticked on the board only
+    rows.pop()  # missing on the board
+    rows.append({"task_id": "9", "status": "queued"})  # unknown to the repo
+    found = board.drift(tasks, view)
+    assert any("tasks.md says open, the board says done" in f for f in found)
+    assert any("in tasks.md, not on the board" in f for f in found)
+    assert any("demo#9: on the board, not in tasks.md" in f for f in found)
+    assert any("done/open is" in f for f in found)
+    assert board.drift(tasks, {"specs": []}) == ["demo: in the repo, not on the board"]
+
+
+def test_sign_off_does_not_tick_the_board_without_tasks_md(tmp_path):
+    """A run's doer_state of done is not the checkbox: the board's done is the snapshot status only."""
+    write_tasks(tmp_path, DRIFT_TASKS)
+    tasks = specmap.load(tmp_path)
+    view = snapshot_view(tasks)
+    view["specs"][0]["tasks"][1]["doer_state"] = "done"
+    assert board.drift(tasks, view) == []
+
+
+def test_a_tick_publishes_again_when_a_merge_left_the_board_behind_tasks_md(repo, monkeypatch):
+    """S-01 root fix: the board is the cloud's view (what `sync` published), not tasks.md rebuilt. After the tick's first sync
+    a merge ticks a task in tasks.md; the host sees the difference on the cloud's board and publishes again."""
+    cloud = FakeCloud().install(monkeypatch)
+    published = []
+
+    def sync(root):
+        tasks = specmap.load(root)
+        cloud.specs[:] = [{"spec": "shop", "tasks": board.tasks_snapshot(tasks, "shop")}]
+        published.append(sum(t["status"] == "completed" for t in tasks.values()))
+        return ["shop"]
+
+    monkeypatch.setattr(board, "sync", sync)
+    sync(repo)  # the board as the tick's first sync left it
+    spec_file = repo / ".kiro" / "specs" / "shop" / "tasks.md"
+    spec_file.write_text(spec_file.read_text().replace("- [ ] 1.", "- [x] 1.", 1))  # a merge lands after that sync
+    tasks = specmap.load(repo)
+    assert board.drift(tasks, board.read(repo)), "the cloud's board is behind tasks.md"
+    h = host.Host(repo, slots=1, runner=Runner({}), only=["nobody"])
+    assert h._converge() == []
+    assert published == [0, 1]
+    assert board.drift(specmap.load(repo), board.read(repo)) == []
+
+
+def test_a_board_that_cannot_be_brought_level_is_reported_by_the_tick(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)  # its sync publishes nothing: the board stays empty
+    said = []
+    h = host.Host(repo, slots=1, runner=Runner({}), only=["nobody"], out=said.append)
+    found = h._converge()
+    assert found == ["shop: in the repo, not on the board"]
+    h._converge()
+    assert len([m for m in said if "differs from tasks.md" in m]) == 1, "told once, not every tick"
+
+
+def test_a_spec_made_on_the_board_is_not_drift(tmp_path):
+    write_tasks(tmp_path, DRIFT_TASKS)
+    tasks = specmap.load(tmp_path)
+    view = snapshot_view(tasks)
+    view["specs"].append({"spec": "council", "tasks": [{"task_id": "r1-1", "status": "queued"}]})
+    assert board.drift(tasks, view) == []
