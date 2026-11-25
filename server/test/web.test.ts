@@ -1039,6 +1039,20 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: the Stage follows the monitor, comes before Tasks, and is open by default", async () => {
+    await go("#/board/lab", 600);
+    const box = doc().querySelector("details.stage-box") as HTMLDetailsElement;
+    assert.ok(box, "the roster renders a Stage box");
+    const mon = [...doc().querySelectorAll("h2")].find((h) => h.textContent!.trim().startsWith("Monitor"))!;
+    const tasksH = [...doc().querySelectorAll("h2")].find((h) => h.textContent!.trim() === "Tasks")!;
+    assert.ok(mon && tasksH, "Monitor and Tasks headings exist");
+    assert.ok(mon.compareDocumentPosition(box) & 4, "Stage comes after the monitor");
+    assert.ok(box.compareDocumentPosition(tasksH) & 4, "Stage comes before the Tasks heading");
+    assert.match(box.querySelector("summary")!.textContent!.trim(), /^Stage — Witches/);
+    assert.ok(box.hasAttribute("open"), "open by default");
+    await go("#/");
+  });
+
   test("board: each witch shows what she is responsible for", async () => {
     await go("#/board/lab", 600);
     const pick = async (slug: string) => { (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click(); await wait(50); };
