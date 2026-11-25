@@ -395,6 +395,17 @@ def normalize_hook(payload: dict, *, project_id: str, run_id: str) -> list[dict]
             body["path"] = str(path)
         return [make_event(project_id=project_id, run_id=run_id, type="file_changed", stage=stage, task_id=task_id, payload_extra=body)]
 
+    if trigger in ("precompact", "postcompact"):
+        body = {"phase": "post" if trigger == "postcompact" else "pre"}
+        how = payload.get("trigger")
+        if isinstance(how, str) and how and len(how) <= 40 and how.lower() not in ("precompact", "postcompact"):
+            body["trigger"] = how
+        if trigger == "postcompact":
+            summary = _first(payload, "summary", "compact_summary", "compaction_summary")
+            if isinstance(summary, str):
+                body["summary_chars"] = len(summary)  # the length only, never the text
+        return [make_event(project_id=project_id, run_id=run_id, type="context_compacted", stage=stage, payload_extra=body)]
+
     if trigger == "stop":
         return [make_event(project_id=project_id, run_id=run_id, type="turn_finished", stage=stage)]
 
