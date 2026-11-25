@@ -447,6 +447,12 @@ def normalize_stream(record: dict, *, project_id: str, run_id: str) -> list[dict
     if kind in ("task_end", "task_finished", "task_complete"):
         return [make_event(project_id=project_id, run_id=run_id, type="task_finished", stage="IMPLEMENT", task_id=task_id, source="stream-json")]
 
+    if kind == "runerror":
+        data = record.get("data") if isinstance(record.get("data"), dict) else {}
+        err_stage = str(data.get("stage") or record.get("stage") or "")[:300]
+        message = str(data.get("message") or record.get("message") or "")[:300]
+        return [make_event(project_id=project_id, run_id=run_id, type="warning", payload_extra={"raw_type": "runError", "stage": err_stage, "message": message}, source="stream-json")]
+
     if kind in ("error", "warning"):
         return [make_event(project_id=project_id, run_id=run_id, type="warning", payload_extra={"raw_type": kind, "message": str(record.get("message", ""))[:300]}, source="stream-json")]
 

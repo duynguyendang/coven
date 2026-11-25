@@ -487,6 +487,9 @@ Each task in the board view carries `orphaned` (boolean), `orphaned_since` (ISO 
 A `warning` with `raw_type: role_mismatch` (`{agent, task, produced, message, task_key?}`) says a witch delivered
 something outside her role's `produces`; it is a report and never blocks a run.
 
+A stream-json `runError` record (`{data: {stage, message}}`, top-level fields as fallback) becomes `warning` with
+`{raw_type: runError, stage, message}`, the message capped at 300 characters.
+
 An unrecognised input type becomes `warning` with the raw type. The field-level validation is
 `server/src/events.ts`; the detailed working contract is kept in `docs/internal/` (not published).
 
