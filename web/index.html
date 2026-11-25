@@ -1538,6 +1538,7 @@
       </div>`;
 
     return `${demoBanner(scope.some((x) => x.seeded) || seededProject(project))}
+      ${deviationBanner(deviations)}
       ${head}
       <section class="stats" aria-label="Summary">
         ${(() => {
@@ -1555,7 +1556,6 @@
         })()}
       </section>
       ${spec ? specCard(project, spec) : project ? projectOverview(project) : ""}
-      ${deviationBanner(deviations)}
       ${toolbar}
       <div id="session-list">${sessionListHtml(list)}</div>
       ${notes.map((n) => `<p class="note">${n}</p>`).join("")}`;
