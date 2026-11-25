@@ -1397,6 +1397,61 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: each spec's sidebar done/total equals the Done lane's required, non-replaced tasks; every task is in one lane", async () => {
+    const m = (type: string, payload: Json, ago: number) => ({ ...ev("member_tl", "tally", type, payload, ago), member: "tl" });
+    const task = (id: string, extra: Json = {}) => ({ task_id: id, title: `Task ${id}`, status: "not_started", paths: [`tl${id}/`], ...extra });
+    // alpha: 1 ticked, 2 merged (and ticked), 3 replaced, 4 optional and done, 5 closed by Mark done, 6 ready.
+    // Required and not replaced: 1, 2, 5, 6 (total 4); of those the Done lane holds 1 and 2.
+    // beta: 1 ticked, 2 ready.
+    await send("tally", "member_tl", [
+      m("spec_artifact_updated", { artifact: "tasks", spec: "alpha", total: 4, done: 2, in_progress: 0, queued: 0, optional: 1, tasks: [
+        task("1", { status: "completed" }), task("2", { status: "completed" }), task("3"), task("4", { status: "completed", optional: true }), task("5"), task("6")] }, 60),
+      m("spec_artifact_updated", { artifact: "tasks", spec: "beta", total: 2, done: 1, in_progress: 0, queued: 0, optional: 0, tasks: [
+        task("1", { status: "completed" }), task("2")] }, 59),
+      m("task_merged", { task: "alpha#2", branch: "coven/alpha-2", commit: "abc1234def", base: "main", reviewers: ["white-hat"], decided_by: "grey-witch" }, 20),
+      m("task_status", { task: "alpha#3", state: "replaced", agent: "green-witch", detail: "replaced by a newer task" }, 19),
+    ]);
+    assert.equal((await postJson(s.base, "/v1/board/done", { project_id: "tally", task: "alpha#5", author: "duy", reason: "closed, nothing merged" }, auth())).status, 201);
+
+    await go("#/board/tally", 700);
+    doc().dispatchEvent(new dom.window.Event("visibilitychange")); // reload the project list now, not at the next 10 s tick
+    await wait(500);
+    const caret = doc().querySelector<HTMLButtonElement>('[data-caret="tally"]')!;
+    if (caret.getAttribute("aria-expanded") !== "true") caret.click();
+    await wait(100);
+
+    const lanes: Record<string, string[]> = {};
+    for (const col of ["ready", "claimed", "review", "failed", "done", "closed"]) {
+      if (!doc().querySelector(`button.tile[data-col="${col}"]`)) { lanes[col] = []; continue; } // an empty Blocked tile is not drawn
+      openColumn(col);
+      await wait(30);
+      lanes[col] = [...doc().querySelectorAll<HTMLElement>('#main [data-key^="row-"]')].map((r) => r.getAttribute("data-key")!.slice(4));
+      const tile = doc().querySelector(`button.tile[data-col="${col}"] .n`)!.textContent;
+      assert.equal(Number(tile), lanes[col].length, `${col}: the tile counts the rows`);
+    }
+    // the closed task is only in the closed lane
+    assert.deepEqual(lanes.closed, ["alpha#5"]);
+    for (const col of Object.keys(lanes)) if (col !== "closed") assert.ok(!lanes[col].includes("alpha#5"), `alpha#5 is not in ${col}`);
+    // every task shows in exactly one lane
+    const every = Object.values(lanes).flat().sort();
+    assert.deepEqual(every, ["alpha#1", "alpha#2", "alpha#3", "alpha#4", "alpha#5", "alpha#6", "beta#1", "beta#2"], "each task once");
+    // the Done lane holds ticked, merged, replaced and optional-done tasks
+    assert.deepEqual([...lanes.done].sort(), ["alpha#1", "alpha#2", "alpha#3", "alpha#4", "beta#1"]);
+
+    // the Done lane's required, non-replaced tasks per spec, taken from the board data
+    const board = (await getJson(s.base, "/v1/board?project_id=tally", auth())).body;
+    for (const spec of board.specs as Json[]) {
+      const required = (spec.tasks as Json[]).filter((t) => t.leaf && !t.optional && t.doer_state !== "replaced");
+      const doneRequired = required.filter((t) => lanes.done.includes(`${spec.spec}#${t.task_id}`));
+      const link = doc().querySelector(`#nav [data-key="nav-s-tally-${spec.spec}"] .count`);
+      assert.ok(link, `${spec.spec} is listed in the sidebar`);
+      assert.equal(link!.textContent, `${doneRequired.length}/${required.length}`, `${spec.spec}: sidebar done/total`);
+    }
+    assert.equal(doc().querySelector('#nav [data-key="nav-s-tally-alpha"] .count')!.textContent, "2/4");
+    assert.equal(doc().querySelector('#nav [data-key="nav-s-tally-beta"] .count')!.textContent, "1/2");
+    await go("#/");
+  });
+
   test("board: a merged task says by whom; a review row shows its verdict", async () => {
     await send("am", "member_am", [
       { ...ev("member_am", "am", "spec_artifact_updated", { artifact: "tasks", spec: "s", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0, tasks: [{ task_id: "1", title: "Cart", status: "not_started", paths: ["x/"] }] }, 4), member: "am" },
