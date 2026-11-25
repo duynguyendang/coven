@@ -1,4 +1,4 @@
-.PHONY: install test test-relay test-cloud test-e2e harness verify check relay cloud seed seed-watch doctor host deploy deploy-cloudflare hooks
+.PHONY: install test test-board-vs-repo test-relay test-cloud test-e2e harness verify check relay cloud seed seed-watch doctor host deploy deploy-cloudflare hooks
 
 # The Python used by every recipe; run-host.sh reads it as COVEN_PY.
 PY ?= python3
@@ -21,6 +21,10 @@ test-cloud:
 # The cross-file rules: witches equal in Python, cloud, web and .kiro/agents; agent safety; docs list the code.
 harness:
 	PYTHONPATH=src $(PY) -m pytest tests/test_harness.py
+
+# S-01: the board's tasks equal the real tasks.md of ux-v2 and autonomous-tasks.
+test-board-vs-repo:
+	cd server && node --test test/board-vs-repo.test.ts
 
 # A real cloud and a real host, with a fake kiro-cli that records how it was called (no credits).
 test-e2e:
