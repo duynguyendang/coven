@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 import threading
@@ -1953,3 +1954,19 @@ def test_a_spec_made_on_the_board_is_not_drift(tmp_path):
     view = snapshot_view(tasks)
     view["specs"].append({"spec": "council", "tasks": [{"task_id": "r1-1", "status": "queued"}]})
     assert board.drift(tasks, view) == []
+
+
+def test_model_and_effort_pins_come_before_agent_and_prompt_stays_last(monkeypatch):
+    for key in [k for k in os.environ if k.startswith(("COVEN_MODEL", "COVEN_EFFORT"))]:
+        monkeypatch.delenv(key)
+    plain = host.agent_command("green-witch", "go", "read")
+    assert "--model" not in plain and "--effort" not in plain and plain[-3:] == ["--agent", "green-witch", "go"]
+    monkeypatch.setenv("COVEN_MODEL", "base-model")
+    monkeypatch.setenv("COVEN_EFFORT_GREEN_WITCH", "high")
+    cmd = host.agent_command("green-witch", "go", "read")
+    assert cmd[cmd.index("--model") + 1] == "base-model" and cmd[cmd.index("--effort") + 1] == "high"
+    assert cmd.index("--model") < cmd.index("--agent") and cmd.index("--effort") < cmd.index("--agent") and cmd[-1] == "go"
+    monkeypatch.setenv("COVEN_MODEL_GREEN_WITCH", "special")
+    assert host.agent_command("green-witch", "go", "read")[host.agent_command("green-witch", "go", "read").index("--model") + 1] == "special"
+    other = host.agent_command("elf", "go", "read")
+    assert other[other.index("--model") + 1] == "base-model" and "--effort" not in other

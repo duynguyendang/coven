@@ -46,6 +46,8 @@ with open(os.environ["FAKE_KIRO_LOG"], "a") as log:
                           "env": {k: os.environ.get(k) for k in ("COVEN_HOST", "COVEN_AGENT", "COVEN_TASK")}}) + "\n")
 assert args[:4] == ["chat", "--no-interactive", "--agent-engine", "v3"] and "--trust-workspace" in args, args
 assert args[args.index("--output-format") + 1] == "stream-json", args
+for _flag in ("--model", "--effort"):  # pins, when set, sit before --agent and the prompt stays last
+    assert _flag not in args or args.index(_flag) < args.index("--agent") < len(args) - 1, args
 prompt = args[-1]
 if agent == "green-witch" and (os.environ.get("COVEN_TASK") or "").endswith("-1b2"):
     os.makedirs("src/cart", exist_ok=True)
