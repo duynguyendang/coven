@@ -2293,7 +2293,7 @@
     // Closed, the summary says who works now (a live run or a fresh claim, as the roster counts it), on one ellipsized line.
     const busyNames = (roster || []).filter((x) => x.state === "working").map((x) => agentName(x.slug));
     const now = `<span class="stage-now">· ${busyNames.length ? `Working now: ${esc(busyNames.join(", "))}` : "No one is working now"}</span>`;
-    return `<details class="stage-box" data-key="stage"${state.ui.stage !== false ? " open" : ""}><summary>Witches${counts} ${now}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
+    return `<details class="stage-box" data-key="stage"${state.ui.stage !== false ? " open" : ""}><summary>Stage — Witches${counts} ${now}</summary><div class="stage" role="group" aria-label="Where each witch is"><div class="floor">${stations}</div></div>${nudge}<div class="stage-card" aria-live="polite">${detail}</div></details>`;
   }
   /** Each witch's line in her own voice: copy, not a rule (her rules are WITCH_ROLES). */
   const WITCH_MOTTO = { "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
@@ -2380,11 +2380,11 @@
       ${hostDropHtml(b.hosts || b.members, project)}
       ${waitingForYou(cols)}
       ${monitorHtml(b)}
+      ${stageHtml(members)}
       ${waiting.length ? `<h2>Plans <span class="hint">· ${plural(waitingPlans, "plan")} ${waitingPlans === 1 ? "waits" : "wait"} for you</span></h2>${waiting.map(planCard).join("")}` : ""}
       <h2>Tasks</h2>${(b.specs || []).length ? `<div class="tiles">${COLUMNS.filter(([k]) => k !== "failed" || cols.failed.length || open === "failed").map(tile).join("")}</div>${detail}`
         : voice("No task list yet.", "It appears when a member's Kiro starts or finishes a spec task.", "grey-witch", true)}
       ${decidedList(decidedPlans, b)}
-      ${stageHtml(members)}
       <h2>Whiteboard</h2>${compose}
       ${wallHtml(b, cols)}`;
   }
