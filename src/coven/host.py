@@ -70,9 +70,12 @@ def pinned(name: str, agent: str) -> str | None:
 
 
 def agent_command(agent: str, prompt: str, trust: str) -> list[str]:
-    """The one kiro-cli command line of a host run. --model and --effort come before --agent; the prompt is last."""
+    """The one kiro-cli command line of a host run. --sandbox (COVEN_SANDBOX=1, default off), --model and --effort
+    come before --agent; the prompt is last. The host's own commit, merge and push run as host subprocesses, not here."""
     command = ["kiro-cli", "chat", "--no-interactive", "--agent-engine", "v3", "--trust-workspace", f"--trust-tools={trust}",
                "--output-format", "stream-json"]
+    if os.environ.get("COVEN_SANDBOX") == "1":
+        command.append("--sandbox")
     for flag, name in (("--model", "MODEL"), ("--effort", "EFFORT")):
         value = pinned(name, agent)
         if value:
