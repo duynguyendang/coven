@@ -1339,6 +1339,13 @@ describe("session screen", () => {
     assert.equal((doc().getElementById("task-dialog") as HTMLDialogElement).open, false, "chips show without the dialog open");
     const merged = openTask("s#1").textContent!.replace(/\s+/g, " ");
     assert.match(merged, /Merged into main at abc1234 · passed by White Hat Witch, Black Hat Witch, Elder Witch · decided by Grey Witch/);
+    const mg = doc().querySelector("#task-dialog .ghost-mood.peeks");
+    assert.ok(mg, "the merge-done ghost has the peeks class");
+    assert.ok(!mg!.classList.contains("peek") && !mg!.querySelector(".peek"), "and not the global .peek");
+    const css = doc().querySelector("style")!.textContent!;
+    assert.match(css, /\.ghost-mood\.peeks \.av \{[^}]*animation: peeks-up/);
+    assert.match(css, /@keyframes peeks-up/);
+    assert.match(css, /prefers-reduced-motion: reduce\) \{[^@]*\.ghost-mood\.peeks \.av[^{]*\{ animation: none;/);
     closeTask();
     openColumn("review");
     assert.match(doc().querySelector('[data-key="row-council#vk-t1"]')!.textContent!, /Pass/);
