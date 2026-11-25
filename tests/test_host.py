@@ -1803,6 +1803,11 @@ def test_reconcile_closes_answered_tasks_without_changes_and_branches_already_in
     assert done["reconciled"] == 3 and done["refused"] == 0 and done["dry_run"] is False
     assert dict(cloud.signoffs)["shop#1"] == "autonomous-signoff: reconciled, coven/shop-1 is in base main"
     assert "shop#3" not in dict(cloud.signoffs) and "shop#5" not in dict(cloud.signoffs), "changes asked, or a branch not merged, waits"
+    assert dry["closed_no_change"] == done["closed_no_change"] == ["shop#4"], "closed on the board, not merged: reported only"
+    assert "shop#4" not in dict(cloud.signoffs)
+    merged = {"specs": [{"spec": "shop", "tasks": [{"task_id": "6", "doer_state": "done", "merged": True},
+                                                   {"task_id": "7", "doer_state": "done", "status": "completed"}]}]}
+    assert host.reconcile(repo, dry_run=True, view=merged)["closed_no_change"] == []
 
 
 def test_coven_host_reconcile_says_what_it_closed_and_what_the_cloud_refused(repo, monkeypatch, capsys):
