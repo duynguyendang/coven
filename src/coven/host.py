@@ -69,9 +69,22 @@ def pinned(name: str, agent: str) -> str | None:
     return os.environ.get(f"COVEN_{name}_{slug}") or os.environ.get(f"COVEN_{name}") or None
 
 
-def agent_command(agent: str, prompt: str, trust: str) -> list[str]:
+RESUME_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+
+
+def resume_id(env: dict | None = None) -> str | None:
+    """The Kiro session to continue (`COVEN_RESUME_ID` in the run's env or the host's), else None. A malformed id is refused."""
+    value = ((env or {}).get("COVEN_RESUME_ID") or os.environ.get("COVEN_RESUME_ID") or "").strip()
+    if not value:
+        return None
+    if not RESUME_ID.match(value):
+        raise HostError("COVEN_RESUME_ID must be a session id (letters, digits, . _ : -), up to 128 characters")
+    return value
+
+
+def agent_command(agent: str, prompt: str, trust: str, resume: str | None = None) -> list[str]:
     """The one kiro-cli command line of a host run. --sandbox (COVEN_SANDBOX=1, default off), --model and --effort
-    come before --agent; the prompt is last. The host's own commit, merge and push run as host subprocesses, not here."""
+    come before --agent; `--resume-id <id>` (only when given) too; the prompt is last. The host's own commit, merge and push run as host subprocesses, not here."""
     command = ["kiro-cli", "chat", "--no-interactive", "--agent-engine", "v3", "--trust-workspace", f"--trust-tools={trust}",
                "--output-format", "stream-json"]
     if os.environ.get("COVEN_SANDBOX") == "1":
@@ -80,6 +93,8 @@ def agent_command(agent: str, prompt: str, trust: str) -> list[str]:
         value = pinned(name, agent)
         if value:
             command += [flag, value]
+    if resume:
+        command += ["--resume-id", resume]
     return command + ["--agent", agent, prompt]
 
 
@@ -90,7 +105,7 @@ def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_
     if env.get("COVEN_READ_ONLY") == "1" and kind == "build":
         kind = "think"
     trust = os.environ.get(f"COVEN_TRUST_{kind.upper()}", agents.TRUST[kind])
-    command = agent_command(agent, prompt, trust)
+    command = agent_command(agent, prompt, trust, resume_id(env))
     run_env = {**os.environ, **env}
     ref, root = env.get("COVEN_TASK"), env.get("COVEN_ROOT")
     on_step = None
@@ -143,8 +158,11 @@ def run_cloud_agent(repo: str, local: Runner = run_agent) -> Runner:
     def runner(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_TIMEOUT) -> tuple[str | None, str | None]:
         if agents.kind(agent) != "build":
             return local(cwd, agent, prompt, env, timeout)
-        command = ["kiro-cli", "chat", "--agent-engine", "v3", "--cloud", "--repo", repo, "--no-interactive", "--output-format", "stream-json",
-                   cloud_role_prompt(agent, prompt)]
+        command = ["kiro-cli", "chat", "--agent-engine", "v3", "--cloud", "--repo", repo, "--no-interactive", "--output-format", "stream-json"]
+        resume = resume_id(env)
+        if resume:
+            command += ["--resume", "--resume-id", resume]
+        command.append(cloud_role_prompt(agent, prompt))
         try:
             done = subprocess.run(command, cwd=cwd, env={**os.environ, **env}, capture_output=True, text=True, timeout=timeout, check=False)
         except FileNotFoundError:

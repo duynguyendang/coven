@@ -118,6 +118,8 @@ flowchart TD
 
 Trust per kind can be overridden with `COVEN_TRUST_BUILD|INSPECT|THINK`.
 
+**Resume (opt-in).** `COVEN_RESUME_ID=<id>` (default unset; no new event or endpoint) adds `--resume-id <id>` to a headless `kiro-cli chat` run, before the prompt, and `--resume --resume-id <id>` to a `--cloud` run. A malformed id is refused.
+
 **Sandbox (opt-in).** `COVEN_SANDBOX=1` (default off) adds `--sandbox` to every headless `kiro-cli chat` run, before `--agent` and the prompt. The host's own commit, merge and push are subprocesses of the host, never of the agent, so the sandbox does not touch them; `tests/test_host_live.py` checks the flag and that the branch commit exists though the fake model runs no git.
 
 **Several hosts on one project.** Each host has a `host_id`. A submitted branch stays on the host that
