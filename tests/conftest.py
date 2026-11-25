@@ -18,7 +18,10 @@ EXTERNAL_TOKEN = os.environ.get("COVEN_TEST_CLOUD_TOKEN", "dev")
 
 # What a host exports to the witch it runs (and so to a `make verify` that witch starts). The tests
 # must not see this machine's member, task or run: they set their own when they need one.
-HOST_RUN_ENV = ("COVEN_MEMBER", "COVEN_HOST", "COVEN_TASK", "COVEN_AGENT", "COVEN_RUN_ID", "COVEN_CONSULT_DEPTH", "COVEN_READ_ONLY")
+# Nor a running host's own switches (./run-host.sh sets them, and a host's merge check runs `make verify` with them): a test
+# host that prunes deleted the test's own branches.
+HOST_RUN_ENV = ("COVEN_MEMBER", "COVEN_HOST", "COVEN_TASK", "COVEN_AGENT", "COVEN_RUN_ID", "COVEN_CONSULT_DEPTH", "COVEN_READ_ONLY",
+                "COVEN_PRUNE_BRANCHES", "COVEN_AUTONOMOUS", "COVEN_AUTO_MERGE")
 
 
 @pytest.fixture(autouse=True)

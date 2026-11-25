@@ -8,7 +8,8 @@ class Fx:
     def __init__(self, signoff=False, per_hour=6):
         self.jobs, self.asked, self.sent, self.reviewed, self.signed = [], [], [], [], []
         self.t = 0.0
-        self.d = chair.Dispatcher(lambda j, title, agent, detail: self.jobs.append((j, agent)), lambda r, x: self.asked.append((r, x)),
+        self.details = []
+        self.d = chair.Dispatcher(lambda j, title, agent, detail: self.jobs.append((j, agent)) or self.details.append(detail), lambda r, x: self.asked.append((r, x)),
                                   lambda r, s, x: self.sent.append((r, s, x)), lambda r, w: self.reviewed.append(r),
                                   (lambda r, w: self.signed.append(r)) if signoff else None, per_hour=per_hour, clock=lambda: self.t)
 
@@ -314,3 +315,12 @@ def test_the_scribe_answers_a_question_the_chair_passes_on_instead_of_preparing_
     job = {"task_id": "chab12cd34ef", "title": "Prepare s#1", "agent": "scribe", "detail": f"{chair.ANSWER_JOB} Task s#1: which file?"}
     done = host.execute_job(tmp_path, job, "scribe", lambda cwd, agent, prompt, env, timeout: seen.append(prompt) or ("1. It is src/cart.py.", None))
     assert done["action"] == "answered" and "which file?" in seen[0]
+
+
+def test_the_chair_passes_on_the_witchs_own_question_and_pieces():
+    """The question travels as doer_question: reading doer_detail sent 'no question recorded' to the Scribe three times."""
+    fx = Live()
+    fx.d.act(board({"task_id": "1", "doer_state": "needs_clarification", "doer_detail": None, "doer_question": "which file holds the cart?"},
+                   {"task_id": "2", "doer_state": "needs_split", "doer_pieces": "a; b"}), NOW)
+    sent = {d.split("Task ")[1].split(":")[0]: d for d in [x for x in fx.details]}
+    assert "which file holds the cart?" in sent["s#1"] and "a; b" in sent["s#2"]

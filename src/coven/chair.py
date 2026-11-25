@@ -87,9 +87,12 @@ def sweep(view: dict, now, seen: set[str] | None = None) -> list[dict]:
                 found.append(_finding("failed", ref, f"failed, cause {cause}: {failure.get('summary') or t.get('doer_detail') or 'no summary'}",
                                       cause, t.get("doer_attempts")))
             elif state == "needs_clarification":
-                found.append(_finding("needs_clarification", ref, f"a witch asked: {t.get('doer_detail') or 'no question recorded'}", t.get("doer_detail")))
+                # the witch's words travel as `question` / `pieces` (doer_question, doer_pieces); detail is the older place
+                asked = t.get("doer_question") or t.get("doer_detail")
+                found.append(_finding("needs_clarification", ref, f"a witch asked: {asked or 'no question recorded'}", asked))
             elif state == "needs_split":
-                found.append(_finding("needs_split", ref, f"a witch says it is too large: {t.get('doer_detail') or 'no pieces recorded'}", t.get("doer_detail")))
+                pieces = t.get("doer_pieces") or t.get("doer_detail")
+                found.append(_finding("needs_split", ref, f"a witch says it is too large: {pieces or 'no pieces recorded'}", pieces))
             is_parent = str(t.get("task_id")) in children
             # Ready means the task names its witch and paths; the board snapshot (board.tasks_snapshot) does not publish `verify`, so it is not checked here.
             missing = [] if is_parent or spec.get("spec") == "council" else [k for k in ("agent", "paths") if not t.get(k)]
@@ -331,8 +334,9 @@ class Dispatcher:
         if kind in ("not_ready", "needs_split"):
             return self._scribe(f, "Make this task ready." if kind == "not_ready" else "Split this task into subtasks.")
         if kind == "needs_clarification":
-            if INTENT.search(str(task.get("doer_detail") or "")):
-                self.ask(ref, f"A witch asks about intent on {ref}: {task.get('doer_detail')}"[:400])
+            asked = task.get("doer_question") or task.get("doer_detail") or ""
+            if INTENT.search(str(asked)):
+                self.ask(ref, f"A witch asks about intent on {ref}: {asked}"[:400])
                 return {"action": "question"}
             return self._scribe(f, ANSWER_JOB)
         if kind == "orphaned":
