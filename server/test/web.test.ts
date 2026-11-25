@@ -1317,6 +1317,7 @@ describe("session screen", () => {
     const work = doc().querySelector('[data-key="unmerged-coven/wz-2"]');
     assert.match(work!.textContent!.replace(/\s+/g, " "), /Unmerged work: 2 commits on coven\/wz-2/);
     assert.ok(work!.querySelector('[data-accept="wz#2"]'), "Merge and clean is a button right there");
+    assert.ok(work!.querySelector('[data-discard="wz#2"]'), "and Discard, for work that will not merge");
     assert.match(doc().querySelector('[data-key="col-closed"]')!.textContent!, /1\s*Closed without merge/);
     assert.match(doc().querySelector('[data-key="col-done"]')!.textContent!, /0\s*Done/, "a closed-no-change task is not Done");
     openColumn("closed");

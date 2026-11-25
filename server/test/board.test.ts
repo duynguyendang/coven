@@ -643,6 +643,12 @@ describe("several hosts (spec multi-host)", () => {
       assert.equal((await merge()).status, 409, "the same tip fails the same check");
       await report([{ branch: "coven/s-2", task: "s#2", ahead: 4, tip: tip("b") }]);
       assert.equal((await merge()).status, 201, "a new tip may be merged again");
+      const discard = (task: string) => postJson(s.base, "/v1/board/accept", { project_id: "shop", task, decision: "discard", author: "duy" }, auth());
+      await send(s.base, [ev("task_status", { task: "s#9", state: "submitted", agent: "green-witch", branch: "coven/s-9", branch_host: "h_0000000a", host_id: "h_0000000a" })]);
+      assert.equal((await discard("s#9")).status, 409, "a submitted branch is accepted or sent back, never discarded");
+      const gone = await discard("s#2");
+      assert.deepEqual([gone.status, gone.body.branch], [201, "coven/s-2"], "unmerged work of a finished task may be discarded");
+      assert.equal((await acc()).decision, "discard");
       await report([]);
       assert.deepEqual((await board(s.base)).unmerged, [], "the whole list each time: an empty one clears it");
     } finally { await s.close(); }

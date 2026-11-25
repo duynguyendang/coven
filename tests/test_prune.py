@@ -56,6 +56,7 @@ def test_a_worktree_of_a_deleted_branch_and_a_dead_throwaway_checkout_are_remove
     git(repo, "worktree", "add", "-q", str(tree), "coven/shop-1")
     scratch = host.worktree_dir(repo, "merge-shop-9")
     git(repo, "worktree", "add", "-q", "--detach", str(scratch), "main")
+    monkeypatch.setattr(host, "SCRATCH_KEEP", 0)  # as if it were made hours ago
     done = host.prune_branches(repo, _view(t1={"doer_state": "done"}), set())
     assert done["deleted"] == ["coven/shop-1"] and not tree.exists() and not scratch.exists() and done["worktrees"] == 1
 
@@ -109,3 +110,72 @@ def test_the_host_reports_unmerged_work_and_prunes_only_when_told(repo, monkeypa
     prunes._cleanup(view)
     assert "coven/shop-1" not in _branches(repo)
     assert prunes._cleanup(view) is None, "at most every PRUNE_EVERY seconds"
+
+
+def test_a_review_checkout_is_never_removed_while_its_job_runs_or_while_young(repo, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    review = host.worktree_dir(repo, "council-r1-1b1-t--white-hat")
+    git(repo, "worktree", "add", "-q", "--detach", str(review), "main")
+    host.prune_branches(repo, _view(), {"council#r1-1b1-t"})
+    assert review.exists(), "its job runs"
+    host.prune_branches(repo, _view(), set())
+    assert review.exists(), "made a moment ago: kept for SCRATCH_KEEP"
+    monkeypatch.setattr(host, "SCRATCH_KEEP", 0)
+    host.prune_branches(repo, _view(), set())
+    assert not review.exists(), "old and idle: removed"
+
+
+def test_an_idle_open_tasks_empty_clean_branch_goes_but_not_one_with_work(repo, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    _branch(repo, "coven/shop-1", commit=False)
+    _branch(repo, "coven/shop-2", commit=False)
+    tree = host.worktree_dir(repo, "shop-2")
+    git(repo, "worktree", "add", "-q", str(tree), "coven/shop-2")
+    (tree / "half-done.txt").write_text("uncommitted work")
+    _branch(repo, "coven/shop-4")
+    for n in (1, 2, 4):
+        host._update(repo, f"shop#{n}", task=f"shop#{n}", state="needs_clarification", branch=f"coven/shop-{n}")
+    view = _view(t1={"doer_state": "needs_clarification"}, t2={"doer_state": "needs_clarification"}, t4={"doer_state": "needs_clarification"})
+    done = host.prune_branches(repo, view, set())
+    assert done["deleted"] == ["coven/shop-1"]
+    assert {"coven/shop-2", "coven/shop-4"} <= _branches(repo), "an uncommitted change and a commit are kept"
+    assert "shop#1" in host.load(repo), "the record stays: a retry makes a fresh branch"
+
+
+def test_discard_keeps_a_bundle_then_deletes_the_branch_everywhere(repo, origin, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    monkeypatch.setattr(board, "branch_report", lambda root, branches: {})
+    _branch(repo, "coven/shop-2")
+    git(repo, "push", "-q", "origin", "coven/shop-2")
+    accept = {"decision": "discard", "state": "requested", "branch": "coven/shop-2", "host_id": config.host_id(repo), "by": "duy", "request_id": "evt_d1"}
+    h = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)
+    (result,) = h._accepts(_view(t2={"doer_state": "done", "accept": accept}))
+    assert result["action"] == "discarded"
+    assert "coven/shop-2" not in _branches(repo)
+    assert "coven/shop-2" not in git(origin, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    bundle = result["bundle"]
+    assert "work on coven/shop-2" in git(repo, "bundle", "list-heads", bundle) or git(repo, "bundle", "verify", bundle) is not None
+    git(repo, "fetch", "-q", bundle, "coven/shop-2:coven/shop-2")
+    assert "coven/shop-2" in _branches(repo), "the bundle brings it back"
+
+
+def test_discard_refuses_an_open_task_or_a_branch_this_host_lacks(repo, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    progress = []
+    monkeypatch.setattr(board, "accept_progress", lambda root, ref, rid, state, reason=None: progress.append((ref, state)) or {})
+    _branch(repo, "coven/shop-2")
+    accept = {"decision": "discard", "state": "requested", "branch": "coven/shop-2", "host_id": config.host_id(repo), "by": "duy", "request_id": "evt_d2"}
+    h = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)
+    (result,) = h._accepts(_view(t2={"doer_state": "failed", "accept": accept}))
+    assert result["action"] == "held" and "coven/shop-2" in _branches(repo) and progress == [("shop#2", "held")]
+
+
+def test_a_reviewer_who_cannot_run_commands_gets_the_diff_in_her_prompt(repo, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    _branch(repo, "coven/shop-1")
+    seen = []
+    job = {"task_id": "r1-1b1-d", "title": "Design review shop#1", "agent": "elder-witch", "detail": "review", "branch": "coven/shop-1",
+           "review_of": "shop#1", "expects": "review"}
+    host.execute_job(repo, job, "elder-witch", lambda cwd, agent, prompt, env, timeout: seen.append(prompt) or ("1. ok\nVERDICT: pass", None))
+    assert "The change under review, from the host" in seen[0] and "coven_shop-1.txt" in seen[0] and "```diff" in seen[0]
+    assert "You cannot run commands. The host gives you the diff below" in seen[0]
