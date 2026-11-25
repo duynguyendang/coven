@@ -275,6 +275,10 @@ The doer reports where a task stands (**working → submitted / answered**, or *
 why: the cause, runs and time, verify, whether its paths changed on the base branch since it started, what the agent said last, and what to do next; the dashboard shows it under **Why it failed**), and the board follows. You merge the branch, or click **Mark done** on the card, to
 make it done. Design: `docs/ADD.md` §4.2–§4.4.
 
+A chat **Do it** request gets its own lane on the board: the host that takes it sends `chat_run`
+events (**working**, then **answered** or **failed**), and the board's `chat_runs` keeps each run
+for an hour after it ends. `tests/test_host_live.py` checks this against a real cloud with a fake `kiro-cli`.
+
 **Working together.** Each witch has a written role (`coven host agents --roles`): what she
 owns, produces, hands off and never does; the board shows it under *Responsibilities*. A witch
 that needs a fact another one owns asks her through the host, one question at a time (at most two

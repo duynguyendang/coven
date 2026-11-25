@@ -55,6 +55,8 @@ elif agent == "green-witch":
     os.makedirs("src/cart", exist_ok=True)
     open("src/cart/total.py", "w").write("def total(items):\n    return sum(items)\n")
     text = "Added src/cart/total.py."
+elif agent == "elf" and "BREAK-THE-RUN" in prompt:
+    sys.exit(1)  # a run that ends with no answer
 elif agent == "grey-witch":
     text = json.dumps({"answer": "The Raven will check the build.", "jobs": [
         {"agent": "raven", "title": "Check the build", "detail": "read the event log"},
@@ -182,6 +184,50 @@ def test_a_host_takes_requests_and_tasks_runs_each_witch_and_the_cloud_sees_it_a
     assert "shop#2" not in third["taken"] and "shop#2" not in host.load(root)
     held = {(c["spec"], c["task_id"], c.get("agent")) for c in api(cloud, f"/v1/board?project_id={project}")["claims"]}
     assert ("shop", "2", "elf") not in held and ("shop", "1", "green-witch") in held, "the Dev's branch still waits for people"
+
+
+def _chat_runs(cloud, project):
+    return api(cloud, f"/v1/board?project_id={project}")["chat_runs"]
+
+
+def test_a_chat_request_shows_on_the_board_as_a_chat_run_working_then_answered(world, cloud):
+    root, project, push = world["root"], world["project"], world["push"]
+    asked = api(cloud, "/v1/chat", {"project_id": project, "kind": "do", "to": "elf", "message": "another way to search?", "author": "duy"})["message_id"]
+    seen = []
+    real = host.run_agent
+
+    def runner(*args, **kwargs):  # look at the cloud while the witch runs
+        push()
+        seen.append(_chat_runs(cloud, project).get(f"chat#{asked}"))
+        return real(*args, **kwargs)
+
+    host.Host(root, slots=1, only=["elf"], runner=runner, out=lambda line: None).run(once=True)
+    push()
+    assert seen and seen[0]["state"] == "working" and seen[0]["ended_at"] is None, seen
+    run = _chat_runs(cloud, project)[f"chat#{asked}"]
+    assert (run["agent"], run["state"], run["code"]) == ("elf", "answered", None), run
+    assert run["started_at"] == seen[0]["started_at"] and run["ended_at"]
+
+
+def test_a_failing_chat_request_shows_on_the_board_as_a_chat_run_failed(world, cloud):
+    root, project, push = world["root"], world["project"], world["push"]
+    asked = api(cloud, "/v1/chat", {"project_id": project, "kind": "do", "to": "elf", "message": "BREAK-THE-RUN", "author": "duy"})["message_id"]
+    host.Host(root, slots=1, only=["elf"], out=lambda line: None).run(once=True)
+    push()
+    run = _chat_runs(cloud, project)[f"chat#{asked}"]
+    assert (run["agent"], run["state"]) == ("elf", "failed"), run
+    assert run["started_at"] and run["ended_at"]
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "redaction drops every field named `code` (src/coven/redact.py, server/src/redact.ts), so the host's chat_run "
+    "failure code never reaches the cloud; remove this mark when chat_run's code survives redaction"))
+def test_a_failed_chat_run_carries_its_code_to_the_board(world, cloud):
+    root, project, push = world["root"], world["project"], world["push"]
+    asked = api(cloud, "/v1/chat", {"project_id": project, "kind": "do", "to": "elf", "message": "BREAK-THE-RUN", "author": "duy"})["message_id"]
+    host.Host(root, slots=1, only=["elf"], out=lambda line: None).run(once=True)
+    push()
+    assert _chat_runs(cloud, project)[f"chat#{asked}"]["code"] in ("no_answer", "kiro_error", "error")
 
 
 def test_an_unknown_witch_name_refuses_to_start(world):
