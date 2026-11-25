@@ -73,7 +73,8 @@ class FakeCloud:
         c.decisions = []
         monkeypatch.setattr(board, "plan_decide", lambda root, plan, reasons=None: c.decisions.append({"plan": plan, "reasons": reasons}) or {})
         c.signoffs, c.signoff_refuse = [], False
-
+        c.chat_runs = []
+        monkeypatch.setattr(board, "chat_run", lambda root, ref, agent, state, code=None, note=None: c.chat_runs.append((ref, agent, state, code)) or {})
         def signoff(root, items):
             c.signoffs.extend(items)
             if c.signoff_refuse:
@@ -365,6 +366,32 @@ def test_a_failed_chat_turn_reports_failed_with_the_failure_facts(repo, monkeypa
     assert [s[1] for s in mine] == ["working", "failed"]
     (ref, facts), = [f for f in cloud.failures if f[0] == "chat#evt_req1"]
     assert facts["cause"] and facts["summary"]
+
+
+def test_a_chat_run_reports_working_then_answered(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do("sa"))
+    host.Host(repo, slots=1, runner=Runner({"elder-witch": lambda cwd, prompt: ("1. Split cli.py.", None)})).run(once=True)
+    assert [(r[0], r[1], r[2]) for r in cloud.chat_runs] == [("chat#evt_req1", "elder-witch", "working"), ("chat#evt_req1", "elder-witch", "answered")]
+
+
+def test_a_failed_chat_run_carries_a_code(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do("sa"))
+    host.Host(repo, slots=1, runner=Runner({"elder-witch": lambda cwd, prompt: (None, "the run gave no answer")})).run(once=True)
+    assert [(r[2], r[3]) for r in cloud.chat_runs] == [("working", None), ("failed", "no_answer")]
+
+
+def test_a_cloud_error_on_chat_run_never_blocks_the_answer(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.chat.append(human_do("sa"))
+
+    def down(*args, **kwargs):
+        raise OSError("cloud down")
+
+    monkeypatch.setattr(board, "chat_run", down)
+    host.Host(repo, slots=1, runner=Runner({"elder-witch": lambda cwd, prompt: ("1. Split cli.py.", None)})).run(once=True)
+    assert [a[3] for a in cloud.answers if a[2] == "answer"] == ["1. Split cli.py."]
 
 
 def test_a_chair_turn_reports_working_then_failed_or_answered(repo, monkeypatch):
