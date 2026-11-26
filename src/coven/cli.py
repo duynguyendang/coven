@@ -204,6 +204,12 @@ def cmd_guard(args: argparse.Namespace) -> int:
         return 0
 
 
+def cmd_gate(args: argparse.Namespace) -> int:
+    from . import gate
+
+    return gate.run()
+
+
 def cmd_logs(args: argparse.Namespace) -> int:
     from . import capture, logs
 
@@ -966,6 +972,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     guard_parser = sub.add_parser("guard", help="PreToolUse hook: read the hook JSON on stdin, exit 2 to deny")
     guard_parser.set_defaults(func=cmd_guard)
+    gate_parser = sub.add_parser("gate", help="PreToolUse hook: with COVEN_GATE=1, block a denied tool call (exit 2)")
+    gate_parser.set_defaults(func=cmd_gate)
     doctor = sub.add_parser("doctor", help="check configuration and connectivity")
     doctor.set_defaults(func=cmd_doctor)
     return parser
