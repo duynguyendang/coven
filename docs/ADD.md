@@ -589,6 +589,10 @@ password `COVEN_ADMIN_TOKEN` when it is set; a read token then gets 403 (the das
 once and keeps it in the browser). The admin password also has the read scope, so it signs in to the dashboard; it is not an ingest token. Without `COVEN_ADMIN_TOKEN` decisions take the read scope, as before. Notes and chat
 messages always take the read scope.
 
+**Retention.** `COVEN_TTL_DAYS` sets how many days the SQLite, DynamoDB and Worker (Durable Object) stores keep events.
+Every store reads it through `parseTtlDays` (`server/src/store.ts`): unset, empty, non-numeric or negative gives 30, `0`
+keeps events forever, above 36500 is capped. The Worker passes `env.COVEN_TTL_DAYS` to `SqlStore`, which applies the same clamp.
+
 **Idempotency-Key.** `POST /v1/claims`, `/v1/board/notes`, `/v1/board/done`, `/v1/board/plan`,
 `/v1/board/dispatch`, `/v1/board/push`, `/v1/board/accept`, `/v1/board/retry` and `/v1/chat` accept an `Idempotency-Key` header (1–128 of
 `A-Z a-z 0-9 . _ : -`). The first 2xx answer for a key is kept for `COVEN_IDEMPOTENCY_TTL` seconds

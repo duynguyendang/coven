@@ -74,7 +74,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-C2 | An event is acknowledged only after its durable write; a failed write returns 5xx so the relay retries. | Must | Built |
 | FR-C3 | Read views: projects, runs, a run's events, councils, flows, deviations, the board and the chat; and a live SSE stream. | Must | Built |
 | FR-C4 | The cloud redacts again before storage (defence in depth). | Must | Built |
-| FR-C5 | The same API runs on Node (memory, SQLite file or DynamoDB store) and on Cloudflare (Worker plus one SQLite-backed Durable Object). | Should | Built (SQLite file on a VM: AWS Lightsail; DynamoDB adapter not exercised against AWS) |
+| FR-C5 | The same API runs on Node (memory, SQLite file or DynamoDB store) and on Cloudflare (Worker plus one SQLite-backed Durable Object). | Should | Built (SQLite file on a VM: AWS Lightsail; DynamoDB adapter not exercised against AWS). Event retention is `COVEN_TTL_DAYS` on all three persistent stores, parsed by `parseTtlDays` |
 
 ### 4.4 Dashboard
 

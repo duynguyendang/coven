@@ -548,7 +548,9 @@ push, Kiro Web dispatch): with it set, a read token gets 403 there and the dashb
 admin password once (signing in with the admin password works too). With
 neither set the app uses `dev` and prints a warning at start-up; a persistent
 store (`COVEN_STORE=sqlite` or `dynamo`) refuses to start with the development token. Tokens
-are compared in constant time. The bearer header is accepted everywhere; the
+are compared in constant time. `COVEN_TTL_DAYS` (default 30) is how many days the SQLite,
+DynamoDB and Cloudflare Worker stores keep events: unset, empty, non-numeric or negative gives 30, `0`
+keeps them forever, and more than 36500 is capped. On the Worker, set it as a variable. The bearer header is accepted everywhere; the
 `?token=` query parameter is accepted only on `/v1/stream`, because a browser
 cannot set headers on an event stream. There is no user model. By default one token
 sees the whole fleet; `COVEN_PROJECT_TOKENS="tokenA=atlas-api,tokenB=web|docs"` limits a token to

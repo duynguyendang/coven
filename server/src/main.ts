@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "./app.ts";
 import { usingDevToken } from "./auth.ts";
 import { SqlStore } from "./sqlstore.ts";
-import { DynamoStore, MemoryStore } from "./store.ts";
+import { DynamoStore, MemoryStore, parseTtlDays } from "./store.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const storeName = process.env.COVEN_STORE ?? "memory";
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     const table = process.env.COVEN_TABLE;
     if (!table) { console.error("coven cloud: COVEN_TABLE is required when COVEN_STORE=dynamo"); process.exit(2); }
     const { awsTable } = await import("./dynamo.ts");
-    const dynamo = new DynamoStore(await awsTable(table), Number(process.env.COVEN_TTL_DAYS ?? 30));
+    const dynamo = new DynamoStore(await awsTable(table), parseTtlDays(process.env.COVEN_TTL_DAYS));
     try {
       console.log(`coven cloud: rehydrated ${await dynamo.hydrate()} events from DynamoDB`);
     } catch (error) {
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     // One SQLite file on a persistent disk (a VM): the Durable Object's SqlStore over node:sqlite.
     const file = process.env.COVEN_DB ?? "/data/coven.db";
     const { openSqlite } = await import("./sqlite.ts");
-    const sqlStore = new SqlStore(openSqlite(file), Number(process.env.COVEN_TTL_DAYS ?? 30)); // 0: keep events forever
+    const sqlStore = new SqlStore(openSqlite(file), parseTtlDays(process.env.COVEN_TTL_DAYS)); // 0: keep events forever
     console.log(`coven cloud: rehydrated ${await sqlStore.hydrate()} events from ${file}`);
     store = sqlStore;
   } else if (storeName === "memory") {
