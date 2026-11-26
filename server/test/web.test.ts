@@ -2324,6 +2324,19 @@ describe("council chat", () => {
     assert.equal(answers.length, 1, "the steps of one answer are one bubble");
     assert.deepEqual(answers[0].match(/\d\. step \d/g), ["1. step 1", "2. step 2"]);
     assert.ok(!bubbles().some((b) => b.includes("is on it, on wsl-7")), "the working line goes once the answer is in");
+
+    // an old stored duplicate (same run, same words) shows once; the same words from another run stay
+    const rows = s.store.board.chat.get("shop")!;
+    const dup = (id: string, run: string, message: string) => rows.push({ message_id: id, project_id: "shop", ts: at(), role: "council", kind: "answer",
+      message, task: null, to: null, reply_to: askedId, author: "wsl-7", persona: "elder-witch", run_id: run });
+    dup("old_dup_a", "member_wsl-7", "3. same words");
+    dup("old_dup_b", "member_wsl-7", "3. same words");
+    dup("old_run_c", "member_wsl-8", "3. same words");
+    streams[0].emit("chat", { kind: "chat", project_id: "shop" });
+    await wait(900);
+    const merged = bubbles().find((b) => b.includes("3. same words"))!;
+    assert.equal(merged.match(/3\. same words/g)!.length, 2, "same run once, other run again");
+    assert.ok(doc().querySelector(".chat .msg ol.steps"), "the steps list stays");
   });
 
   test("the chat page fills the window: the page itself never scrolls, only the conversation", async () => {
