@@ -1852,7 +1852,8 @@ def plan_prompt(task: dict, host: str, source: dict | None) -> str:
               f"Propose at most {MAX_PLAN_TASKS} build tasks for the Green Witch (the Dev), in the order she should do them. Each task:",
               "- one reviewable change that keeps the project's tests green;",
               "- paths: the files or folders it changes, repo-relative, as narrow as it allows (tests and docs it must update included; never the whole repo);",
-              "- verify: one shell command, run from the repository root, that exits 0 when the task is done (the project's test runner on the relevant tests);",
+              "- verify: one shell command, run from the repository root, that exits 0 when the task is done (the project's test runner on the relevant tests; "
+              "write `python3`, never bare `python`, and copy how the repository's other _Verify:_ lines call its tests);",
               "- detail: what to change and why, at most 330 characters.",
               "Never put a secret, a token or file contents in the plan.",
               "", "Reply with ONLY one JSON object, no prose around it:",

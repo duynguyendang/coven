@@ -77,3 +77,13 @@ def test_a_wave_waits_for_the_one_before_and_a_board_done_unblocks_it(tmp_path, 
     assert ids({"claims": [], "specs": []}) == ["1"], "2 waits for wave 0"
     for finished in ({"doer_state": "done"}, {"merged": {"in_base": True}}):
         assert ids({"claims": [], "specs": [{"spec": "s", "tasks": [{"task_id": "1", **finished}]}]}) == ["2"], finished
+
+
+def test_a_verify_written_with_bare_python_runs_where_only_python3_exists(tmp_path, monkeypatch):
+    """`python -m pytest …` failed with exit 127 (python: not found): a broken command, not broken work."""
+    import shutil as _shutil
+    from coven import verify
+    real_which = _shutil.which
+    monkeypatch.setattr(verify.shutil, "which", lambda name, path=None: None if name == "python" else real_which(name, path=path))
+    result = verify.run(tmp_path, {"spec": "s", "task_id": "1", "verify": "python -c 'import sys; sys.exit(0)'"}, tmp_path / "v.log")
+    assert result["exit_code"] == 0 and result["status"] == "pass", result
