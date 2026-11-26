@@ -224,4 +224,6 @@ def test_check_accepts_a_guard_that_exits_zero_on_a_benign_sample(tmp_path):
     (tmp_path / ".kiro").mkdir()
     hooks.install(tmp_path, guard=True)
     command = hooks.absolute_command().removesuffix(" emit") + " guard"
-    assert hooks.check_command(command, "PreToolUse")["ok"]
+    # A host run exports COVEN_PATHS/COVEN_TASK; the guard would then judge the sample against them.
+    clean = {k: v for k, v in os.environ.items() if not k.startswith("COVEN_")}
+    assert hooks.check_command(command, "PreToolUse", env=clean)["ok"]
