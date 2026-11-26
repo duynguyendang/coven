@@ -53,6 +53,26 @@
       "timeout": 5
     },
     {
+      "name": "coven-precompact",
+      "description": "Mark the start of a context compaction.",
+      "trigger": "PreCompact",
+      "action": {
+        "type": "command",
+        "command": "coven emit"
+      },
+      "timeout": 5
+    },
+    {
+      "name": "coven-postcompact",
+      "description": "Mark the end of a context compaction.",
+      "trigger": "PostCompact",
+      "action": {
+        "type": "command",
+        "command": "coven emit"
+      },
+      "timeout": 5
+    },
+    {
       "name": "coven-session-end",
       "description": "Seal the run when the Kiro session ends.",
       "trigger": "SessionEnd",
