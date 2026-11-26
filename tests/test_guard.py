@@ -90,3 +90,31 @@ def test_command_with_absolute_worktree_path_allowed(tmp_path):
     wt = tmp_path / ".coven" / "worktrees" / "t1"
     wt.mkdir(parents=True)
     assert decide(req("execute_bash", command=f"ls {wt}/src"), wt) is None
+
+
+def test_cd_into_worktree_root_allowed(tmp_path):
+    wt = tmp_path / ".coven" / "worktrees" / "t1"
+    wt.mkdir(parents=True)
+    assert decide(req("execute_bash", command=f"cd {wt} && ls"), wt) is None
+    assert decide(req("execute_bash", command=f"cd {wt}/src; ls"), wt) is None
+    assert decide(req("execute_bash", command="cd . && ls"), wt) is None
+
+
+def test_worktree_root_path_itself_allowed(tmp_path):
+    wt = tmp_path / ".coven" / "worktrees" / "t1"
+    wt.mkdir(parents=True)
+    assert decide(req("fs_read", path=str(wt)), wt) is None
+
+
+def test_worktree_secret_in_command_denied(tmp_path):
+    wt = tmp_path / ".coven" / "worktrees" / "t1"
+    wt.mkdir(parents=True)
+    r = decide(req("execute_bash", command=f"cat {wt}/.env"), wt)
+    assert r and r["decision"] == "deny"
+
+
+def test_only_denies_never_rewrites():
+    from coven import guard
+
+    assert "updatedInput" in guard.__doc__
+    assert "rm -rf" in guard.__doc__

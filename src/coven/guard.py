@@ -1,7 +1,20 @@
 """Pure permission guard: deny secret files and writes outside the root.
 
 decide(payload, root) returns {"decision": "deny", "reason": str} or None
-(no opinion, so --trust-tools still governs). It never rewrites the input.
+(no opinion, so --trust-tools still governs). It only denies. It never
+rewrites the tool input (no updatedInput) and never mutates the payload.
+
+Secrets are judged on the real path relative to root, so a root such as
+`<repo>/.coven/worktrees/x` does not make every path in it a secret, and a
+`cd <root>` token passes. Paths outside root are judged on their full path.
+
+Limits (what this guard does not do):
+- It checks secret files and writes outside root only.
+- It does not catch `rm -rf` or other destructive shell commands.
+- It does not check network access.
+- Shell commands are scanned by token for secret paths; writes by a shell
+  command outside root are not detected.
+
 Standard library only.
 """
 
