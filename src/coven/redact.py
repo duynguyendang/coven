@@ -52,14 +52,14 @@ GENERIC_ASSIGNMENT = re.compile(
 HOME_PATTERN = re.compile(r"/(?:home|Users)/[^/\s\"']+")
 
 
-def redact_text(value: str) -> str:
+def redact_text(value: str, limit: int = MAX_STRING) -> str:
     text = value
     for name, pattern in SECRET_PATTERNS:
         text = pattern.sub(f"[REDACTED:{name}]", text)
     text = GENERIC_ASSIGNMENT.sub(lambda m: f"{m.group(1)}=[REDACTED]", text)
     text = HOME_PATTERN.sub("~", text)
-    if len(text) > MAX_STRING:
-        text = text[:MAX_STRING] + "…[truncated]"
+    if len(text) > limit:
+        text = text[:limit] + "…[truncated]"
     return text
 
 

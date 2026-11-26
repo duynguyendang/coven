@@ -160,7 +160,9 @@ def save_compaction_summary(payload: dict, root: Path) -> Path | None:
             return None
         from .redact import redact_text
 
-        text = redact_text(summary[:COMPACTION_SUMMARY_CAP])[:COMPACTION_SUMMARY_CAP]
+        # Redact the whole text first (a cut could leave half a secret that no pattern matches),
+        # then cut to the cap; the redactor's own 400-character cap is lifted to the same limit.
+        text = redact_text(summary, COMPACTION_SUMMARY_CAP)[:COMPACTION_SUMMARY_CAP]
         run = re.sub(r"[^A-Za-z0-9_.-]", "_", emit.run_id(payload))[:80].lstrip(".") or "run_unbound"
         base = config.coven_dir(root)
         folder = base / "compactions" if config.honours_permissions(base) else config.private_home(root) / "compactions"
