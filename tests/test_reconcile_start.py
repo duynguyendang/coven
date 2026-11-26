@@ -61,3 +61,19 @@ def test_never_sends_done(world):
         host._update(root, f"s#{i}", state=st)
     host.reconcile_start(root)
     assert sent and all(s[1] != "done" for s in sent if s[0] != "rm")
+
+
+def test_a_returning_host_gives_way_to_the_host_that_took_its_task_over(world, monkeypatch):
+    """autonomous-tasks task 18: a newer attempt on another host wins; this host drops its copy, keeps the branch, sends nothing."""
+    root, sent, specs = world
+    from coven import config
+    monkeypatch.setattr(config, "host_id", lambda root: "h_0000aaaa")
+    host._update(root, "s#1", state="running", worktree=str(root / "wt"), branch="coven/s-1")
+    board_of(specs, **{"1": {"doer_state": "working", "doer_host_id": "h_0000bbbb", "takeovers": 1}})
+    out = host.reconcile_start(root)
+    assert out["closed"] == 1 and "s#1" not in host.load(root)
+    assert ("rm", str(root / "wt")) in sent and not [x for x in sent if x[0] == "s#1"], "nothing is sent for it"
+    host._update(root, "s#2", state="running")
+    board_of(specs, **{"2": {"doer_state": "working", "doer_host_id": "h_0000aaaa", "takeovers": 0}})
+    host.reconcile_start(root)
+    assert host.load(root)["s#2"]["state"] == "failed", "its own task, no takeover: handled as task 1 says"

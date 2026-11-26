@@ -150,7 +150,7 @@ def _remember(root: Path, claims: list[dict]) -> None:
     temporary.replace(target)
 
 
-def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None, attempt: int = 1) -> dict:
+def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None, attempt: int = 1, process: str | None = None) -> dict:
     """Claim a task (or a review of it) for an agent of this host. Raises BoardError on a conflict (409) or no cloud.
 
     The claim carries the task's key and this run's attempt id, and an Idempotency-Key: a retry after a timeout is a replay."""
@@ -163,6 +163,8 @@ def claim(root: Path, task: dict, kind: str = "task", agent: str | None = None, 
         "kind": kind, "paths": list(task.get("paths") or []) if kind == "task" else [],
         "task_key": key, "attempt_id": attempt_id, "host_id": config.host_id(root),
     }
+    if process:
+        request["process"] = process  # only this process may renew it (a restarted host does not keep its dead runs' claims)
     if agent:
         request["agent"] = agent
     status, body = _call(root, "POST", "/v1/claims", request, key=idempotency_key(attempt_id, "claim", kind, agent or "-", who))
@@ -190,20 +192,22 @@ def release(root: Path, claim_id: str, reason: str = "released") -> dict:
     return body
 
 
-def renew_all(root: Path) -> list[str]:
-    """Renew every claim this working copy holds; forget the ones the cloud no longer has. Never raises."""
+def renew_all(root: Path, process: str | None = None) -> list[str]:
+    """Renew every claim this working copy holds; forget the ones the cloud no longer has. With `process`, a claim an
+    earlier (now silent) process of this host made is taken over by this one. Never raises."""
     renewed, keep = [], []
     for c in held(root):
+        body = {"member": member(root), "host_id": config.host_id(root), **({"process": process} if process else {})}
         try:
-            status, _body = _call(root, "POST", f"/v1/claims/{c['claim_id']}/renew", {"member": member(root), "host_id": config.host_id(root)})
+            status, _body = _call(root, "POST", f"/v1/claims/{c['claim_id']}/renew", body)
         except BoardError:
             keep.append(c)  # offline: keep it and try again; the lease decides
             continue
         if status == 200:
             renewed.append(c["claim_id"])
             keep.append(c)
-        elif status in (500, 502, 503, 429):
-            keep.append(c)
+        elif status in (500, 502, 503, 429) or (status == 403 and process):
+            keep.append(c)  # 403 from a host: an earlier process of it still counts as live; the claim is taken over once it is not
     if len(keep) != len(held(root)):
         _remember(root, keep)
     return renewed

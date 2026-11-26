@@ -171,6 +171,7 @@ export class Board {
         kind: CLAIM_KINDS.has(p.kind) ? p.kind : "task", member: p.member, host: p.member, agent: typeof p.agent === "string" ? p.agent : null, paths: Array.isArray(p.paths) ? p.paths : [],
         task_key: this.keyFor(project, p, p.spec ? `${p.spec}#${p.task_id}` : null), attempt_id: attemptOf(p),
         host_id: typeof p.host_id === "string" && HOST_ID.test(p.host_id) ? p.host_id : null,
+        process: typeof p.process === "string" && PROCESS_ID.test(p.process) ? p.process : null,
         claimed_at: event.ts, lease_until: known?.lease_until && known.lease_until > p.lease_until ? known.lease_until : p.lease_until,
         released_at: null, release_reason: null,
       });
@@ -477,7 +478,10 @@ export class Board {
   /** Why a claim may not be taken, or null. Same member re-claiming is a renewal, not a conflict. */
   conflict(projectId: string, wanted: Json, at = new Date().toISOString()): Json | null {
     for (const c of this.active(projectId, at)) {
-      if (c.member === wanted.member && (!c.host_id || !wanted.host_id || c.host_id === wanted.host_id)) {
+      // Two processes of one host are two claimants while both are alive: a new process may not start what the old one
+      // still runs. Once the old one is silent (a restart), its host's new process takes its claims over.
+      const sameProcess = !c.process || !wanted.process || c.process === wanted.process || !this.processAlive(projectId, c.process, at);
+      if (c.member === wanted.member && (!c.host_id || !wanted.host_id || c.host_id === wanted.host_id) && sameProcess) {
         // The same host: a renewal of its own claim. Legacy clients name no agent and may hold many tasks.
         // Agents on one host are separate claimants: another agent, or another task, can collide.
         if (!wanted.agent || !c.agent) continue;
@@ -485,7 +489,7 @@ export class Board {
       }
       const sameTask = c.spec === wanted.spec && c.task_id === wanted.task_id;
       if (wanted.kind === "task" && c.kind === "task") {
-        if (sameTask) return { reason: "held", held_by: c.member, held_agent: c.agent ?? null, claim_id: c.claim_id };
+        if (sameTask) return { reason: sameProcess ? "held" : "held by another process of this host", held_by: c.member, held_agent: c.agent ?? null, claim_id: c.claim_id };
         if (pathsOverlap(wanted.paths, c.paths)) {
           return { reason: "paths overlap", held_by: c.member, held_agent: c.agent ?? null, claim_id: c.claim_id, task: `${c.spec}#${c.task_id}` };
         }
@@ -494,8 +498,15 @@ export class Board {
     return null;
   }
 
+  /** Whether the host process announced itself in the last 3 minutes (the monitor's STALE line). */
+  processAlive(projectId: string, process: string, at = new Date().toISOString()): boolean {
+    const cutoff = new Date(Date.parse(at) - 3 * MONITOR_EVERY * 1000).toISOString();
+    return [...(this.processes.get(projectId)?.values() ?? [])].some((p) => p.process === process && (p.last_seen || "") >= cutoff);
+  }
+
   mine(projectId: string, member: string, wanted: Json, at = new Date().toISOString()): Json | null {
-    return this.active(projectId, at).find((c) => c.member === member && (!c.host_id || !wanted.host_id || c.host_id === wanted.host_id) && c.spec === wanted.spec
+    return this.active(projectId, at).find((c) => c.member === member && (!c.host_id || !wanted.host_id || c.host_id === wanted.host_id)
+      && (!c.process || !wanted.process || c.process === wanted.process || !this.processAlive(projectId, c.process, at)) && c.spec === wanted.spec
       && c.task_id === wanted.task_id && c.kind === wanted.kind && (c.agent ?? null) === (wanted.agent ?? null)) ?? null;
   }
 
@@ -541,7 +552,7 @@ export class Board {
         const asked = this.dispatches.get(projectId)?.get(`${spec}#${t.task_id}`);
         const orphan = this.orphan(projectId, `${spec}#${t.task_id}`, doing, held.length > 0, at);
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
-        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null,
+        return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_host_id: doing?.host_id ?? null, doer_ts: doing?.ts ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null,
           orphaned: orphan.orphaned, orphaned_since: orphan.since, takeovers: this.newest.get(projectId)?.get(`${spec}#${t.task_id}`)?.takeovers ?? 0,
           doer_parent: doing?.parent ?? null, doer_ready: doing?.ready ?? null, doer_missing: doing?.missing ?? [], doer_step: doing?.step ?? null, doer_question: doing?.question ?? null, doer_pieces: doing?.pieces ?? null, merged: doing?.merged ?? null,
           rollup: rollups.get(`${spec}#${t.task_id}`) ?? null,

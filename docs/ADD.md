@@ -360,6 +360,23 @@ hosts. The cloud computes the roll-up (`3 of 5 done, 1 failed`). The cloud never
 - **Spec snapshots.** A host publishes a spec's `spec_artifact_updated` snapshot only when it changed since the last one
   this working copy sent (`.coven/state/synced.json`), or six hours after it; `coven board sync` always sends. Sending
   every spec on every tick had made these snapshots 98% of the cloud's store, which it replays into memory at start.
+- **The control loop of a run** (host, `run_agent`):
+  - a witch resumes her own Kiro session on a task: the host keeps each run's `sessionId` (from its stream-json) per task and
+    witch in `.coven/state/sessions.json` for 7 days and passes `--resume-id` on the next run of that witch on that task (a
+    rework, a retry, after a restart); a session that is gone starts fresh once; the host's own `COVEN_RESUME_ID` is never used;
+    a merged task's sessions are forgotten;
+  - a failed run says what `kiro-cli` printed (the end of its stderr, without its `[INFO]` lines, redacted); one that failed
+    before any tool call for a cause outside the task (network, throttling, a 5xx) is tried again twice, after 10 and 30 s;
+  - while it runs, the Dev's `PreToolUse` hook (`.kiro/agents/green-witch.json`: `${COVEN_GUARD:-true} guard`) denies a
+    write outside the task's `_Paths:_` (the host passes `COVEN_PATHS` and `COVEN_GUARD` to a build run; exit 2 returns the
+    reason to her); the host's path check after the run stays;
+  - a host that stops stops its own `kiro-cli` runs, and one that starts stops the runs an earlier process of the same
+    working copy left behind (matched by their `COVEN_ROOT`), so no run goes on unwatched and races a new one;
+  - a task whose host went silent (the cloud's `orphaned`) is taken over by another online host that runs its witch, as a
+    new attempt from a fresh checkout, at most twice (`host: takes over <ref> from <host>`); the host that comes back and finds
+    a newer attempt on another host drops its record and worktree and keeps the branch (autonomous-tasks tasks 17, 18);
+  - the backstop: any open task whose status has not changed for 24 hours goes to a person once per state (the Chair's
+    `stalled` finding), so a task never sits unseen. The board view carries `doer_ts` and `doer_host_id` for it.
 - **No task without a next step.** Every stopped task ends in `queued`, `held` or a question to a person, never in nothing:
   - a question (`NEEDS`): Scribe, then the Elder Witch's check, then a note on the task with both answers (the Dev's next
     prompt shows it as untrusted text) and `task_status queued`; the same question again is a new round; after
@@ -525,7 +542,7 @@ Bearer token (`Authorization: Bearer …`, constant-time compare); `?token=` onl
 | `GET /v1/flows`, `GET /v1/flows/{id}` | read | flows |
 | `GET /v1/deviations` | read | open `spec_deviation` events |
 | `POST /v1/events/{id}/dismiss` | any token (admin planned) | dismiss a deviation |
-| `POST /v1/claims`, `POST /v1/claims/{id}/renew`, `POST /v1/claims/{id}/release` | ingest | claims with `agent`, `task_key`, `attempt_id`, `host_id`; 409 held or paths overlap; 403 another host's claim; 404 unknown claim; 410 released, or the lease expired |
+| `POST /v1/claims`, `POST /v1/claims/{id}/renew`, `POST /v1/claims/{id}/release` | ingest | claims with `agent`, `task_key`, `attempt_id`, `host_id`, `process?` (`p_` + 8 hex: the host process; while it announces itself, another process of the same host gets 409 `held by another process of this host` for that task and 403 on renew; once it is silent for 3 minutes, the host's new process renews and so takes the claim over; release is allowed from any process of the host); 409 held or paths overlap; 403 another host's claim; 404 unknown claim; 410 released, or the lease expired |
 | `POST /v1/chair` | ingest | the Chair lease, one host per project: body `{project_id, host_id, action: claim\|renew\|release}`; lease 120 s; 200 `{holder, until}` when this host holds it, 409 `{holder, until}` when another does (renew without the lease is 409); the board view carries `chair: {host_id, until}` or null |
 | `GET /v1/board` | read | board view: tasks, claims, notes, status, hosts, `chat_tasks` (read-only, derived on each read from the `chat#<message id>` statuses and their chat message, newest first, at most 50: `{ref, title, witch, state, ts, host}`; never stored in `specs` and never counted as a task) and `monitor`: `{runs: [{ref, title, agent, host, host_id, process, run_id, started_at, stage, last_activity: {what, at}, heartbeat, last_seen, duplicate}], witch_last_seen: {agent: ts}, every_seconds}`. One row per run of every process seen in the last hour; `stage` is `claimed` (no status of its own since it started), `running`, `waiting for review`, `done` or `failed`, from the task's latest status, never a percentage; `heartbeat` is `fresh`, `STALE` after 3 missed announcements (3 min) or `DISCONNECTED` after 12; `duplicate` marks two runs on the same ref |
 | `POST /v1/board/notes` | read | a person's note (untrusted, redacted) |

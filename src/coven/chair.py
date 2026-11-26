@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Callable
 
 NO_OWNER_SECONDS = 600
+STALL_HOURS = 24  # an open task whose status has not changed for this long goes to a person, once per state
+STALL_STATES = ("queued", "working", "needs_clarification", "needs_split", "held", "failed", "submitted")
 DONE = ("done", "merged", "replaced", "abandoned")
 
 _reported: set[str] = set()
@@ -77,6 +79,12 @@ def sweep(view: dict, now, seen: set[str] | None = None) -> list[dict]:
             state = t.get("doer_state")
             if (_closed(t) or t.get("merged")) and state in ("failed", "needs_clarification", "needs_split"):
                 state = None  # ticked, merged or done: an old stop on a finished task needs nobody (never queue it again)
+            stamp = _time(t.get("doer_ts"))
+            if (not _closed(t) and not t.get("merged") and state in STALL_STATES and stamp
+                    and (at - stamp).total_seconds() >= STALL_HOURS * 3600):
+                # The backstop: whatever else holds it, an open task never sits unseen. Said once per state and status time.
+                hours = int((at - stamp).total_seconds() // 3600)
+                found.append(_finding("stalled", ref, f"no change for {hours} h; it says {state}", state, t.get("doer_ts")))
             if t.get("orphaned") and not _closed(t) and not t.get("merged"):
                 # `working` (or a branch) on a host that went silent, no live claim (the cloud's flag): queue it again
                 found.append(_finding("orphaned", ref, f"its host went silent at {t.get('orphaned_since') or 'some time'}; no live run",
@@ -359,6 +367,9 @@ class Dispatcher:
                 self.signoff(ref, f"autonomous-signoff: failed with no_change, nothing left to do ({f['why']})"[:200])
                 return {"action": "signoff"}
             self.ask(ref, f"{ref} failed ({cause}). Close it? {f['why']}"[:400])
+            return {"action": "question"}
+        if kind == "stalled":
+            self.ask(ref, f"{ref} has not moved: {f['why']}. Open it: answer it, Retry it, or mark it done."[:400])
             return {"action": "question"}
         if kind == "parent_complete":
             self.review(ref, f["why"])

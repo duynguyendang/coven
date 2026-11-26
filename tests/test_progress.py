@@ -62,7 +62,7 @@ def test_run_agent_sends_a_redacted_working_step(tmp_path, monkeypatch):
     secret = "AKIA" + "A" * 16
     records = [call("execute_bash", command=f"echo {secret} " + "x" * 300), {"type": "runFinished", "data": {"status": "success", "finalText": "ok"}}]
 
-    def fake_stream(command, cwd, env, timeout, on_step, every):
+    def fake_stream(command, cwd, env, timeout, on_step, every, stderr=None):
         for r in records:
             step = council.tool_step(r)
             if step:

@@ -177,7 +177,12 @@ def cmd_guard(args: argparse.Namespace) -> int:
             return 0
         cwd = payload.get("cwd")
         base = Path(cwd) if isinstance(cwd, str) and cwd else _root()
-        verdict = guard.decide(payload, base)
+        try:
+            declared = json.loads(os.environ.get("COVEN_PATHS") or "[]")  # a host's build run: the task's _Paths:_
+            declared = [str(x) for x in declared][:50] if isinstance(declared, list) else []
+        except ValueError:
+            declared = []
+        verdict = guard.decide(payload, base, declared or None)
         if not verdict or verdict.get("decision") != "deny":
             return 0
         reason = str(verdict.get("reason", "denied"))

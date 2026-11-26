@@ -46,7 +46,7 @@ class FakeCloud:
     def install(self, monkeypatch, name="wsl-1"):
         c = self
 
-        def claim(root, task, kind="task", agent=None, attempt=1):
+        def claim(root, task, kind="task", agent=None, attempt=1, process=None):
             with c.lock:
                 for k in c.claims:
                     if (k["spec"], k["task_id"]) == (task["spec"], task["task_id"]):
@@ -87,7 +87,7 @@ class FakeCloud:
         monkeypatch.setattr(board, "task_status", lambda root, ref, state, agent=None, detail=None, key=None, attempt=None, branch=None, verdict=None, failure=None, **_more: (c.failures.append((ref, failure)) if failure else None, c.statuses.append((ref, state, agent, detail)), c.stamps.append((ref, state, key, attempt)), c.branches.append((ref, state, branch)), c.verdicts.append((ref, verdict))) and {})
         monkeypatch.setattr(board, "answer", lambda root, reply_to, message, role="chair", kind="answer": c.answers.append((reply_to, role, kind, message)) or {})
         for attr, fn in {
-            "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root: [],
+            "claim": claim, "release": release, "ready": ready, "sync": lambda root: [], "renew_all": lambda root, process=None: [],
             "held": lambda root: list(c.claims), "holds": lambda root, claim_id: c.lease_ok, "chat": lambda root: {"messages": c.chat, "waiting": []},
             "read": lambda root: {"notes": c.notes, "claims": [], "specs": c.specs}, "member": lambda root: name,
             "post": lambda root, note, **k: c.notes.append({"note": note, **k}) or {},
@@ -1848,7 +1848,7 @@ def test_retry_refuses_a_task_that_is_still_running(repo, monkeypatch):
 def test_local_run_pins_agent_engine_v3(tmp_path, monkeypatch):
     seen = []
 
-    def fake_stream_run(command, cwd, env, timeout, on_step, every):
+    def fake_stream_run(command, cwd, env, timeout, on_step, every, stderr=None):
         seen.append(command)
         return ""
 

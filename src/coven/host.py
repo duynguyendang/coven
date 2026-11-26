@@ -32,8 +32,10 @@ import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
@@ -73,8 +75,10 @@ RESUME_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
 def resume_id(env: dict | None = None) -> str | None:
-    """The Kiro session to continue (`COVEN_RESUME_ID` in the run's env or the host's), else None. A malformed id is refused."""
-    value = ((env or {}).get("COVEN_RESUME_ID") or os.environ.get("COVEN_RESUME_ID") or "").strip()
+    """The Kiro session to continue (`COVEN_RESUME_ID` in this run's env, set per task and witch by the host), else None.
+    Never the host's own environment: one id there would make every witch of every task resume the same session.
+    A malformed id is refused."""
+    value = ((env or {}).get("COVEN_RESUME_ID") or "").strip()
     if not value:
         return None
     if not RESUME_ID.match(value):
@@ -98,27 +102,110 @@ def agent_command(agent: str, prompt: str, trust: str, resume: str | None = None
     return command + ["--agent", agent, prompt]
 
 
-def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_TIMEOUT) -> tuple[str | None, str | None]:
-    """One headless Kiro run as `agent`, trusting only the tools its kind needs."""
+CLI_RETRIES = 2          # a run that failed before it did anything, for a reason outside the task, is tried again
+CLI_BACKOFF = (10, 30)   # seconds before each retry
+TRANSIENT_CLI = re.compile(r"timed? ?out|throttl|rate.?limit|too many requests|econnreset|connection (?:reset|refused|closed|error)|"
+                           r"network|temporar|unavailable|\b50[0234]\b|internal server error|try again", re.I)
+RESUME_GONE = re.compile(r"(?:session|conversation)[^.]{0,40}(?:not found|does not exist|unknown|invalid)|no (?:such )?(?:session|conversation)", re.I)
+SESSIONS_FILE = "sessions.json"
+SESSION_DAYS = 7         # a witch's session for a task is resumed for this long after its last run
+
+
+def _sessions(root: Path) -> dict:
+    try:
+        data = json.loads((config.state_dir(root) / SESSIONS_FILE).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def session_for(root: Path, ref: str, agent: str) -> str | None:
+    """The Kiro session of `agent`'s last run on `ref`, to resume (the witch remembers the task across runs and restarts)."""
+    seen = _sessions(root).get(f"{ref}|{agent}") or {}
+    if not seen.get("id") or time.time() - float(seen.get("at") or 0) > SESSION_DAYS * 86400:
+        return None
+    return str(seen["id"])
+
+
+def remember_session(root: Path, ref: str, agent: str, sid: str | None) -> None:
+    """Keep the run's session for the next run of this witch on this task. A file of its own: Retry forgets the record, not this."""
+    if not sid or not ref or ref.startswith("chat#"):
+        return
+    with _LOCK:
+        data = _sessions(root)
+        data[f"{ref}|{agent}"] = {"id": sid, "at": time.time()}
+        cutoff = time.time() - SESSION_DAYS * 86400
+        data = {k: v for k, v in data.items() if float((v or {}).get("at") or 0) >= cutoff}
+        path = config.state_dir(root) / SESSIONS_FILE
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+            temporary.replace(path)
+        except OSError:
+            pass
+
+
+def forget_sessions(root: Path, ref: str) -> None:
+    """A finished task's sessions are not resumed again."""
+    with _LOCK:
+        data = _sessions(root)
+        keep = {k: v for k, v in data.items() if not k.startswith(f"{ref}|")}
+        if keep != data:
+            try:
+                (config.state_dir(root) / SESSIONS_FILE).write_text(json.dumps(keep, indent=1) + "\n", encoding="utf-8")
+            except OSError:
+                pass
+
+
+def _did_something(stream: str) -> bool:
+    """Whether the run got as far as a tool call (a retry then could repeat work): only an empty start is retried."""
+    return '"tool_call"' in stream or '"toolCall"' in stream or '"tool_call_update"' in stream
+
+
+def run_agent(cwd: Path, agent: str, prompt: str, env: dict, timeout: int = RUN_TIMEOUT, sleep=time.sleep) -> tuple[str | None, str | None]:
+    """One headless Kiro run as `agent`, trusting only the tools its kind needs.
+
+    It resumes the witch's own session for this task when the host gives one (COVEN_RESUME_ID), and starts fresh once if
+    that session is gone. A failure says what kiro-cli printed on stderr; one that happened before any tool call, for a
+    reason outside the task (network, throttling, a 5xx), is tried again CLI_RETRIES times."""
     # A consultation answer is read-only whatever the witch's kind (the Dev answering about the code changes nothing).
     kind = agents.kind(agent)
     if env.get("COVEN_READ_ONLY") == "1" and kind == "build":
         kind = "think"
     trust = os.environ.get(f"COVEN_TRUST_{kind.upper()}", agents.TRUST[kind])
-    command = agent_command(agent, prompt, trust, resume_id(env))
+    resume = resume_id(env)
     run_env = {**os.environ, **env}
+    run_env.pop("COVEN_RESUME_ID", None)  # kiro-cli does not read it; the flag carries the session
     ref, root = env.get("COVEN_TASK"), env.get("COVEN_ROOT")
     on_step = None
     if ref and root and not ref.startswith("chat#"):
         def on_step(line: str) -> None:
             _status(Path(root), ref, "working", agent, step=redact.redact_text(line)[:PROGRESS_CHARS])
-    try:
-        out = council.stream_run(command, cwd, run_env, timeout, on_step, PROGRESS_EVERY)
-    except FileNotFoundError:
-        return None, "kiro-cli is not installed on this host"
-    except subprocess.TimeoutExpired:
-        return None, f"no result within {timeout} s"
-    return council.final_text(out)
+    retries = 0
+    while True:
+        tail: list[str] = []
+        command = agent_command(agent, prompt, trust, resume)
+        try:
+            out = council.stream_run(command, cwd, run_env, timeout, on_step, PROGRESS_EVERY, stderr=tail)
+        except FileNotFoundError:
+            return None, "kiro-cli is not installed on this host"
+        except subprocess.TimeoutExpired:
+            return None, f"no result within {timeout} s"
+        if ref and root:
+            remember_session(Path(root), ref, agent, council.session_id(out))
+        text, error = council.final_text(out)
+        if text or not error:
+            return text, error
+        said = redact.redact_text(tail[0]) if tail and tail[0] else ""
+        if resume and RESUME_GONE.search(f"{error} {said}"):
+            resume = None  # the session is gone (cleaned up, another machine): the run starts fresh, once
+            continue
+        if retries < CLI_RETRIES and not _did_something(out) and TRANSIENT_CLI.search(f"{error} {said}"):
+            sleep(CLI_BACKOFF[min(retries, len(CLI_BACKOFF) - 1)])
+            retries += 1
+            continue
+        return None, (f"{error}; kiro-cli said: {said}" if said else error)[:400]
 
 
 CLOUD_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -589,8 +676,50 @@ def remove_worktree(root: Path, path: str | Path | None) -> None:
 # ------------------------------------------------------------------------ one run
 
 
+def stop_leftover_runs(root: Path) -> int:
+    """At start: stop the kiro-cli runs an earlier host process of this working copy left behind (it was killed, its runs
+    went on, unwatched, and would race the runs this process starts). Matched by the COVEN_ROOT the host gave the run.
+    Linux /proc only; elsewhere it finds nothing. Never raises."""
+    import signal
+    mine = str(Path(root).resolve())
+    stopped = 0
+    try:
+        pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
+    except OSError:
+        return 0
+    for pid in pids:
+        if pid == os.getpid():
+            continue
+        try:
+            cmd = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+            if not any(arg.endswith(b"kiro-cli") for arg in cmd[:2]) or b"--no-interactive" not in cmd:  # a binary, or a script
+                continue
+            env = dict(kv.split(b"=", 1) for kv in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0") if b"=" in kv)
+            if env.get(b"COVEN_ROOT", b"").decode(errors="replace") and str(Path(env[b"COVEN_ROOT"].decode()).resolve()) == mine:
+                os.kill(pid, signal.SIGTERM)
+                stopped += 1
+        except (OSError, ValueError):
+            continue
+    return stopped
+
+
+def _build_env(root: Path, host: str, agent: str, ref: str, task: dict) -> dict:
+    """A build run's environment: as any run's, plus what the Dev's PreToolUse hook needs to stop a write outside the task's
+    declared paths while she works (.kiro/agents/green-witch.json: `${COVEN_GUARD:-true} guard`; unset, it allows)."""
+    env = _env(root, host, agent, ref)
+    if task.get("paths"):
+        env["COVEN_PATHS"] = json.dumps([str(p) for p in task["paths"]][:50])
+        src = str(Path(__file__).resolve().parent.parent)  # this coven, whatever repository the host runs for
+        env["COVEN_GUARD"] = f"env PYTHONPATH={shlex.quote(src)} {shlex.quote(sys.executable)} -m coven.cli"
+    return env
+
+
 def _env(root: Path, host: str, agent: str, ref: str) -> dict:
-    return {"COVEN_ROOT": str(root), "COVEN_MEMBER": host, "COVEN_HOST": host, "COVEN_AGENT": agent, "COVEN_TASK": ref}
+    env = {"COVEN_ROOT": str(root), "COVEN_MEMBER": host, "COVEN_HOST": host, "COVEN_AGENT": agent, "COVEN_TASK": ref}
+    sid = session_for(root, ref, agent)
+    if sid:
+        env["COVEN_RESUME_ID"] = sid  # she continues her own session on this task: a rework, a retry, after a restart
+    return env
 
 
 # The task key and attempt number of each run this host has started (ref -> (task_key, attempt)): every event of the run carries them.
@@ -896,7 +1025,7 @@ def _build(root: Path, task: dict, agent: str, host: str, base: str, runner: Run
             started_at=(load(root).get(ref) or {}).get("started_at") or events.now_iso(), error=None)
     problem = None
     for attempt in range(ATTEMPTS):
-        text, error = runner(path, agent, prompt_for(task, agent, host, notes, feedback, problem), _env(root, host, agent, ref), RUN_TIMEOUT)
+        text, error = runner(path, agent, prompt_for(task, agent, host, notes, feedback, problem), _build_env(root, host, agent, ref, task), RUN_TIMEOUT)
         _update(root, ref, said=council.clip(text, 300) if text else None)  # kept locally; a failure sends it, clipped and redacted
         if error and not text:
             return _fail(root, ref, agent, error)
@@ -2205,6 +2334,7 @@ def merge_qualified(root: Path, ref: str, record: dict, reviewers: list[str], de
           CHAIR, ref, kind="note", host_says=True)
     work._release_quietly(root, ref, "merged")
     _forget(root, ref)
+    forget_sessions(root, ref)
     return {"action": "merged", "task": ref, "commit": sha, "base": base, "pushed": remote}
 
 
@@ -2218,6 +2348,7 @@ def drop_branch(root: Path, branch: str, remote: bool) -> None:
 # ------------------------------------------------------------------ branch cleanup (no host is visited by hand)
 
 PRUNE_EVERY = 600  # seconds between cleanups on a host that prunes
+MAX_TAKEOVERS = 2  # a task whose host went silent this often is not taken over again: it waits for a person
 SCRATCH_KEEP = 2 * 3600  # a throw-away checkout younger than this is never removed (a run lasts at most RUN_TIMEOUT)
 CLOSED = ("done", "merged", "replaced", "abandoned")
 # A local record in one of these states still needs its branch: a run, a review, a question, a retry.
@@ -2804,7 +2935,7 @@ class Host:
     def _claim(self, ref: str, task: dict, agent: str) -> dict:
         """Claim `task` for `agent` as the next run of it: the claim, and every event of the run, carry its key and attempt id."""
         attempt = self.attempts.get(ref, 0) + 1
-        got = board.claim(self.root, task, agent=agent, attempt=attempt)
+        got = board.claim(self.root, task, agent=agent, attempt=attempt, process=self.process)
         _RUNS[ref] = (got.get("task_key") or taskkey.for_task(config.project_id(self.root), task), attempt)
         return got
 
@@ -2876,7 +3007,8 @@ class Host:
                 if len(self.running) >= self.slots:
                     return started
                 # `working` with no live claim and no live run anywhere: its host stopped or died; the job is free again.
-                orphaned = task.get("doer_state") == "working" and not task.get("claimed_by") and ref not in live
+                orphaned = (task.get("doer_state") == "working" and not task.get("claimed_by") and ref not in live) or (
+                    bool(task.get("orphaned")) and int(task.get("takeovers") or 0) < MAX_TAKEOVERS)
                 if ((task.get("doer_state") in ("answered", "failed", "done", "submitted", "working") and not orphaned) or task.get("claimed_by")
                         or task.get("status") == "completed" or ref in self.running or not agent or agent not in self.can_run):
                     continue
@@ -2909,7 +3041,11 @@ class Host:
     def _take(self, view: dict, notes: list[dict], waiting: int) -> list[str]:
         started = []
         known = load(self.root)
-        ready = [t for t in board.ready(self.root, view) if f"{t['spec']}#{t['task_id']}" not in known]
+        # A task whose host went silent (the cloud's `orphaned`: no live claim, its host offline for takeover_seconds) is
+        # taken over as a new attempt, from a fresh checkout here, at most MAX_TAKEOVERS times (autonomous-tasks R8, task 17).
+        orphans = {f"{sp.get('spec')}#{t.get('task_id')}": t for sp in view.get("specs") or [] for t in sp.get("tasks") or []
+                   if t.get("orphaned") and int(t.get("takeovers") or 0) < MAX_TAKEOVERS}
+        ready = [t for t in board.ready(self.root, view) if f"{t['spec']}#{t['task_id']}" not in known or f"{t['spec']}#{t['task_id']}" in orphans]
         dispatched = {f"{sp.get('spec')}#{t.get('task_id')}" for sp in view.get("specs") or [] for t in sp.get("tasks") or []
                       if t.get("dispatch_via") == "kiro-web"}
         branch_hosts = {f"{sp.get('spec')}#{t.get('task_id')}": t.get("branch_host") for sp in view.get("specs") or [] for t in sp.get("tasks") or []
@@ -2923,8 +3059,8 @@ class Host:
             if agent not in self.can_run:
                 continue
             elsewhere = branch_hosts.get(ref)
-            if elsewhere and elsewhere != self.host_id:
-                continue  # its commits are on another host (nothing pushes): only that host reworks it
+            if elsewhere and elsewhere != self.host_id and ref not in orphans:
+                continue  # its commits are on another host (nothing pushes): only that host reworks it, while it is alive
             cloud = ref in dispatched and agents.kind(agent) == "build"
             if cloud and not self.cloud_runner:
                 continue  # a person chose Kiro Web: wait for a host that is set up for it, never run it here instead
@@ -2939,6 +3075,11 @@ class Host:
                 if exc.status != 409:
                     self.out(f"host: cannot claim {ref}: {exc}")
                 continue
+            if ref in orphans:
+                gone = orphans[ref]
+                if ref in known and known[ref].get("state") != "running":
+                    _forget(self.root, ref)  # this host's own old record of it: the new attempt replaces it (its branch stays)
+                self.out(f"host: takes over {ref} from {gone.get('doer_host') or 'a host'} (offline since {gone.get('orphaned_since') or 'a while'})")
             _update(self.root, ref, task=ref, agent=agent, kind=agents.kind(agent), state="running", started_at=events.now_iso())
             self.out(f"host: {agents.label(agent)} takes {ref} {task.get('title') or ''}")
             self.running[ref] = self.pool.submit(execute, self.root, task, agent, self.cloud_runner if cloud else self.runner, None, notes, None)
@@ -3230,7 +3371,7 @@ class Host:
     def _tick(self) -> dict:
         self._reap()
         self.presence()
-        board.renew_all(self.root)
+        board.renew_all(self.root, self.process)
         try:
             board.sync(self.root)
             view = board.read(self.root)
@@ -3341,6 +3482,9 @@ class Host:
 
     def run(self, once: bool = False, interval: float = 15.0) -> dict:
         """Tick until stopped. With `once`: one tick, then wait for the runs it started and settle them."""
+        stopped = stop_leftover_runs(self.root)
+        if stopped:
+            self.out(f"host: stopped {stopped} kiro-cli run(s) an earlier host process of this working copy left running")
         self.presence(force=True)
         try:
             start = reconcile_start(self.root)
@@ -3369,6 +3513,10 @@ class Host:
                 self._wait(interval)
         finally:
             self._chair_release()
+            if not once:
+                ended = council.stop_runs()  # nothing runs on, unwatched, after the host stops: no duplicate when it restarts
+                if ended:
+                    self.out(f"host: stopped {ended} run(s) on the way out; their tasks are queued again at the next start")
             self.pool.shutdown(wait=not once)
 
     def status(self) -> dict:
@@ -3491,9 +3639,19 @@ def reconcile_start(root: Path) -> dict:
         for task in spec.get("tasks") or []:
             seen[f"{spec.get('spec')}#{task.get('task_id')}"] = task
     result = {"closed": 0, "resent": 0, "failed": 0, "undecided": []}
+    me = config.host_id(root)
     for ref, record in load(root).items():
         task = seen.get(ref) or {}
         state, local = task.get("doer_state"), record.get("state")
+        if (task.get("doer_host_id") and task["doer_host_id"] != me and int(task.get("takeovers") or 0) > 0
+                and state in ("working", "submitted", "answered") and local in ("running", "failed", "needs_clarification", "needs_split", "held")):
+            # Another host took it over while this one was away (autonomous-tasks R8.4, task 18): give way. Drop the record
+            # and its worktree, keep the branch for a person, and send nothing for it.
+            work._release_quietly(root, ref, "taken over by another host")
+            remove_worktree(root, record.get("worktree"))
+            _forget(root, ref)
+            result["closed"] += 1
+            continue
         if state in ("done", "merged", "replaced", "abandoned") or task.get("merged"):
             work._release_quietly(root, ref, "closed on the board")  # else its claim is renewed forever and holds the task
             remove_worktree(root, record.get("worktree"))

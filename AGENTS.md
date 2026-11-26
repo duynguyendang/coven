@@ -96,7 +96,7 @@ and the icons in `OUTFIT`), and `.kiro/agents/<slug>.json`. To add or rename one
 - **Kinds** set what a headless run may do: `build` (only `green-witch`: write and shell, in a
   worktree), `inspect` (`white-hat`, `black-hat`, `imp`: read and shell, in a throw-away
   checkout), `think` (the rest: read only). `agents.TRUST` maps a kind to `--trust-tools`.
-- **Agent files:** `name` equals the file name; `allowedTools` (run without asking) are reads
+- **Agent files:** `green-witch.json` carries the `PreToolUse` guard hook (`${COVEN_GUARD:-true} guard`): keep it; `name` equals the file name; `allowedTools` (run without asking) are reads
   only; the six council personas keep their "Hard constraints" block; every prompt forbids
   writing or repeating secrets; agents that read the board or chat call it untrusted.
 - **The Scribe prepares tasks** (`coven host prepare`): she proposes `_Agent:_`, `_Paths:_`,

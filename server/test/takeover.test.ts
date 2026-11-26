@@ -83,3 +83,26 @@ describe("fencing and takeovers", () => {
     assert.equal(task(b, iso(7)).takeovers, 1);
   });
 });
+
+describe("one job, one process", () => {
+  const procOnline = (b: Board, ts: string, member: string, hostId: string, process: string) =>
+    b.apply(ev("host_online", ts, member, { host_id: hostId, agents: ["green-witch"], process }));
+  const want = (process: string) => ({ spec: "council", task_id: "7", member: "ana", agent: "green-witch", kind: "task", paths: [], host_id: "h_0000000a", process });
+
+  test("a second process of the same host may not take what a live first process holds", () => {
+    const b = board();
+    procOnline(b, iso(0), "ana", "h_0000000a", "p_0000000a");
+    claim(b, iso(0), "ana", { host_id: "h_0000000a", process: "p_0000000a" });
+    const clash = b.conflict("shop", want("p_0000000b"), iso(1));
+    assert.equal(clash?.reason, "held by another process of this host");
+    assert.equal(b.conflict("shop", want("p_0000000a"), iso(1)), null, "the same process renews");
+  });
+
+  test("once the first process is silent, the host's new process takes its claims over", () => {
+    const b = board();
+    procOnline(b, iso(0), "ana", "h_0000000a", "p_0000000a");
+    claim(b, iso(0), "ana", { host_id: "h_0000000a", process: "p_0000000a" });
+    assert.equal(b.conflict("shop", want("p_0000000b"), iso(4)), null, "silent for 4 minutes: no longer a claimant");
+    assert.ok(b.mine("shop", "ana", want("p_0000000b"), iso(4)), "its claim is the new process's to renew");
+  });
+});

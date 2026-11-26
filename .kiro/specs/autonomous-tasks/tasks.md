@@ -200,7 +200,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `cd server && npm run check && node --test test/takeover.test.ts test/board.test.ts && cd .. && PYTHONPATH=src python3 -m pytest -q tests/test_harness.py`_
   - _Requirements: R8.1, R8.3, R7.1_
 
-- [ ] 17. A host takes over an orphaned task
+- [x] 17. A host takes over an orphaned task
   - Goal: an online host runs a task whose host is gone, as a new attempt, at most twice per task.
   - Context: requirements R8.2, R8.5; design "Takeover of orphaned tasks". Needs task 16's `orphaned` and `takeovers` in the view.
   - Read first: `src/coven/host.py` (`_take`, `_jobs`, `_claim`, `prepare_worktree`), `src/coven/board.py` (`ready`, `claim`), `tests/test_host.py` (`FakeCloud`).
@@ -212,7 +212,7 @@ calls a model. Run `make verify` before calling the whole spec done.
   - _Verify: `PYTHONPATH=src python3 -m pytest -q tests/test_takeover.py tests/test_host.py`_
   - _Requirements: R8.2, R8.5_
 
-- [ ] 18. A returning host gives way
+- [x] 18. A returning host gives way
   - Goal: a host that comes back after a takeover drops its copy of the task and sends nothing for it.
   - Context: requirement R8.4; design "Takeover of orphaned tasks". Builds on task 1's `reconcile_start`; if it is not on the base branch, end with `NEEDS`.
   - Read first: `src/coven/host.py` (`reconcile_start`, `_recover`, `remove_worktree`, `_forget`), `tests/test_reconcile_start.py`.

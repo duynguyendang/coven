@@ -324,3 +324,16 @@ def test_the_chair_passes_on_the_witchs_own_question_and_pieces():
                    {"task_id": "2", "doer_state": "needs_split", "doer_pieces": "a; b"}), NOW)
     sent = {d.split("Task ")[1].split(":")[0]: d for d in [x for x in fx.details]}
     assert "which file holds the cart?" in sent["s#1"] and "a; b" in sent["s#2"]
+
+
+def test_an_open_task_that_has_not_moved_for_a_day_goes_to_a_person_once():
+    """The backstop: whatever else holds it, an open task never sits unseen."""
+    fx = Live()
+    old = "2025-12-30T12:00:00Z"  # two days before NOW
+    view = board({"task_id": "1", "doer_state": "queued", "doer_ts": old}, {"task_id": "2", "doer_state": "queued", "doer_ts": "2026-01-01T11:00:00Z"},
+                 {"task_id": "3", "status": "completed", "doer_state": "failed", "doer_ts": old})
+    fx.d.act(view, NOW)
+    stalled = [r for r, text in fx.asked if "has not moved" in text]
+    assert stalled == ["s#1"], "a day without change, open: asked; an hour, or a finished task: not"
+    fx.d.act(view, NOW)
+    assert [r for r, text in fx.asked if "has not moved" in text] == ["s#1"], "once per state and status time"

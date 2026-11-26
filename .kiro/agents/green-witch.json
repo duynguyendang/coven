@@ -30,5 +30,16 @@
     "revision": 2,
     "fingerprint": "sha256:2aa7752b2e965d0496b00ccb1a93aaea34b6d170e16786c52ea290a377f9a4ba",
     "source": "sha256:6b4ccacf9aaae8e629c3296c3c49590ead94f7ee7ef59689c3a755dcc8e729fa"
-  }
+  },
+  "hooks": [
+    {
+      "name": "coven-guard",
+      "trigger": "PreToolUse",
+      "matcher": "write",
+      "action": {
+        "type": "command",
+        "command": "${COVEN_GUARD:-true} guard"
+      }
+    }
+  ]
 }

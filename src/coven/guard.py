@@ -28,7 +28,7 @@ from typing import Any
 SECRET_NAMES = {".dev.vars", "credentials", "credentials.json", ".netrc", ".npmrc", ".pypirc"}
 SECRET_SUFFIXES = (".pem", ".key")
 PATH_KEYS = ("path", "file_path", "filePath", "file", "target", "destination", "paths", "file_paths")
-WRITE_WORDS = ("write", "edit", "create", "delete", "remove", "move", "rename", "patch", "append")
+WRITE_WORDS = ("write", "edit", "create", "delete", "remove", "move", "rename", "patch", "append", "replace")
 _TOKEN = re.compile(r"""[^\s'"=<>|;&()]+""")
 
 
@@ -89,7 +89,9 @@ def _deny(reason: str) -> dict[str, str]:
     return {"decision": "deny", "reason": reason}
 
 
-def decide(payload: Any, root: str | os.PathLike[str]) -> dict[str, str] | None:
+def decide(payload: Any, root: str | os.PathLike[str], declared: list[str] | None = None) -> dict[str, str] | None:
+    """`declared`: the task's `_Paths:_` (a host build run passes them): a write inside the root but outside them is denied
+    while the run goes, not found after it (the host's path check still runs at the end)."""
     if not isinstance(payload, dict):
         return None
     base = Path(os.path.realpath(root))
@@ -101,6 +103,12 @@ def decide(payload: Any, root: str | os.PathLike[str]) -> dict[str, str] | None:
             return _deny("secret file")
         if is_write and not _inside(_resolve(p, base), base):
             return _deny("write outside the workspace")
+        if is_write and declared:
+            from .specmap import covers  # standard library only, like this module
+            rel = os.path.relpath(_resolve(p, base), base).replace(os.sep, "/")
+            if not covers({"paths": declared}, rel):
+                return _deny(f"{rel} is outside this task's declared paths ({', '.join(declared[:6])}): change only those files, "
+                             "or end with NEEDS: asking for the path")
     if isinstance(tin, dict) and isinstance(tin.get("command"), str):
         for tok in _TOKEN.findall(tin["command"]):
             if _secret_path(tok, base):

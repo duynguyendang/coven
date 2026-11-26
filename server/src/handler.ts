@@ -399,7 +399,8 @@ export function createHandler(options: HandlerOptions): Handler {
       if (agent !== null && !/^[a-z][a-z0-9-]{1,39}$/.test(agent)) throw validation("agent", "an agent slug such as elf or green-witch");
       const result = await store.claim({ project_id: projectId, member, task_id: taskId, spec: optionalString(body, "spec"), agent,
         kind: optionalString(body, "kind") ?? "task", paths: body.paths ?? [], lease_seconds: body.lease_seconds,
-        task_key: optionalString(body, "task_key"), attempt_id: optionalString(body, "attempt_id"), host_id: optionalString(body, "host_id") });
+        task_key: optionalString(body, "task_key"), attempt_id: optionalString(body, "attempt_id"), host_id: optionalString(body, "host_id"),
+        process: optionalString(body, "process") });
       return json(result.status, result.body);
     }
 
@@ -423,7 +424,7 @@ export function createHandler(options: HandlerOptions): Handler {
       const member = idField(body, "member");
       if (allowed) permit(store.board.claims.get(seg[2])?.project_id);
       const result = seg[3] === "renew"
-        ? await store.renewClaim(seg[2], member, body.lease_seconds, optionalString(body, "host_id"))
+        ? await store.renewClaim(seg[2], member, body.lease_seconds, optionalString(body, "host_id"), optionalString(body, "process"))
         : await store.releaseClaim(seg[2], member, optionalString(body, "reason") ?? "released", optionalString(body, "host_id"));
       return json(result.status, result.body);
     }

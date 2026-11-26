@@ -460,6 +460,7 @@ export class MemoryStore {
         ...(typeof input.task_key === "string" && /^[0-9a-f]{16}$/.test(input.task_key) ? { task_key: input.task_key } : {}),
         ...(typeof input.attempt_id === "string" && /^[0-9a-f]{16}\.[0-9]+$/.test(input.attempt_id) ? { attempt_id: input.attempt_id } : {}),
         ...(typeof input.host_id === "string" && /^h_[0-9a-f]{8}$/.test(input.host_id) ? { host_id: input.host_id } : {}),
+        ...(typeof input.process === "string" && /^p_[0-9a-f]{8}$/.test(input.process) ? { process: input.process } : {}),
       };
       const seconds = Math.min(MAX_LEASE_SECONDS, Math.max(60, Number(input.lease_seconds) || DEFAULT_LEASE_SECONDS));
       const leaseUntil = new Date(Date.now() + seconds * 1000).toISOString();
@@ -508,10 +509,16 @@ export class MemoryStore {
     return claim;
   }
 
-  renewClaim(claimId: string, member: string, leaseSeconds?: number, hostId?: string | null): Promise<{ status: number; body: Json }> {
+  renewClaim(claimId: string, member: string, leaseSeconds?: number, hostId?: string | null, process?: string | null): Promise<{ status: number; body: Json }> {
     return this.exclusive(async () => {
       const claim = this.owned(claimId, member, hostId);
       if ("status" in claim && "body" in claim) return claim as { status: number; body: Json };
+      // A renewal from another process of the same host takes the claim over (a restart: the host lock lets one process
+      // run per working copy), unless the claiming process still announces itself: then two processes would share it.
+      if (process && claim.process && claim.process !== process) {
+        if (this.board.processAlive(claim.project_id, claim.process)) return { status: 403, body: { error: "the claim belongs to another live process of this host" } };
+        claim.process = process;
+      }
       if ((claim.lease_until || "") <= now()) return { status: 410, body: { error: "the lease expired; claim the task again" } };
       const seconds = Math.min(MAX_LEASE_SECONDS, Math.max(60, Number(leaseSeconds) || DEFAULT_LEASE_SECONDS));
       claim.lease_until = new Date(Date.now() + seconds * 1000).toISOString();

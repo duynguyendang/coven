@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -197,6 +198,8 @@ def final_text(stream: str) -> tuple[str | None, str | None]:
     return None, "the run did not finish"
 
 
+ACP_VERBS = {"edit": "editing", "delete": "deleting", "move": "moving", "read": "reading", "search": "searching",
+             "execute": "running", "fetch": "fetching", "think": "thinking"}
 STEP_VERBS = {"fs_write": "editing", "write": "editing", "str_replace": "editing", "fs_append": "editing", "edit": "editing",
               "fs_read": "reading", "read": "reading", "grep": "searching", "glob": "listing", "code": "inspecting code",
               "execute_bash": "running", "run_command": "running", "shell": "running", "bash": "running"}
@@ -208,6 +211,17 @@ def tool_step(record: dict) -> str | None:
     Kiro's schema is not fully documented, so this reads the usual spellings and ignores the rest."""
     if not isinstance(record, dict):
         return None
+    update = (record.get("data") or {}).get("update") if isinstance(record.get("data"), dict) else None
+    if record.get("type") == "sessionUpdate" and isinstance(update, dict):
+        # the v3 engine (ACP): {"sessionUpdate": "tool_call", "kind": "edit", "title": ..., "locations": [{"path": ...}], "rawInput": {...}}
+        if update.get("sessionUpdate") != "tool_call":
+            return None
+        raw = update.get("rawInput") if isinstance(update.get("rawInput"), dict) else {}
+        where = next((loc.get("path") for loc in update.get("locations") or [] if isinstance(loc, dict) and loc.get("path")), "")
+        target = where or next((raw[k] for k in ("path", "file_path", "command", "pattern") if isinstance(raw.get(k), str) and raw[k].strip()), "")
+        verb = ACP_VERBS.get(str(update.get("kind") or "").lower())
+        label = verb or f"using {' '.join(str(update.get('title') or 'a tool').split())[:60]}"
+        return f"{label} {' '.join(str(target).split())}".strip()
     kind = str(record.get("type") or record.get("event") or "").lower()
     if "tool" not in kind or "result" in kind:
         return None
@@ -239,13 +253,38 @@ def tool_step(record: dict) -> str | None:
     return f"{verb} {target}".strip()
 
 
+LIVE: set = set()  # the kiro-cli runs this process has going: a host that stops stops them (none runs on, unwatched)
+STDERR_TAIL = 600  # characters of a run's stderr kept to say why it failed (after the CLI's own [INFO] lines are dropped)
+
+
+def stderr_tail(raw: str, limit: int = STDERR_TAIL) -> str:
+    """The end of a run's stderr that explains a failure: no log-level noise, at most `limit` characters, one line."""
+    keep = [ln.strip() for ln in raw.splitlines() if ln.strip() and not re.match(r"^\[(INFO|DEBUG|TRACE)\]", ln.strip())]
+    return " ".join(keep)[-limit:]
+
+
+def session_id(stream: str) -> str | None:
+    """The Kiro session a run used (`data.sessionId` of its stream-json), for `--resume-id` next time."""
+    for line in stream.splitlines():
+        try:
+            sid = ((json.loads(line) or {}).get("data") or {}).get("sessionId")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(sid, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", sid):
+            return sid
+    return None
+
+
 def stream_run(command: list[str], cwd: Path, env: dict, timeout: int, on_step=None, every: float = 20.0,
-               clock=time.monotonic) -> str:
+               clock=time.monotonic, stderr: list | None = None) -> str:
     """Run `command`, reading its stdout line by line. Returns the stdout.
 
     `on_step(line)` gets the latest tool step at most once per `every` seconds. Raises subprocess.TimeoutExpired
     (after killing the run) and FileNotFoundError like subprocess.run does."""
-    proc = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    # stderr goes to a temporary file (a pipe nobody reads could fill and stall the run); with `stderr`, its tail is kept
+    errfile = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") if stderr is not None else None
+    proc = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=errfile or subprocess.DEVNULL, text=True)
+    LIVE.add(proc)
     lines: list[str] = []
 
     def read() -> None:
@@ -277,9 +316,40 @@ def stream_run(command: list[str], cwd: Path, env: dict, timeout: int, on_step=N
         proc.kill()
         proc.wait()
         reader.join(5)
+        _tail(errfile, stderr)
+        LIVE.discard(proc)
         raise
     reader.join()
+    _tail(errfile, stderr)
+    LIVE.discard(proc)
     return "".join(lines)
+
+
+def stop_runs(grace: float = 5.0) -> int:
+    """Stop every kiro-cli run this process started (the host is stopping). Returns how many were still going."""
+    going = [p for p in list(LIVE) if p.poll() is None]
+    for proc in going:
+        proc.terminate()
+    deadline = time.monotonic() + grace
+    for proc in going:
+        try:
+            proc.wait(max(0.1, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    LIVE.clear()
+    return len(going)
+
+
+def _tail(errfile, into: list | None) -> None:
+    if errfile is None or into is None:
+        return
+    try:
+        errfile.seek(0)
+        into.append(stderr_tail(errfile.read()[-20000:]))
+    except OSError:
+        pass
+    finally:
+        errfile.close()
 
 
 def run_agent(root: Path, prompt: str, timeout: int = ANSWER_TIMEOUT) -> tuple[str | None, str | None]:

@@ -618,6 +618,24 @@ describe("several hosts (spec multi-host)", () => {
     } finally { await s.close(); }
   });
 
+  test("a claim's renewal: its own process renews, a live other process of the host is refused, a silent one's is taken over", async () => {
+    const s = await startServer();
+    try {
+      await send(s.base, [ev("host_online", { agents: ["elf"], slots: 1, host_id: "h_0000000a", process: "p_0000000a" })]);
+      const made = await postJson(s.base, "/v1/claims", { project_id: "shop", member: "wsl-1", spec: "s", task_id: "5", kind: "task", agent: "elf",
+        host_id: "h_0000000a", process: "p_0000000a" }, auth());
+      assert.equal(made.status, 201);
+      const id = made.body.claim.claim_id;
+      const renew = (process: string) => postJson(s.base, `/v1/claims/${id}/renew`, { member: "wsl-1", host_id: "h_0000000a", process }, auth());
+      assert.equal((await renew("p_0000000a")).status, 200);
+      assert.equal((await renew("p_0000000b")).status, 403, "the claiming process still announces itself");
+      const again = await postJson(s.base, "/v1/claims", { project_id: "shop", member: "wsl-1", spec: "s", task_id: "5", kind: "task", agent: "elf",
+        host_id: "h_0000000a", process: "p_0000000b" }, auth());
+      assert.equal(again.status, 409, "a second live process may not start the same work");
+      assert.equal(again.body.reason, "held by another process of this host");
+    } finally { await s.close(); }
+  });
+
   test("unmerged work: a host's branch_report lists it, Merge and clean accepts it, a held repeat waits for a new tip", async () => {
     const s = await startServer();
     try {
