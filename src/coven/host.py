@@ -3677,7 +3677,13 @@ def reconcile_start(root: Path) -> dict:
             _status(root, ref, local, agent, record.get("error"), branch=record.get("branch") if local == "submitted" else None,
                     failure=record.get("failure"))
             result["resent"] += 1
-        elif local not in ("failed", "submitted", "answered"):
+        elif local in ("needs_clarification", "needs_split", "held") and not state:
+            # the board has no word of it (it dropped off the list, or the status was lost): say it again, with the
+            # witch's question or pieces, so the Chair and people see that it waits, and for what
+            _send_outcome(root, ref, local, agent, question=record.get("question"), pieces=record.get("pieces"),
+                          detail=(record.get("error") or None))
+            result["resent"] += 1
+        elif local not in ("failed", "submitted", "answered", "needs_clarification", "needs_split", "held"):
             result["undecided"].append(ref)
     return result
 

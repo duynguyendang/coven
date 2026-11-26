@@ -90,3 +90,14 @@ def test_a_ticked_task_and_a_council_task_the_board_dropped_are_closed_but_not_o
     specs[:] = []  # a board read that says nothing about the council: nothing is concluded from it
     host.reconcile_start(root)
     assert "council#old-2" in host.load(root)
+
+
+def test_a_waiting_record_the_board_has_no_word_of_is_said_again_with_its_question(world, monkeypatch):
+    root, sent, specs = world
+    out_events = []
+    monkeypatch.setattr(board, "_member_event", lambda root, type_, payload: out_events.append(payload) or payload)
+    host._update(root, "council#r1-1b1", state="needs_clarification", agent="green-witch", question="which file?")
+    specs[:] = [{"spec": "council", "tasks": [{"task_id": "r1-1b1"}]}]
+    out = host.reconcile_start(root)
+    assert out["resent"] == 1 and not out["undecided"]
+    assert [(e["task"], e["state"], e.get("question")) for e in out_events] == [("council#r1-1b1", "needs_clarification", "which file?")]
