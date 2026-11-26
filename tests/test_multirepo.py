@@ -69,8 +69,9 @@ def test_init_links_registers_installs_hooks_and_copies_the_witches(app, checkou
     assert not (app / ".kiro" / "agents" / "elf.json.bak").exists(), "backups are not copied"
     assert ".gitignore" not in done["written"], "the fixture already ignores .coven/"
     hooks = json.loads((app / ".kiro" / "hooks" / "telemetry.json").read_text())["hooks"]
-    assert len(hooks) == 6 and all("coven" in h["action"]["command"] for h in hooks)
-    assert done["hooks"] == 6
+    from coven import hooks as coven_hooks  # every hook of the template, however many it has (council#rb02704-1b3 added two)
+    assert len(hooks) == len(coven_hooks.TEMPLATE) and all("coven" in h["action"]["command"] for h in hooks)
+    assert done["hooks"] == len(coven_hooks.TEMPLATE)
     assert any("no merge check" in note for note in done["notes"]), "a repo with no check is told a host will not merge"
 
 
