@@ -130,6 +130,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven project link <id> [--cloud-url URL] [--token TOKEN]` | Bind this repo to a cloud project (`.coven/config.json`, mode 0600) |
 | `coven relay up` / `down` / `status` `[--machine]` | Manage the relay. `--machine`: one relay for every repo on this machine, instead of one per repo |
 | `coven emit` | Read one hook event from stdin and queue it. Silent on success |
+| `coven guard` | PreToolUse hook: read the hook JSON on stdin; exit 2 with the reason on stderr to deny secret files and writes outside the root, else exit 0. Logs denials to `guard-YYYY-MM-DD.jsonl` (tool, reason, path) |
 | `coven run -- <cmd>` | Mint a run id, export `COVEN_RUN_ID`, stream and normalise `stream-json` |
 | `coven logs [hooks\|events\|path]` | Read the local capture: raw hook payloads, normalised events, file locations |
 | `coven hooks check` / `install [--portable]` | Run the Kiro hooks like Kiro does and say what fails; write PATH-independent hook commands |
