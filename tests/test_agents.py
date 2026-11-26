@@ -50,7 +50,7 @@ def test_the_agent_files_and_the_dashboard_carry_the_current_roles():
     assert agents.sync_prompts(REPO, check=True) == [], "run `coven host agents --sync`"
     page = (REPO / "web" / "index.html").read_text(encoding="utf-8")
     copy = page.split(agents.WEB_START, 1)[1].split(agents.WEB_END, 1)[0]
-    assert json.loads(copy) == {s: {f: agents.ROLES[s][f] for f in agents.ROLE_FIELDS} for s in agents.AGENTS}
+    assert json.loads(copy) == {s: {**{f: agents.ROLES[s][f] for f in agents.ROLE_FIELDS}, "voice": agents.VOICE[s]} for s in agents.AGENTS}
 
 
 def test_a_question_goes_to_the_witch_who_owns_it():
