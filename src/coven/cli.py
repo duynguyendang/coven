@@ -219,7 +219,7 @@ def cmd_hooks(args: argparse.Namespace) -> int:
 
     root = _root()
     if args.hooks_command == "install":
-        changes = hooks.install(root, portable=args.portable)
+        changes = hooks.install(root, portable=args.portable, guard=args.guard)
         config.register_root(root)  # the machine relay serves this repo from now on
         for name, old, new in changes:
             print(f"{name}: {old}\n  -> {new}")
@@ -825,6 +825,7 @@ def build_parser() -> argparse.ArgumentParser:
     hooks_sub.add_parser("check", help="run each hook the way Kiro does and say what fails")
     hooks_install = hooks_sub.add_parser("install", help="write a hook command that does not depend on PATH")
     hooks_install.add_argument("--portable", action="store_true", help="write plain `coven emit` (needs coven on PATH)")
+    hooks_install.add_argument("--guard", action="store_true", help="also add the opt-in PreToolUse guard hook")
     hooks_parser.set_defaults(func=cmd_hooks)
 
     logs_parser = sub.add_parser("logs", help="read what Coven captured locally (hook payloads, events)")

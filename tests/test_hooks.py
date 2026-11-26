@@ -183,3 +183,44 @@ def test_portable_install_for_a_new_repo_writes_plain_coven_emit(tmp_path):
 
     data = json.loads((tmp_path / ".kiro" / "hooks" / "telemetry.json").read_text())
     assert {h["action"]["command"] for h in data["hooks"]} == {"coven emit"}
+
+
+# ----------------------------------------------- the opt-in guard hook
+
+
+def test_is_ours_recognises_guard_in_every_form():
+    for command in ("coven guard", "/usr/bin/python3 -m coven.cli guard", "PYTHONPATH=/x/src /usr/bin/python3 -m coven.cli guard"):
+        assert hooks.is_ours(command) and hooks.is_guard(command)
+    assert hooks.is_ours("coven emit") and not hooks.is_guard("coven emit")
+    assert not hooks.is_ours("coven guardian")
+
+
+def test_default_install_adds_no_guard_and_guard_flag_adds_one(tmp_path):
+    (tmp_path / ".kiro").mkdir()
+    hooks.install(tmp_path)
+    data = json.loads((tmp_path / ".kiro" / "hooks" / "telemetry.json").read_text())
+    assert len(data["hooks"]) == 6 and not any(h["trigger"] == "PreToolUse" for h in data["hooks"])
+
+    changes = hooks.install(tmp_path, guard=True)
+    data = json.loads((tmp_path / ".kiro" / "hooks" / "telemetry.json").read_text())
+    guards = [h for h in data["hooks"] if h["trigger"] == "PreToolUse"]
+    assert len(changes) == 1 and len(guards) == 1 and len(data["hooks"]) == 7
+    assert guards[0]["matcher"] == "*" and guards[0]["action"]["command"] == hooks.absolute_command().removesuffix(" emit") + " guard"
+    assert hooks.install(tmp_path, guard=True) == [], "idempotent"
+
+
+def test_portable_guard_install_and_rewrite_of_existing_guard(tmp_path):
+    (tmp_path / ".kiro").mkdir()
+    hooks.install(tmp_path, portable=True, guard=True)
+    path = tmp_path / ".kiro" / "hooks" / "telemetry.json"
+    assert json.loads(path.read_text())["hooks"][-1]["action"]["command"] == "coven guard"
+    changes = hooks.install(tmp_path)
+    assert len(changes) == 7
+    assert json.loads(path.read_text())["hooks"][-1]["action"]["command"].endswith("-m coven.cli guard")
+
+
+def test_check_accepts_a_guard_that_exits_zero_on_a_benign_sample(tmp_path):
+    (tmp_path / ".kiro").mkdir()
+    hooks.install(tmp_path, guard=True)
+    command = hooks.absolute_command().removesuffix(" emit") + " guard"
+    assert hooks.check_command(command, "PreToolUse")["ok"]
