@@ -25,6 +25,8 @@ from pathlib import Path
 from . import capture, config
 
 PORTABLE = "coven emit"
+PORTABLE_GUARD = "coven guard"
+GUARD_HOOK = ("coven-guard", "PreToolUse", "*", "Deny tool calls that break the guard's rules (opt-in: coven hooks install --guard).")
 
 
 def hooks_dir(root: Path | None = None) -> Path:
@@ -41,9 +43,14 @@ def load(path: Path) -> dict:
 
 
 def is_ours(command: str | None) -> bool:
-    """True for the hooks Coven installs: `coven emit` or `<python> -m coven.cli emit`."""
+    """True for the hooks Coven installs: `coven emit|guard` or `<python> -m coven.cli emit|guard`."""
     text = (command or "").strip()
-    return text == PORTABLE or text.endswith("coven.cli emit")
+    return text in (PORTABLE, PORTABLE_GUARD) or text.endswith(("coven.cli emit", "coven.cli guard"))
+
+
+def is_guard(command: str | None) -> bool:
+    text = (command or "").strip()
+    return text == PORTABLE_GUARD or text.endswith("coven.cli guard")
 
 
 def commands(root: Path | None = None, only_ours: bool = False) -> list[dict]:
@@ -147,12 +154,34 @@ def _add_missing(root: Path | None, command: str) -> list[tuple[str, str, str]]:
     return [(HOOK_FILE, "(not installed)", command) for _ in TEMPLATE]
 
 
-def install(root: Path | None = None, portable: bool = False) -> list[tuple[str, str, str]]:
+def _add_guard(root: Path | None, command: str) -> list[tuple[str, str, str]]:
+    """Add the one PreToolUse guard hook to `.kiro/hooks/telemetry.json` (never overwrites an unreadable file)."""
+    folder = hooks_dir(root)
+    path = folder / HOOK_FILE
+    data: dict = {"version": "v1", "hooks": []}
+    if path.exists():
+        try:
+            data = load(path)
+        except (OSError, ValueError):
+            return []
+        if not isinstance(data.get("hooks"), list):
+            return []
+    name, trigger, matcher, description = GUARD_HOOK
+    hook = {"name": name, "description": description, "trigger": trigger, "matcher": matcher,
+            "action": {"type": "command", "command": command}, "timeout": 5}
+    folder.mkdir(parents=True, exist_ok=True)
+    data["hooks"] = list(data["hooks"]) + [hook]
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return [(HOOK_FILE, "(not installed)", command)]
+
+
+def install(root: Path | None = None, portable: bool = False, guard: bool = False) -> list[tuple[str, str, str]]:
     """Rewrite coven emit commands in `.kiro/hooks/*.json`; add them to a repo that has none.
 
     Returns (file, old, new) per change.
     """
     target = PORTABLE if portable else absolute_command()
+    guard_target = target.removesuffix(" emit") + " guard"
     changes: list[tuple[str, str, str]] = []
     for path in hook_files(root):
         try:
@@ -164,14 +193,18 @@ def install(root: Path | None = None, portable: bool = False) -> list[tuple[str,
             action = hook.get("action") or {}
             command = action.get("command") or ""
             if action.get("type") == "command" and is_ours(command):
-                if command != target:
-                    changes.append((path.name, command, target))
-                    action["command"] = target
+                wanted = guard_target if is_guard(command) else target
+                if command != wanted:
+                    changes.append((path.name, command, wanted))
+                    action["command"] = wanted
                     touched = True
         if touched:
             path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    if not commands(root, only_ours=True):
+    ours = commands(root, only_ours=True)
+    if not any(not is_guard(i["command"]) for i in ours):
         changes.extend(_add_missing(root, target))
+    if guard and not any(is_guard(i["command"]) for i in commands(root, only_ours=True)):
+        changes.extend(_add_guard(root, guard_target))
     changes.extend(install_workflows(root, portable=portable))
     return changes
 
@@ -240,8 +273,10 @@ def check_command(command: str, trigger: str, env: dict | None = None) -> dict:
             return {"ok": False, "why": f"exit {done.returncode}: {(done.stderr or '').strip()[:200] or 'no message'}"}
         if done.stdout.strip():
             return {"ok": False, "why": "printed to stdout (Kiro would add it to the agent's context)"}
-        if lines == 0:
+        if lines == 0 and not is_guard(command):
             return {"ok": False, "why": "ran, but wrote no capture line"}
+        if is_guard(command):
+            return {"ok": True, "why": "allowed a benign call (exit 0)"}
         return {"ok": True, "why": "logged one line"}
 
 
