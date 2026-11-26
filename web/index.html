@@ -1710,6 +1710,10 @@
       const lead = f ? `${FAILURE_LABEL[f.cause] || f.cause}${f.summary && f.cause !== "no_change" ? `: ${short(f.summary, 110)}` : ""}. ` : (t.doer_detail ? `${short(t.doer_detail, 140)}. ` : "");
       return { kind: "failed", label: "Needs you · Failed", why: `${lead}${f && f.base_changed ? "Its paths changed on the base branch, so the work may already be in. " : ""}Open it to see why, then retry it or mark it done.` };
     }
+    if (t.doer_state === "needs_clarification" && (t.doer_want_paths || []).length) {
+      return { kind: "paths", label: "Needs you · Paths", paths: t.doer_want_paths,
+        why: `The Dev asks to also change ${t.doer_want_paths.join(", ")}${t.doer_question ? ` (${short(t.doer_question.replace(/^\s*paths?\s*:[^—–-]*[—–-]?\s*/i, ""), 120)})` : ""}. Allow them and the task runs again.` };
+    }
     if (t.doer_state === "needs_clarification") return { kind: "clarify", label: "Needs you · Question", why: short(t.doer_question || t.doer_detail || "The Dev asked a question.", 200) };
     if (t.doer_state === "needs_split") return { kind: "split", label: "Needs you · Split", why: short(t.doer_pieces || t.doer_detail || "The Dev says the task is too big.", 200) };
     if (t.doer_state === "held" && !t.claimed_by) return { kind: "host_held", label: "Needs you · Held", why: short(t.doer_detail || "The host held this for a person.", 200) };
@@ -1898,7 +1902,7 @@
     const row = (t) => `<li class="need-row" data-key="need-${esc(t.ref)}"><div class="need-what"><button class="link mono" type="button" data-task-open="${esc(t.ref)}" data-key="need-open-${esc(t.ref)}"
         command="show-modal" commandfor="task-dialog" aria-haspopup="dialog">${esc(t.ref)}</button> <span class="tt">${esc(short(t.title || "", 70))}</span>
         <div class="hint">${codeSpans(t.needs.why)}</div></div>
-      <div class="need-act">${t.needs.accept ? `<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="need-accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>` : ""}
+      <div class="need-act">${t.needs.accept ? `<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="need-accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>` : ""}${t.needs.kind === "paths" ? `<button class="act good" type="button" data-allow-paths="${esc(t.ref)}" data-key="need-paths-${esc(t.ref)}">${icon("check")}<span>Allow these paths</span></button>` : ""}
         <button class="act quiet" type="button" data-task-open="${esc(t.ref)}" data-key="need-view-${esc(t.ref)}" command="show-modal" commandfor="task-dialog" aria-haspopup="dialog"><span>${t.needs.accept ? "Review" : "Open"}</span></button></div></li>`;
     return `<section class="needs" aria-label="Waiting for you"><h2>Waiting for you <span class="hint">· ${plural(items.length + work.length, "task")}</span></h2><ul class="need-list">${items.map(row).join("")}${work.join("")}</ul></section>`;
   }
@@ -3184,6 +3188,15 @@
       await loadBoard();
       render({ keepScroll: true });
     };
+    root.querySelectorAll("[data-allow-paths]").forEach((el) => el.addEventListener("click", async () => {
+      el.disabled = true;
+      try {
+        await api("/v1/board/paths", { method: "POST", body: JSON.stringify({ project_id: defaultBoardProject(), task: el.dataset.allowPaths,
+          author: localStorage.getItem("coven_author") || undefined }) });
+        await loadBoard();
+        render({ keepScroll: true });
+      } catch (error) { el.disabled = false; quiet(error); }
+    }));
     root.querySelectorAll("[data-discard]").forEach((el) => el.addEventListener("click", async () => {
       if (!window.confirm(`Discard ${el.dataset.branch}? The host deletes it here and on origin and keeps a git bundle of it in .coven/archive.`)) return;
       el.disabled = true;

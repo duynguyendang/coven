@@ -337,3 +337,18 @@ def test_an_open_task_that_has_not_moved_for_a_day_goes_to_a_person_once():
     assert stalled == ["s#1"], "a day without change, open: asked; an hour, or a finished task: not"
     fx.d.act(view, NOW)
     assert [r for r, text in fx.asked if "has not moved" in text] == ["s#1"], "once per state and status time"
+
+
+def test_the_chairs_failed_job_is_closed_when_she_starts_the_next_round():
+    fx = Live()
+    asked = {"task_id": "1", "doer_state": "needs_clarification", "doer_question": "which file?"}
+    fx.d.act(board(asked), NOW)
+    job = fx.jobs[0][0]
+    fx.d.act(council(board(asked), job, doer_state="failed", doer_failure={"cause": "verify_failed"}), NOW)
+    assert (f"council#{job}", "replaced") in [(r, s) for r, s, _ in fx.sent]
+
+
+def test_a_request_for_more_paths_goes_to_a_person_not_the_scribe():
+    fx = Live()
+    fx.d.act(board({"task_id": "1", "doer_state": "needs_clarification", "doer_question": "paths: README.md — a row", "doer_want_paths": ["README.md"]}), NOW)
+    assert fx.jobs == [] and any("Allow these paths" in text for _, text in fx.asked)

@@ -58,6 +58,8 @@ export const EVENT_TYPES = new Set([
   "task_merged",
   // a person's final evaluation of a submitted branch (POST /v1/board/accept) — contract §6.2
   "task_accept",
+  // a person allows more paths for a task the Dev asked to widen (POST /v1/board/paths) — contract §6.2
+  "task_paths",
   // the host reports how it is handling a person's accept request (merging, or held with a reason) — contract §6.2
   "accept_progress",
   // the host reports that a submitted branch's tip is already in the base branch — contract §6.2
@@ -88,7 +90,7 @@ export const HOST_ID = /^h_[0-9a-f]{8}$/;
 export const EXPECTS = new Set(["answer", "plan", "review", "test_result"]);
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
 /** People's word, made by the cloud from the web (POST /v1/board/dispatch); a relay may not send it. */
-export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request", "task_accept"]);
+export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request", "task_accept", "task_paths"]);
 export const PLAN_STATES = new Set(["approved", "rejected"]);
 export const MAX_PLAN_TASKS = 5;
 const TASK_ID = /^[A-Za-z0-9._-]{1,20}$/;
@@ -267,6 +269,19 @@ export function validateEvent(event: Json): string[] {
     for (const key of ["step", "question", "pieces"]) {
       if (p[key] !== undefined && (typeof p[key] !== "string" || (p[key] as string).length > 400)) errors.push(`task_status ${key} must be text of at most 400 characters`);
     }
+    // the Dev asks for more paths (NEEDS: paths: …): at most 5, each narrow and repo-relative, like a plan's
+    if (p.want_paths !== undefined) {
+      if (!Array.isArray(p.want_paths) || p.want_paths.length < 1 || p.want_paths.length > 5) errors.push("task_status want_paths is a list of 1 to 5 paths");
+      else for (const path of p.want_paths) { const problem = planPathProblem(path); if (problem) errors.push(`want_paths: ${problem}`); }
+    }
+  }
+  // A person allows more paths for a task (POST /v1/board/paths): the hosts add them to its declared paths.
+  if (event.type === "task_paths") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.task !== "string" || !TASK_REF.test(p.task)) errors.push("task_paths needs task as <spec>#<task>");
+    if (!Array.isArray(p.add) || p.add.length < 1 || p.add.length > 5) errors.push("task_paths add is a list of 1 to 5 paths");
+    else for (const path of p.add) { const problem = planPathProblem(path); if (problem) errors.push(`task_paths: ${problem}`); }
+    if (typeof p.author !== "string" || !p.author.trim() || p.author.length > 40) errors.push("task_paths names the person (author)");
   }
   if (event.type === "task_dispatch") {
     const p = isObject(payload) ? payload : {};

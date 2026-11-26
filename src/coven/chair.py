@@ -260,6 +260,8 @@ class Dispatcher:
                     did.append({"task": ref, "action": "elder_check", "job": made})
             elif self._gave_up(f"council#{info['job']}", t) or self._lost(info, t):
                 del self.pending[ref]  # the Scribe's job will not run again: the next sweep starts a new round (or holds it)
+                if t:
+                    self._close_job(f"council#{info['job']}")
                 self._reopen(ref)
                 did.append({"task": ref, "action": "scribe_failed"})
         for ref, info in list(self.checking.items()):  # after the Elder Witch: the task goes back to its witch, with both answers
@@ -281,6 +283,8 @@ class Dispatcher:
                     did.append({"task": ref, "action": "question"})
             elif self._gave_up(f"council#{info['job']}", t) or self._lost(info, t):
                 del self.checking[ref]
+                if t:
+                    self._close_job(f"council#{info['job']}")
                 self._reopen(ref)
                 did.append({"task": ref, "action": "elder_failed"})
         for ref, t in tasks.items():  # a split subtask whose new subtasks exist is closed as replaced
@@ -306,6 +310,14 @@ class Dispatcher:
                 did.append({"task": ref, **result})
         self._save()
         return did
+
+    def _close_job(self, job_ref: str) -> None:
+        """One of the Chair's own jobs that failed for good is closed (`replaced`): the new round replaces it; it does not
+        stay in Blocked as a second thing to look at."""
+        try:
+            self.send(job_ref, "replaced", "replaced by the Chair's next round")
+        except Exception:  # noqa: BLE001 - it is only clutter if this fails
+            pass
 
     def _lost(self, info: dict, task: dict) -> bool:
         """A job this Chair made that never reached the board within JOB_MISSING seconds (one remembered from before this was
@@ -341,6 +353,11 @@ class Dispatcher:
         kind, ref = f["kind"], f["task"]
         if kind in ("not_ready", "needs_split"):
             return self._scribe(f, "Make this task ready." if kind == "not_ready" else "Split this task into subtasks.")
+        if kind == "needs_clarification" and task.get("doer_want_paths"):
+            # more paths: only a person widens a task's paths (one click on the board); the Scribe could only answer in words
+            self.ask(ref, f"{ref}: the Dev asks to also change {', '.join(task['doer_want_paths'])}. Allow these paths on the board, "
+                          f"or answer why not. ({task.get('doer_question') or ''})"[:400])
+            return {"action": "question"}
         if kind == "needs_clarification":
             asked = task.get("doer_question") or task.get("doer_detail") or ""
             if INTENT.search(str(asked)):

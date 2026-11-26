@@ -336,6 +336,8 @@ def ask_witch(root: Path, ref: str, asker: str, answerer: str, question: str, ru
 
 
 OUTCOME_HELP = ("If you cannot do this as written, end your answer with exactly one last line instead of guessing: "
+                "`NEEDS: paths: <path>, <path> — <why>` when the work needs files outside the declared paths (at most 5, "
+                "narrow, repo-relative: a person allows them with one click), "
                 "`NEEDS: <one question, at most 300 characters>` when something you need to know is missing, or "
                 "`SPLIT: <the pieces, separated by ;>` when the task is too big (the limit is 5 files and 8 steps). "
                 "The host records either one and does not count it as a failure.")
@@ -985,6 +987,24 @@ def outcome_of(text: str | None) -> tuple[str | None, str]:
     return found.group(1).lower(), " ".join(found.group(2).split())[:400]
 
 
+WANT_PATHS = re.compile(r"^\s*paths?\s*:\s*(.+?)(?:\s+[—–-]\s+.*)?$", re.I)
+
+
+def wanted_paths(text: str) -> list[str]:
+    """The paths a `NEEDS: paths: a, b — why` asks for: at most 5, repo-relative and narrow (as a plan's), else none."""
+    found = WANT_PATHS.match(text or "")
+    if not found:
+        return []
+    out = []
+    for raw in re.split(r"[,\s]+", found.group(1)):
+        path = raw.strip().strip("`'\"")
+        if not path or path in ("*", "**", "**/*", ".", "./", "/") or path.startswith(("/", "~")) or ".." in path.split("/") or len(path) > 200:
+            continue
+        if path not in out:
+            out.append(path)
+    return out[:5]
+
+
 def _send_outcome(root: Path, ref: str, state: str, agent: str, **fields) -> None:
     """Tell the board a run ended in an outcome (contract: task_status needs_clarification, needs_split, held). A courtesy."""
     try:
@@ -1008,8 +1028,9 @@ def _settle_outcome(root: Path, ref: str, agent: str, host: str, kind: str, body
         return {"action": "held", "task": ref, "agent": agent, "why": why, "outcomes": count}
     state = "needs_clarification" if kind == "needs" else "needs_split"
     field = "question" if kind == "needs" else "pieces"
-    _update(root, ref, state=state, outcomes=count, **{field: text}, error=None, finished_at=events.now_iso())
-    _send_outcome(root, ref, state, agent, **{field: text})
+    wanted = wanted_paths(text) if kind == "needs" else []
+    _update(root, ref, state=state, outcomes=count, **{field: text}, want_paths=wanted, error=None, finished_at=events.now_iso())
+    _send_outcome(root, ref, state, agent, **{field: text}, **({"want_paths": wanted} if wanted else {}))
     label = "asks" if kind == "needs" else "proposes to split it into"
     _note(root, f"{agents.label(agent)} on {host} {label}: {text}", agent, ref, kind="question", host_says=True)
     return {"action": state, "task": ref, "agent": agent, field: text, "outcomes": count}
@@ -1980,7 +2001,9 @@ def plan_prompt(task: dict, host: str, source: dict | None) -> str:
     lines += ["", "Read the code, docs/ADD.md, docs/requirements.md and AGENTS.md if they exist; change no file.",
               f"Propose at most {MAX_PLAN_TASKS} build tasks for the Green Witch (the Dev), in the order she should do them. Each task:",
               "- one reviewable change that keeps the project's tests green;",
-              "- paths: the files or folders it changes, repo-relative, as narrow as it allows (tests and docs it must update included; never the whole repo);",
+              "- paths: the files or folders it changes, repo-relative, as narrow as it allows; include the test files its verify runs and the docs "
+              "the repository's rules require it to update (in Coven: docs/ADD.md for a new event, field or endpoint; README.md for a new command; "
+              "docs/requirements.md for a requirement's status); never the whole repo. A task whose paths miss these stops halfway and waits for a person;",
               "- verify: one shell command, run from the repository root, that exits 0 when the task is done (the project's test runner on the relevant tests; "
               "write `python3`, never bare `python`, and copy how the repository's other _Verify:_ lines call its tests);",
               "- detail: what to change and why, at most 330 characters.",
@@ -2187,6 +2210,17 @@ def verdict_of(text: str | None) -> tuple[str | None, str]:
 # branch acts on their verdicts: changes go back to the Dev (at most two reworks), three passes go to the Chair (Senior
 # Kiro), and when she decides to merge the host checks it is qualified (no person rejected it, it merges cleanly, the
 # project check passes on the merged tree) and only then pushes the base branch. Any doubt holds it for a person.
+
+
+def widen(task: dict, view: dict) -> dict:
+    """`task` with the paths people allowed for it on the board (`extra_paths`, POST /v1/board/paths) added to the declared
+    ones: the path check after the run and the guard during it both use them. tasks.md is not touched."""
+    ref = f"{task.get('spec')}#{task.get('task_id')}"
+    extra = next((t.get("extra_paths") or [] for sp in view.get("specs") or [] if sp.get("spec") == task.get("spec")
+                  for t in sp.get("tasks") or [] if f"{sp.get('spec')}#{t.get('task_id')}" == ref), [])
+    if not extra:
+        return task
+    return {**task, "paths": list(dict.fromkeys([*(task.get("paths") or []), *extra]))}
 
 
 def live_refs(view: dict) -> set[str]:
@@ -2657,6 +2691,11 @@ class Runs(dict):
         self.started.pop(ref, None)
         self.agents.pop(ref, None)
 
+    def busy(self, agent: str) -> bool:
+        """Whether `agent` already runs something on this host: a witch works one task at a time (other witches run
+        beside her in the other slots); she takes the next one when this one is done."""
+        return agent in self.agents.values()
+
 
 class Host:
     """The dispatcher: a pool of `slots` agent runs, fed from the board."""
@@ -2671,6 +2710,8 @@ class Host:
         self.prune = prunes_branches() if prune is None else prune
         self._pruned_at: float | None = None
         self._reported: list | None = None
+        self._merged_said: set[str] = set()
+        self._gone_said: set[str] = set()
         # Autonomous (a person's choice per host, `--autonomous`): auto-merge, the Chair approves consensus plans, and the host
         # merges the Scribe's witch-and-paths branches. Verify commands, holds and deadlocks still go to a person.
         self.autonomous = autonomous
@@ -2864,12 +2905,46 @@ class Host:
             sent.append(ref)
         return sent
 
+    def _merged_already(self, view: dict) -> list[str]:
+        """A task the board still shows as submitted, from this host (or no host), that this host no longer has a record
+        of, though its commit (`coven: <ref> …`) is already in the base: someone merged it by hand and the record was lost.
+        Say so (task_merged, by a person), once; else it waits in review forever and blocks nobody but confuses everyone."""
+        done = []
+        try:
+            base = work.base_branch(self.root)
+        except work.WorkError:
+            return done
+        records = load(self.root)
+        for sp in view.get("specs") or []:
+            for t in sp.get("tasks") or []:
+                ref = f"{sp.get('spec')}#{t.get('task_id')}"
+                if (t.get("doer_state") != "submitted" or t.get("merged") or ref in records or ref in self.running
+                        or t.get("branch_host") not in (None, self.host_id) or ref in self._merged_said):
+                    continue
+                sha = work._git(self.root, "log", base, "--format=%H", "-1", "--fixed-strings", f"--grep=coven: {ref} ", check=False).strip()
+                if not sha:
+                    continue
+                self._merged_said.add(ref)
+                try:
+                    board.task_merged(self.root, ref, t.get("branch") or work.branch_for({"spec": sp.get("spec"), "task_id": t.get("task_id")}),
+                                      sha[:40], base, [], "person", "merged by hand")
+                except Exception:  # noqa: BLE001 - said again by a later process
+                    continue
+                self.out(f"host: {ref} is already in {base} at {sha[:7]} (merged by hand); the board is told")
+                done.append(ref)
+        return done
+
+    def _waiting(self) -> int:
+        """Branches of this host that wait for their reviewers or the Chair: at review_limit, the Dev takes nothing new.
+        One held for a person (review_hold) is not counted: it waits for people, and the Dev's other work must not."""
+        return sum(1 for r in load(self.root).values() if r.get("state") == "submitted" and not r.get("review_hold"))
+
     def _rework(self, chat: dict, notes: list[dict], tasks: dict[str, dict]) -> list[str]:
         started = []
         for ref, record in load(self.root).items():
             if len(self.running) >= self.slots:
                 break
-            if record.get("state") != "submitted" or ref in self.running or ref not in tasks:
+            if record.get("state") != "submitted" or ref in self.running or ref not in tasks or self.running.busy(record.get("agent") or agents.DEFAULT):
                 continue
             said = work.feedback(self.root, record, chat, notes)
             if said:
@@ -2880,6 +2955,7 @@ class Host:
                 self.running[ref] = self.pool.submit(execute, self.root, tasks[ref], record["agent"],
                                                   self.cloud_runner if record.get("via") == "kiro-web" and self.cloud_runner else self.runner,
                                                   said, notes, record.get("base"))
+                self.running.agents[ref] = record["agent"]
                 started.append(ref)
         return started
 
@@ -2949,7 +3025,7 @@ class Host:
             if len(self.running) >= self.slots:
                 break
             agent, ref = request_agent(message), request_ref(message)
-            if agent not in self.can_run or ref in self.running:
+            if agent not in self.can_run or ref in self.running or self.running.busy(agent):
                 continue
             try:
                 self._claim(ref, {"spec": REQUEST_SPEC, "task_id": message["message_id"], "paths": []}, agent)
@@ -2978,7 +3054,8 @@ class Host:
         cloud = task.get("dispatch_via") == "kiro-web"
         if cloud and not self.cloud_runner:
             return None  # a person chose Kiro Web: wait for a host that is set up for it
-        item = {"spec": COUNCIL_SPEC, "task_id": str(task["task_id"]), "title": task.get("title"), "paths": list(task.get("paths") or []),
+        item = {"spec": COUNCIL_SPEC, "task_id": str(task["task_id"]), "title": task.get("title"),
+                "paths": list(dict.fromkeys([*(task.get("paths") or []), *(task.get("extra_paths") or [])])),
                 "verify": task.get("verify"), "detail": task.get("detail"), "from_plan": task.get("from_plan"), "source": task.get("source"),
                 "task_key": task.get("task_key"),
                 "done": False, "line": None}
@@ -2991,6 +3068,7 @@ class Host:
         _update(self.root, ref, task=ref, agent=agents.DEFAULT, kind="build", state="running", started_at=events.now_iso(), plan_task=item)
         self.out(f"host: {agents.label(agents.DEFAULT)} builds {ref} {task.get('title') or ''} (approved by {task.get('approved_by') or 'a person'})")
         self.running[ref] = self.pool.submit(execute, self.root, item, agents.DEFAULT, self.cloud_runner if cloud else self.runner, None, notes, None)
+        self.running.agents[ref] = agents.DEFAULT
         return ref
 
     def _jobs(self, view: dict, chat: dict, notes: list[dict], waiting: int = 0) -> list[str]:
@@ -2998,6 +3076,7 @@ class Host:
         started = []
         messages = {m.get("message_id"): m for m in chat.get("messages") or []}
         live = live_refs(view)
+        tasks_by_ref = {f"{sp.get('spec')}#{t.get('task_id')}": t for sp in view.get("specs") or [] for t in sp.get("tasks") or []}
         for spec in view.get("specs") or []:
             if spec.get("spec") != COUNCIL_SPEC:
                 continue
@@ -3009,8 +3088,9 @@ class Host:
                 # `working` with no live claim and no live run anywhere: its host stopped or died; the job is free again.
                 orphaned = (task.get("doer_state") == "working" and not task.get("claimed_by") and ref not in live) or (
                     bool(task.get("orphaned")) and int(task.get("takeovers") or 0) < MAX_TAKEOVERS)
-                if ((task.get("doer_state") in ("answered", "failed", "done", "submitted", "working") and not orphaned) or task.get("claimed_by")
-                        or task.get("status") == "completed" or ref in self.running or not agent or agent not in self.can_run):
+                if ((task.get("doer_state") in ("answered", "failed", "done", "submitted", "working", "replaced", "held") and not orphaned) or task.get("claimed_by")
+                        or task.get("status") == "completed" or ref in self.running or not agent or agent not in self.can_run
+                        or self.running.busy(agent)):  # a witch works one task at a time
                     continue
                 if task.get("from_plan") and plan_waits_for(view, ref):
                     continue  # its plan's earlier step is not done yet: it is built on top of that, not beside it
@@ -3025,7 +3105,14 @@ class Host:
                             waiting += 1
                     continue
                 if task.get("branch") and not self._has_branch(task["branch"]):
-                    continue  # its branch is on another host: that host reviews it
+                    under = tasks_by_ref.get(str(task.get("review_of") or ""))
+                    closed = under is None or under.get("status") == "completed" or under.get("merged") or under.get("doer_state") in ("done", "merged", "replaced", "abandoned")
+                    if (closed or under.get("branch_host") in (None, self.host_id)) and ref not in self._gone_said:
+                        # nobody has the branch any more (the task closed, or this host was its home): it can never be
+                        # reviewed; close the job, so it does not wait in review forever
+                        self._gone_said.add(ref)
+                        _send_outcome(self.root, ref, "replaced", agent, detail="its branch is gone: nothing left to review")
+                    continue  # else its branch is on another host: that host reviews it
                 try:
                     self._claim(ref, {"spec": COUNCIL_SPEC, "task_id": task["task_id"], "paths": [], "task_key": task.get("task_key")}, agent)
                 except board.BoardError as exc:
@@ -3052,12 +3139,13 @@ class Host:
                         if t.get("branch_host") and t.get("doer_state") in ("submitted", "working", "failed")}
         ready.sort(key=lambda t: agents.for_task(t) == agents.DEFAULT)  # tasks that ask for a specific agent first (stable)
         for task in ready:
+            task = widen(task, view)
             if len(self.running) >= self.slots or waiting >= self.review_limit:
                 break
             agent = agents.for_task(task)
             ref = f"{task['spec']}#{task['task_id']}"
-            if agent not in self.can_run:
-                continue
+            if agent not in self.can_run or self.running.busy(agent):
+                continue  # not here, or she is on another task: she takes this one when that one is done
             elsewhere = branch_hosts.get(ref)
             if elsewhere and elsewhere != self.host_id and ref not in orphans:
                 continue  # its commits are on another host (nothing pushes): only that host reworks it, while it is alive
@@ -3083,6 +3171,7 @@ class Host:
             _update(self.root, ref, task=ref, agent=agent, kind=agents.kind(agent), state="running", started_at=events.now_iso())
             self.out(f"host: {agents.label(agent)} takes {ref} {task.get('title') or ''}")
             self.running[ref] = self.pool.submit(execute, self.root, task, agent, self.cloud_runner if cloud else self.runner, None, notes, None)
+            self.running.agents[ref] = agent
             started.append(ref)
         return started
 
@@ -3385,10 +3474,12 @@ class Host:
         tasks = specmap.load(self.root)
         # Plan tasks a person approved live on the board, not in tasks.md: settle and rework them the same way.
         tasks.update({ref: record["plan_task"] for ref, record in load(self.root).items() if record.get("plan_task")})
+        tasks = {ref: widen(t, view) for ref, t in tasks.items()}  # with the paths people allowed beyond the declared ones
         self._requeued(view)
         pushed = self._pushes(view)  # a push needs no model: it goes on while paused
         accepted = self._accepts(view)  # nor does a person's Accept: merge, check, push
         self._in_base(view)  # before a merged branch is forgotten below
+        self._merged_already(view)
         self._cleanup(view)  # no model either: finished branches go, unmerged work is listed for people
         if self.paused():
             # Kiro is down: start nothing that needs a model. Messages and tasks wait; the pause ends by itself.
@@ -3399,10 +3490,10 @@ class Host:
         settled = self._settle(view, chat, notes) if self.auto_merge else []
         signed = self._signoff(view) if self.autonomous else []
         finished = self._release_finished(tasks, view)
-        waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
+        waiting = self._waiting()
         asked = self._requests(chat, notes) + self._jobs(view, chat, notes, waiting)
         reworked = self._rework(chat, notes, tasks)
-        waiting = sum(1 for r in load(self.root).values() if r.get("state") == "submitted")
+        waiting = self._waiting()
         taken = self._take(view, notes, waiting)
         self.presence()  # runs started in this tick: the monitor hears it now, not in a minute
         drifted = self._converge()
@@ -3677,7 +3768,7 @@ def reconcile_start(root: Path) -> dict:
             _status(root, ref, local, agent, record.get("error"), branch=record.get("branch") if local == "submitted" else None,
                     failure=record.get("failure"))
             result["resent"] += 1
-        elif local in ("needs_clarification", "needs_split", "held") and not state:
+        elif local in ("needs_clarification", "needs_split", "held") and state != local:
             # the board has no word of it (it dropped off the list, or the status was lost): say it again, with the
             # witch's question or pieces, so the Chair and people see that it waits, and for what
             _send_outcome(root, ref, local, agent, question=record.get("question"), pieces=record.get("pieces"),

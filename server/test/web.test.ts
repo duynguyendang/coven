@@ -1362,6 +1362,25 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: a request for more paths is one click", async () => {
+    const m = (type: string, payload: Json, ago: number) => ({ ...ev("member_wp2", "wp2", type, payload, ago), member: "wp2" });
+    await send("wp2", "member_wp2", [
+      m("spec_artifact_updated", { artifact: "tasks", spec: "wp2", total: 1, done: 0, in_progress: 0, queued: 0, optional: 0,
+        tasks: [{ task_id: "1", title: "Needs a doc", status: "not_started", paths: ["src/"] }] }, 60),
+      m("task_status", { task: "wp2#1", state: "needs_clarification", agent: "green-witch", question: "paths: README.md — the command table", want_paths: ["README.md"] }, 30),
+    ]);
+    await go("#/board/wp2", 700);
+    const row = doc().querySelector('[data-key="need-wp2#1"]')!;
+    assert.match(row.textContent!.replace(/\s+/g, " "), /The Dev asks to also change README\.md \(the command table\)/);
+    const allow = row.querySelector('[data-allow-paths="wp2#1"]') as HTMLButtonElement;
+    assert.ok(allow, "the answer is a button right there");
+    allow.click();
+    await wait(600);
+    const t = (await getJson(s.base, "/v1/board?project_id=wp2", auth())).body.specs[0].tasks[0];
+    assert.deepEqual([t.extra_paths, t.doer_state], [["README.md"], "queued"]);
+    await go("#/");
+  });
+
   test("board: one wording, the Chair's own jobs are hers, old pills and lost runs do not show, closed lane is build tasks only", async () => {
     const m = (type: string, payload: Json, ago: number, member = "wq") => ({ ...ev(`member_${member}`, "wq", type, payload, ago), member });
     await send("wq", "member_wq", [

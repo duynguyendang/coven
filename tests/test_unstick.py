@@ -87,3 +87,81 @@ def test_a_verify_written_with_bare_python_runs_where_only_python3_exists(tmp_pa
     monkeypatch.setattr(verify.shutil, "which", lambda name, path=None: None if name == "python" else real_which(name, path=path))
     result = verify.run(tmp_path, {"spec": "s", "task_id": "1", "verify": "python -c 'import sys; sys.exit(0)'"}, tmp_path / "v.log")
     assert result["exit_code"] == 0 and result["status"] == "pass", result
+
+
+def test_a_witch_works_one_task_at_a_time_while_other_witches_run_beside_her(repo, monkeypatch):  # noqa: F811
+    """Two free slots, two ready build tasks: the Dev takes one; the other waits for her, not for a slot."""
+    import threading
+    FakeCloud().install(monkeypatch)
+    gate = threading.Event()
+
+    def slow(cwd, prompt):
+        gate.wait(10)
+        return "1. done", None
+    h = host.Host(repo, slots=3, runner=Runner({"green-witch": slow, "elf": lambda c, p: ("1. idea", None)}), only=["green-witch", "elf"])
+    view = {"specs": [], "claims": [], "notes": []}
+    taken = h._take(view, [], 0)
+    agents_running = sorted(h.running.agents.values())
+    gate.set()
+    for future in list(h.running.values()):
+        future.result()
+    assert agents_running.count("green-witch") == 1, agents_running
+    assert "elf" in agents_running, "another witch runs in another slot"
+    assert len([t for t in taken if t in ("shop#1", "shop#4")]) <= 1
+
+
+def test_a_branch_held_for_a_person_does_not_stop_the_dev(repo, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    h = host.Host(repo, slots=1, runner=Runner(), only=["green-witch"])
+    for n in (1, 2, 3):
+        host._update(repo, f"x#{n}", state="submitted", review_hold="make verify failed")
+    assert h._waiting() == 0
+    host._update(repo, "x#4", state="submitted")
+    assert h._waiting() == 1
+
+
+def test_a_submitted_task_already_in_the_base_is_said_merged(repo, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    merged = []
+    monkeypatch.setattr(board, "task_merged", lambda root, ref, branch, commit, base, reviewers, decided_by, author=None: merged.append((ref, decided_by, author)) or {})
+    (repo / "f.txt").write_text("x")
+    from tests.test_host import git
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "coven: council#r9-1b1 Something merged by hand")
+    h = host.Host(repo, slots=1, runner=Runner(), only=["green-witch"])
+    view = {"specs": [{"spec": "council", "tasks": [{"task_id": "r9-1b1", "doer_state": "submitted", "branch_host": None},
+                                                     {"task_id": "r9-1b2", "doer_state": "submitted", "branch_host": None}]}]}
+    assert h._merged_already(view) == ["council#r9-1b1"] and merged == [("council#r9-1b1", "person", "merged by hand")]
+    assert h._merged_already(view) == [], "said once"
+
+
+def test_a_review_job_whose_branch_is_gone_for_good_is_closed(repo, monkeypatch):  # noqa: F811
+    cloud = FakeCloud().install(monkeypatch)
+    sent = []
+    monkeypatch.setattr(host.board, "_member_event", lambda root, type_, payload: sent.append(payload) or payload)
+    cloud.specs = [{"spec": "council", "tasks": [
+        {"task_id": "r1-1b1", "doer_state": "done"},
+        {"task_id": "r1-1b1-t", "title": "Test", "agent": "white-hat", "branch": "coven/council-r1-1b1", "review_of": "council#r1-1b1"}]}]
+    h = host.Host(repo, slots=1, runner=Runner(), only=["white-hat"])
+    assert h._jobs({**board.read(repo), "monitor": {"runs": []}}, {"messages": []}, []) == []
+    assert [(p["task"], p["state"]) for p in sent if p.get("state")] == [("council#r1-1b1-t", "replaced")]
+
+
+def test_needs_paths_is_read_into_a_list_of_narrow_paths():
+    assert host.wanted_paths("paths: README.md, docs/ADD.md — R1 needs a row") == ["README.md", "docs/ADD.md"]
+    assert host.wanted_paths("paths: `tests/test_cli.py` src/coven/cli.py") == ["tests/test_cli.py", "src/coven/cli.py"]
+    assert host.wanted_paths("paths: ../etc/passwd, /abs, **, ok.md") == ["ok.md"]
+    assert host.wanted_paths("which file holds the cart?") == []
+
+
+def test_a_needs_paths_outcome_sends_the_paths_and_a_widened_task_builds_with_them(repo, monkeypatch):  # noqa: F811
+    cloud = FakeCloud().install(monkeypatch)
+    sent = []
+    monkeypatch.setattr(host.board, "_member_event", lambda root, type_, payload: sent.append(payload) or payload)
+    task = specmap_task = __import__("coven").specmap.load(repo)["shop#1"]
+    runner = Runner({"green-witch": lambda cwd, prompt: ("1. stuck\nNEEDS: paths: docs/cart.md — the docs must say it", None)})
+    host.Host(repo, slots=1, runner=runner, only=["green-witch"]).run(once=True)
+    assert any(p.get("state") == "needs_clarification" and p.get("want_paths") == ["docs/cart.md"] for p in sent)
+    view = {"specs": [{"spec": "shop", "tasks": [{"task_id": "1", "extra_paths": ["docs/cart.md"]}]}]}
+    assert host.widen(specmap_task, view)["paths"] == [*task["paths"], "docs/cart.md"]
+    assert host.widen(specmap_task, {"specs": []}) is specmap_task, "nothing allowed: the task as declared"

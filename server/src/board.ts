@@ -128,6 +128,7 @@ export class Board {
   pushes = new Map<string, Map<string, Json>>(); // project -> task ref -> the latest push request and its outcome
   accepts = new Map<string, Map<string, Json>>(); // project -> task ref -> a person's latest final evaluation of its branch
   unmerged = new Map<string, Map<string, Json>>(); // project -> host id -> its latest branch_report (closed tasks' unmerged branches)
+  extraPaths = new Map<string, Map<string, string[]>>(); // project -> task ref -> paths people allowed beyond its declared ones
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
   processes = new Map<string, Map<string, Json>>(); // project -> "<host_id or name>/<process>" -> its runs (the witch monitor)
   chatRuns = new Map<string, Map<string, Json>>(); // project -> chat#<id> -> {agent, state, started_at, ended_at, code}; written by chat_run only
@@ -265,6 +266,7 @@ export class Board {
           step: typeof p.step === "string" ? p.step.slice(0, 160) : null,
           question: typeof p.question === "string" ? p.question.slice(0, 400) : null,
           pieces: typeof p.pieces === "string" ? p.pieces.slice(0, 400) : null,
+          want_paths: Array.isArray(p.want_paths) ? p.want_paths.slice(0, 5).map((x: unknown) => String(x).slice(0, 200)) : [],
         });
       }
       this.statuses.set(project, all);
@@ -319,6 +321,11 @@ export class Board {
       this.statuses.set(project, all);
       const acc = this.accepts.get(project)?.get(p.task);
       if (acc && acc.accepted) Object.assign(acc, { merge_state: "merged", merge_reason: null, commit: String(p.commit).slice(0, 40) });
+    } else if (event.type === "task_paths" && typeof p.task === "string" && Array.isArray(p.add)) {
+      const all = this.extraPaths.get(project) ?? new Map<string, string[]>();
+      const known = all.get(p.task) ?? [];
+      all.set(p.task, [...new Set([...known, ...p.add.map((x: unknown) => String(x).slice(0, 200))])].slice(0, 20));
+      this.extraPaths.set(project, all);
     } else if (event.type === "branch_report" && typeof p.host_id === "string" && HOST_ID.test(p.host_id)) {
       // A host's whole list each time: what it no longer reports, it merged or deleted.
       const all = this.unmerged.get(project) ?? new Map<string, Json>();
@@ -572,7 +579,8 @@ export class Board {
         const dispatch = asked?.state === "requested" ? { dispatch_via: asked.via, dispatch_by: asked.by } : { dispatch_via: null, dispatch_by: null };
         return { ...t, ...dispatch, doer_state: doing?.state ?? null, doer_agent: doing?.agent ?? null, doer_host: doing?.host ?? null, doer_host_id: doing?.host_id ?? null, doer_ts: doing?.ts ?? null, doer_detail: doing?.detail ?? null, doer_failure: doing?.failure ?? null, doer_attempts: doing?.attempts ?? 0, doer_verdict: doing?.verdict ?? null,
           orphaned: orphan.orphaned, orphaned_since: orphan.since, takeovers: this.newest.get(projectId)?.get(`${spec}#${t.task_id}`)?.takeovers ?? 0,
-          doer_parent: doing?.parent ?? null, doer_ready: doing?.ready ?? null, doer_missing: doing?.missing ?? [], doer_step: doing?.step ?? null, doer_question: doing?.question ?? null, doer_pieces: doing?.pieces ?? null, merged: doing?.merged ?? null,
+          doer_parent: doing?.parent ?? null, doer_ready: doing?.ready ?? null, doer_missing: doing?.missing ?? [], doer_step: doing?.step ?? null, doer_question: doing?.question ?? null, doer_pieces: doing?.pieces ?? null,
+          doer_want_paths: doing?.want_paths ?? [], extra_paths: this.extraPaths.get(projectId)?.get(`${spec}#${t.task_id}`) ?? [], merged: doing?.merged ?? null,
           rollup: rollups.get(`${spec}#${t.task_id}`) ?? null,
           push: this.pushes.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,
           accept: this.accepts.get(projectId)?.get(`${spec}#${t.task_id}`) ?? null,

@@ -618,6 +618,25 @@ describe("several hosts (spec multi-host)", () => {
     } finally { await s.close(); }
   });
 
+  test("more paths: the Dev asks, only a person allows, the task gets them and is queued again", async () => {
+    const s = await startServer();
+    try {
+      await send(s.base, [ev("spec_artifact_updated", { spec: "s", tasks: [{ task_id: "7", title: "x", paths: ["src/a.py"] }] })]);
+      const bad = await send(s.base, [ev("task_status", { task: "s#7", state: "needs_clarification", agent: "green-witch", want_paths: ["../etc"] })]);
+      assert.equal(bad.body.accepted, 0, "a wanted path is narrow and repo-relative");
+      await send(s.base, [ev("task_status", { task: "s#7", state: "needs_clarification", agent: "green-witch", question: "paths: README.md — a row", want_paths: ["README.md"] })]);
+      const task = async () => (await board(s.base)).specs.find((x: Json) => x.spec === "s").tasks.find((t: Json) => t.task_id === "7");
+      assert.deepEqual((await task()).doer_want_paths, ["README.md"]);
+      const sneaky = await send(s.base, [ev("task_paths", { task: "s#7", add: ["README.md"], author: "x" })]);
+      assert.equal(sneaky.body.accepted, 0, "only people widen a task's paths");
+      assert.equal((await postJson(s.base, "/v1/board/paths", { project_id: "shop", task: "s#7", paths: ["/etc/passwd"], author: "duy" }, auth())).status, 422);
+      const ok = await postJson(s.base, "/v1/board/paths", { project_id: "shop", task: "s#7", author: "duy" }, auth());
+      assert.deepEqual([ok.status, ok.body.paths], [201, ["README.md"]], "no list: the paths the Dev asked for");
+      const t = await task();
+      assert.deepEqual([t.extra_paths, t.doer_state], [["README.md"], "queued"]);
+    } finally { await s.close(); }
+  });
+
   test("a claim's renewal: its own process renews, a live other process of the host is refused, a silent one's is taken over", async () => {
     const s = await startServer();
     try {

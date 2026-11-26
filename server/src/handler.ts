@@ -14,7 +14,7 @@
  */
 
 import { authorised, projectScope, type Env, type Scope } from "./auth.ts";
-import { chatProblems, MAX_HUMAN_CHAT_CHARS, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES, WEB_ONLY_TYPES } from "./events.ts";
+import { planPathProblem, chatProblems, MAX_HUMAN_CHAT_CHARS, isObject, validateEvent, type Json, CLOUD_ONLY_TYPES, WEB_ONLY_TYPES } from "./events.ts";
 import { IDEMPOTENT_PATHS, DEFAULT_TTL_SECONDS, KEY_PATTERN, bodyHash, idemId, scopeOf, type IdemEntry } from "./idempotency.ts";
 import { presented } from "./auth.ts";
 import { redactEvent, redactText } from "./redact.ts";
@@ -460,6 +460,23 @@ export function createHandler(options: HandlerOptions): Handler {
       if (problems.length) throw validation("task", problems.join("; "));
       const event = await store.postWebStatus(projectId, redactEvent({ payload }).payload);
       return json(201, { event_id: event.event_id });
+    }
+
+    if (method === "POST" && path === "/v1/board/paths") {
+      // A person lets a task touch more files (the Dev asked: NEEDS: paths: …). Only people widen a task's paths.
+      need(request, url, "decide");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = scopedProject(body);
+      const task = optionalString(body, "task") ?? "";
+      if (!/^[^#\s]{1,80}#[^#\s]{1,20}$/.test(task)) throw validation("task", "<spec>#<task>");
+      const asked = store.board.statuses.get(projectId)?.get(task)?.want_paths ?? [];
+      const add = Array.isArray(body.paths) && body.paths.length ? body.paths : asked;
+      if (!Array.isArray(add) || !add.length || add.length > 5) throw validation("paths", "1 to 5 paths (or the ones the Dev asked for)");
+      for (const p of add) { const problem = planPathProblem(p); if (problem) throw validation("paths", problem); }
+      const author = (optionalString(body, "author") ?? "someone").slice(0, 40);
+      const event = await store.postWebPaths(projectId, task, add.map((p: string) => p.trim()), author);
+      return json(201, { event_id: event.event_id, task, paths: event.payload.add });
     }
 
     if (method === "POST" && path === "/v1/board/retry") {

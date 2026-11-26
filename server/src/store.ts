@@ -563,6 +563,15 @@ export class MemoryStore {
     return event;
   }
 
+  /** A person allows more paths for a task (a `task_paths`, from the web), then queues it again so a host takes it with them. */
+  async postWebPaths(projectId: string, task: string, add: string[], author: string): Promise<Json> {
+    const event = this.boardEvent(projectId, "task_paths", undefined, { task, add, author }, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    await this.postWebStatus(projectId, { task, state: "queued", detail: `paths allowed by ${author}: ${add.join(", ")}`.slice(0, 200) });
+    this.publish({ kind: "board", project_id: projectId });
+    return event;
+  }
+
   /** A person asks the host that holds a task's branch to push it, once (a `push_request`, from the web). Null when no branch waits on a host. */
   async postWebPushRequest(projectId: string, task: string, author: string): Promise<Json | null> {
     const where = this.board.submittedBranch(projectId, task);
