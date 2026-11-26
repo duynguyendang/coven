@@ -618,6 +618,27 @@ describe("several hosts (spec multi-host)", () => {
     } finally { await s.close(); }
   });
 
+  test("a branch action: only for a listed branch, only from people, and its host's report closes it", async () => {
+    const s = await startServer();
+    try {
+      const act = (branch: string, action = "merge") => postJson(s.base, "/v1/board/branch", { project_id: "shop", branch, action, author: "duy" }, auth());
+      assert.equal((await act("coven/nope")).status, 409, "no host lists it");
+      await send(s.base, [ev("branch_report", { host_id: "h_0000000a", branches: [{ branch: "coven/prepare-all", task: null, ahead: 1 }] })]);
+      assert.equal((await act("coven/prepare-all", "explode")).status, 422);
+      const made = await act("coven/prepare-all");
+      assert.deepEqual([made.status, made.body.host_id], [201, "h_0000000a"]);
+      const sneaky = await send(s.base, [ev("branch_action", { branch: "coven/prepare-all", host_id: "h_0000000a", action: "discard", author: "x" })]);
+      assert.equal(sneaky.body.accepted, 0, "only people decide");
+      let a = (await board(s.base)).branch_actions[0];
+      assert.deepEqual([a.action, a.state], ["merge", "requested"]);
+      await send(s.base, [ev("branch_action_done", { request_id: "evt_other", branch: "coven/prepare-all", host_id: "h_0000000a", ok: true })]);
+      assert.equal((await board(s.base)).branch_actions[0].state, "requested", "a report for another request is ignored");
+      await send(s.base, [ev("branch_action_done", { request_id: made.body.event_id, branch: "coven/prepare-all", host_id: "h_0000000a", ok: true, detail: "merged" })]);
+      a = (await board(s.base)).branch_actions[0];
+      assert.deepEqual([a.state, a.detail], ["done", "merged"]);
+    } finally { await s.close(); }
+  });
+
   test("more paths: the Dev asks, only a person allows, the task gets them and is queued again", async () => {
     const s = await startServer();
     try {

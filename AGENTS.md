@@ -71,7 +71,8 @@ make deploy-cloudflare   # the Cloudflare Worker (only when asked)
    same for a finished task's branch that still holds unmerged commits. Branch cleanup is the one deletion a person may turn
    on per host (`--prune-branches`, `COVEN_PRUNE_BRANCHES=1`, the default of `./run-host.sh`; `--keep-branches` off): the host
    deletes only its own finished `coven/` branches whose commits are all in the base, here and on origin; a branch with
-   unmerged commits goes only by a person's **Discard**, after the host keeps a git bundle of it. An agent working
+   unmerged commits goes only by a person's **Discard** (on the board, by branch: `POST /v1/board/branch`), after the host
+   keeps a git bundle of it. A branch only origin has is deleted there only once its tip is in the base. An agent working
    on this repo outside a host still follows the rule.
 3. **Events are a contract.** A new event type, field or endpoint goes into
    `docs/ADD.md` §6 in the same change; the harness fails otherwise.

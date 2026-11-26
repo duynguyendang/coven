@@ -129,6 +129,7 @@ export class Board {
   accepts = new Map<string, Map<string, Json>>(); // project -> task ref -> a person's latest final evaluation of its branch
   unmerged = new Map<string, Map<string, Json>>(); // project -> host id -> its latest branch_report (closed tasks' unmerged branches)
   extraPaths = new Map<string, Map<string, string[]>>(); // project -> task ref -> paths people allowed beyond its declared ones
+  branchActions = new Map<string, Map<string, Json>>(); // project -> branch -> a person's latest merge or discard of it, and how it went
   hosts = new Map<string, Map<string, Json>>(); // project -> host -> what it can run (host_online)
   processes = new Map<string, Map<string, Json>>(); // project -> "<host_id or name>/<process>" -> its runs (the witch monitor)
   chatRuns = new Map<string, Map<string, Json>>(); // project -> chat#<id> -> {agent, state, started_at, ended_at, code}; written by chat_run only
@@ -321,6 +322,16 @@ export class Board {
       this.statuses.set(project, all);
       const acc = this.accepts.get(project)?.get(p.task);
       if (acc && acc.accepted) Object.assign(acc, { merge_state: "merged", merge_reason: null, commit: String(p.commit).slice(0, 40) });
+    } else if (event.type === "branch_action" && typeof p.branch === "string") {
+      const all = this.branchActions.get(project) ?? new Map<string, Json>();
+      all.set(p.branch, { branch: p.branch, host_id: p.host_id, action: p.action, by: String(p.author ?? "someone").slice(0, 40),
+        state: "requested", request_id: event.event_id, ts: event.ts, detail: null });
+      this.branchActions.set(project, all);
+    } else if (event.type === "branch_action_done" && typeof p.branch === "string") {
+      const cur = this.branchActions.get(project)?.get(p.branch);
+      if (cur && cur.request_id === p.request_id && cur.host_id === p.host_id) {
+        Object.assign(cur, { state: p.ok ? "done" : "failed", detail: typeof p.detail === "string" ? p.detail.slice(0, 300) : null, done_at: event.ts });
+      }
     } else if (event.type === "task_paths" && typeof p.task === "string" && Array.isArray(p.add)) {
       const all = this.extraPaths.get(project) ?? new Map<string, string[]>();
       const known = all.get(p.task) ?? [];
@@ -333,7 +344,7 @@ export class Board {
       if (!known || (event.ts || "") >= known.ts) {
         const branches = (Array.isArray(p.branches) ? p.branches : []).slice(0, 30).map((b: Json) => ({
           branch: String(b.branch).slice(0, 110), task: typeof b.task === "string" ? b.task.slice(0, 102) : null, ahead: Number(b.ahead) || 1,
-          tip: typeof b.tip === "string" ? b.tip.slice(0, 40) : null }));
+          tip: typeof b.tip === "string" ? b.tip.slice(0, 40) : null, open: b.open === true }));
         all.set(p.host_id, { host: event.member ?? null, host_id: p.host_id, branches, ts: event.ts });
       }
       this.unmerged.set(project, all);
@@ -598,6 +609,7 @@ export class Board {
     return {
       project_id: projectId, at, takeover_seconds: takeoverSeconds(), members, hosts: members, specs, chat_tasks, chat_runs: this.chatRunsOf(projectId, at), monitor: this.monitor(projectId, specs, at),
       chair: this.chairHolder(projectId, at), unmerged: this.unmergedOf(projectId, at),
+      branch_actions: [...(this.branchActions.get(projectId)?.values() ?? [])].sort((a, b) => ((a.ts || "") < (b.ts || "") ? 1 : -1)).slice(0, 50),
       claims: active.map((c) => ({ ...c, state: "active" })), recent_claims: recent,
       notes: [...(this.notes.get(projectId) ?? [])].reverse(),
       plans: [...(this.plans.get(projectId)?.values() ?? [])].sort((a, b) => ((a.proposed_at || "") < (b.proposed_at || "") ? 1 : -1)).slice(0, 20),

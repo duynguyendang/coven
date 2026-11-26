@@ -563,6 +563,16 @@ export class MemoryStore {
     return event;
   }
 
+  /** A person merges or discards a branch a host listed as unmerged work (a `branch_action`, from the web). Null when no host lists it. */
+  async postWebBranchAction(projectId: string, branch: string, action: string, author: string): Promise<Json | null> {
+    const listed = this.board.unmergedOf(projectId).find((b: Json) => b.branch === branch);
+    if (!listed) return null;
+    const event = this.boardEvent(projectId, "branch_action", undefined, { branch, host_id: listed.host_id, action, author }, "web");
+    await this.ingest(projectId, event.run_id, [event]);
+    this.publish({ kind: "board", project_id: projectId });
+    return event;
+  }
+
   /** A person allows more paths for a task (a `task_paths`, from the web), then queues it again so a host takes it with them. */
   async postWebPaths(projectId: string, task: string, add: string[], author: string): Promise<Json> {
     const event = this.boardEvent(projectId, "task_paths", undefined, { task, add, author }, "web");

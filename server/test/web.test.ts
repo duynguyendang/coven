@@ -1362,6 +1362,27 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: a branch no task owns is merged or discarded from the board by its name", async () => {
+    const m = (type: string, payload: Json, ago: number) => ({ ...ev("member_wb", "wb", type, payload, ago), member: "wb" });
+    await send("wb", "member_wb", [
+      m("host_online", { agents: ["green-witch"], slots: 1, host_id: "h_0000abcd" }, 1),
+      m("branch_report", { host_id: "h_0000abcd", branches: [{ branch: "coven/prepare-verify-all", task: null, ahead: 2, tip: "d".repeat(40) },
+        { branch: "coven/wb-3", task: "wb#3", ahead: 1, open: true }] }, 1),
+    ]);
+    await go("#/board/wb", 700);
+    const prep = doc().querySelector('[data-key="unmerged-coven/prepare-verify-all"]')!;
+    assert.match(prep.textContent!.replace(/\s+/g, " "), /No task on the board owns it \(the Scribe's prep branch/);
+    const open = doc().querySelector('[data-key="unmerged-coven/wb-3"]')!;
+    assert.match(open.textContent!.replace(/\s+/g, " "), /The task is still open/);
+    (dom.window as any).confirm = () => true;
+    (prep.querySelector('[data-branch-act="discard"]') as HTMLButtonElement).click();
+    await wait(600);
+    const b = (await getJson(s.base, "/v1/board?project_id=wb", auth())).body;
+    assert.deepEqual(b.branch_actions.map((a: Json) => [a.branch, a.action, a.state, a.host_id]), [["coven/prepare-verify-all", "discard", "requested", "h_0000abcd"]]);
+    assert.match(doc().querySelector('[data-key="unmerged-coven/prepare-verify-all"]')!.textContent!, /Discarding/);
+    await go("#/");
+  });
+
   test("board: a request for more paths is one click", async () => {
     const m = (type: string, payload: Json, ago: number) => ({ ...ev("member_wp2", "wp2", type, payload, ago), member: "wp2" });
     await send("wp2", "member_wp2", [
@@ -1440,8 +1461,8 @@ describe("session screen", () => {
     assert.match(need("wz#3")!.textContent!.replace(/\s+/g, " "), /host that holds the branch is offline/);
     const work = doc().querySelector('[data-key="unmerged-coven/wz-2"]');
     assert.match(work!.textContent!.replace(/\s+/g, " "), /Unmerged work: 2 commits on coven\/wz-2/);
-    assert.ok(work!.querySelector('[data-accept="wz#2"]'), "Merge and clean is a button right there");
-    assert.ok(work!.querySelector('[data-discard="wz#2"]'), "and Discard, for work that will not merge");
+    assert.ok(work!.querySelector('[data-branch-act="merge"][data-branch="coven/wz-2"]'), "Merge and clean is a button right there");
+    assert.ok(work!.querySelector('[data-branch-act="discard"][data-branch="coven/wz-2"]'), "and Discard, for work that will not merge");
     assert.match(doc().querySelector('[data-key="col-closed"]')!.textContent!, /1\s*Closed without merge/);
     assert.match(doc().querySelector('[data-key="col-done"]')!.textContent!, /0\s*Done/, "a closed-no-change task is not Done");
     openColumn("closed");

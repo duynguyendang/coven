@@ -67,6 +67,9 @@ export const EVENT_TYPES = new Set([
   "push_done",
   // a host lists its coven/ branches with commits not in the base whose task is closed (unmerged work) — contract §6.2
   "branch_report",
+  // a person merges or discards one listed branch from the web, by branch (POST /v1/board/branch); its host reports back — §6.2
+  "branch_action",
+  "branch_action_done",
   // the Elder Witch proposes build tasks for a request; a person approves or rejects them (web only) — contract §5.6
   "plan_proposed",
   "plan_decision",
@@ -90,7 +93,7 @@ export const HOST_ID = /^h_[0-9a-f]{8}$/;
 export const EXPECTS = new Set(["answer", "plan", "review", "test_result"]);
 export const CLOUD_ONLY_TYPES = new Set(["task_claimed", "task_released"]);
 /** People's word, made by the cloud from the web (POST /v1/board/dispatch); a relay may not send it. */
-export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request", "task_accept", "task_paths"]);
+export const WEB_ONLY_TYPES = new Set(["task_dispatch", "plan_decision", "push_request", "task_accept", "task_paths", "branch_action"]);
 export const PLAN_STATES = new Set(["approved", "rejected"]);
 export const MAX_PLAN_TASKS = 5;
 const TASK_ID = /^[A-Za-z0-9._-]{1,20}$/;
@@ -218,6 +221,21 @@ export function validateEvent(event: Json): string[] {
     for (const key of Object.keys(p)) {
       if (!["phase", "trigger", "summary_chars"].includes(key)) errors.push(`context_compacted has no field ${JSON.stringify(key.slice(0, 40))}`);
     }
+  }
+  if (event.type === "branch_action") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("branch_action branch must be coven/<name>");
+    if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push("branch_action names the host that holds the branch");
+    if (p.action !== "merge" && p.action !== "discard") errors.push("branch_action action is merge or discard");
+    if (typeof p.author !== "string" || !p.author.trim() || p.author.length > 40) errors.push("branch_action names the person (author)");
+  }
+  if (event.type === "branch_action_done") {
+    const p = isObject(payload) ? payload : {};
+    if (typeof p.request_id !== "string" || !/^evt_[A-Za-z0-9_-]{1,60}$/.test(p.request_id)) errors.push("branch_action_done names the request (request_id)");
+    if (typeof p.branch !== "string" || !BRANCH.test(p.branch)) errors.push("branch_action_done branch must be coven/<name>");
+    if (typeof p.host_id !== "string" || !HOST_ID.test(p.host_id)) errors.push("branch_action_done names its host");
+    if (typeof p.ok !== "boolean") errors.push("branch_action_done ok is true or false");
+    if (p.detail !== undefined && (typeof p.detail !== "string" || p.detail.length > 300)) errors.push("branch_action_done detail is at most 300 characters");
   }
   // Unmerged work a host still holds (§6.2): a person may merge it from the web (Merge and clean), never anyone else.
   if (event.type === "branch_report") {

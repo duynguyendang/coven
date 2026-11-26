@@ -1309,7 +1309,8 @@ def test_no_code_path_pushes_except_a_persons_request():
     callers = {m.group(1) for m in _re.finditer(r"^def (\w+)\(", text, _re.M)
                if _re.search(r"\b(merge_into_base|drop_branch)\(", inspect.getsource(getattr(host, m.group(1))).split("\n", 1)[1])}
     # prune_branches deletes on origin only coven/ branches whose commits are all in the base, on a host that prunes (AGENTS.md rule 2)
-    assert callers == {"merge_qualified", "merge_prepare", "prune_branches"}, callers
+    # _prune_origin deletes on origin only coven/ branches whose tip is already in the base (no host has them any more)
+    assert callers == {"merge_qualified", "merge_prepare", "prune_branches", "_prune_origin"}, callers
 
 
 def test_the_chair_sees_free_slots_and_tasks_that_can_run_at_once(repo):

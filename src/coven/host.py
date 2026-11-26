@@ -2443,6 +2443,12 @@ def prune_branches(root: Path, view: dict, running: set[str] | frozenset = froze
             # An open task keeps its branch while it holds something: a commit, an uncommitted change, or a submitted or
             # answered run. An idle open task's empty, clean branch holds nothing: it goes (a retry makes a fresh one).
             busy_state = record and record.get("state") in ("running", "submitted", "answered")
+            if ahead and not busy_state and (tasks.get(ref) or {}).get("doer_state") not in ("submitted", "working", "answered"):
+                # an idle open task (failed, held, a question) whose branch holds work: listed, so a person can merge or
+                # discard it from the board without visiting this host; it is kept until then
+                tip = work._git(root, "rev-parse", branch, check=False)
+                out["unmerged"].append({"branch": branch, "task": ref, "ahead": ahead, "open": True,
+                                        **({"tip": tip} if re.fullmatch(r"[0-9a-f]{40}", tip or "") else {})})
             if ahead or busy_state or any(work._git(root, "-C", p, "status", "--porcelain", check=False).strip() for p in trees.get(branch, [])):
                 out["kept"].append(branch)
                 continue
@@ -2482,9 +2488,31 @@ def prune_branches(root: Path, view: dict, running: set[str] | frozenset = froze
         if not dry_run:
             remove_worktree(root, path)
         out["worktrees"] += 1
+    if remote and not dry_run:
+        out["deleted"] += _prune_origin(root, base, set(out["kept"]) | {u["branch"] for u in out["unmerged"]})
     if not dry_run:
         work._git(root, "worktree", "prune", check=False)
     return out
+
+
+def _prune_origin(root: Path, base: str, keep: set[str]) -> list[str]:
+    """coven/ branches only origin still has (their host deleted its own copy, or is gone) whose tip is already in the
+    base: deleted on origin. A tip this clone does not have, or one not in the base, is left alone."""
+    gone = []
+    listing = subprocess.run(["git", "ls-remote", "--heads", config.remote(root), "refs/heads/coven/*"], cwd=root,
+                             capture_output=True, text=True, check=False, timeout=60)
+    for line in (listing.stdout or "").splitlines():
+        sha, _, name = line.partition("\t")
+        branch = name.removeprefix("refs/heads/")
+        if not branch.startswith("coven/") or branch in keep or work._git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False):
+            continue
+        if subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=root, capture_output=True, check=False).returncode != 0:
+            continue  # not here: cannot tell whether it is in the base
+        if subprocess.run(["git", "merge-base", "--is-ancestor", sha, base], cwd=root, capture_output=True, check=False).returncode != 0:
+            continue
+        drop_branch(root, branch, True)  # the one place that deletes on origin (it checks the branch is there first)
+        gone.append(f"{config.remote(root)}/{branch}")
+    return gone
 
 
 def _worktree_paths(root: Path) -> list[tuple[str, str | None]]:
@@ -3365,6 +3393,80 @@ class Host:
         self._cleanup(view, force=True)  # the board's unmerged list drops it now
         return {"action": "discarded", "task": ref, "branch": branch, "bundle": str(bundle)}
 
+    def _branch_actions(self, view: dict) -> list[dict]:
+        """A person's Merge or Discard of one branch this host listed (POST /v1/board/branch), by its name: a task's branch,
+        or one with no task (a Scribe prep branch, a task that left the board). Merge: the Accept checks (clean merge,
+        the merge check on the merged tree), push the base, delete the branch. Discard: a git bundle in .coven/archive,
+        then delete it here and on origin. Once per request, also after a restart. Never a branch in use."""
+        done = []
+        handled = set(_handled_pushes(self.root))
+        refs = _branch_tasks(self.root, view)
+        for act in view.get("branch_actions") or []:
+            if act.get("state") != "requested" or act.get("host_id") != self.host_id or act.get("request_id") in handled:
+                continue
+            branch, rid = str(act.get("branch") or ""), str(act.get("request_id") or "")
+            ref = refs.get(branch)
+            if ref and ref in self.running:
+                continue  # in use now: next tick
+            handled.add(rid)
+            _remember_push(self.root, rid)
+            result = self._do_branch_action(branch, ref, act)
+            try:
+                board._member_event(self.root, "branch_action_done", {"request_id": rid, "branch": branch, "host_id": self.host_id,
+                                                                     "ok": result["ok"], "detail": short_text(result["detail"], 290)})
+            except Exception:  # noqa: BLE001 - the branch report says it too
+                pass
+            self.out(f"host: {act.get('by') or 'a person'} asked to {act.get('action')} {branch}: {result['detail']}")
+            done.append({"branch": branch, **result})
+        if done:
+            self._cleanup(view, force=True)  # the board's list of unmerged work changes now
+        return done
+
+    def _do_branch_action(self, branch: str, ref: str | None, act: dict) -> dict:
+        if not self._unmerged_here(branch):
+            return {"ok": False, "detail": f"{branch} is not a branch with unmerged work on this host any more"}
+        try:
+            base = work.base_branch(self.root)
+            here = work.current_branch(self.root)
+        except work.WorkError as exc:
+            return {"ok": False, "detail": str(exc)[:200]}
+        if branch == here:
+            return {"ok": False, "detail": f"{branch} is checked out in this host's working copy"}
+        remote = bool(config.remote(self.root)) and bool(work._git(self.root, "remote", check=False))
+        by = act.get("by") or "a person"
+        if act.get("action") == "merge":
+            slug = branch.removeprefix("coven/")
+            merged = merge_into_base(self.root, branch, base, f"merge-{slug}", f"Merge {branch}{f' ({ref})' if ref else ''}; merged by {by}'s request",
+                                     f"merge-check-{slug}.log")
+            if not merged["ok"]:
+                return {"ok": False, "detail": merged["why"]}
+            for path in _worktrees(self.root).get(branch, []):
+                remove_worktree(self.root, path)
+            drop_branch(self.root, branch, remote)
+            if ref:
+                try:
+                    board.task_merged(self.root, ref, branch, merged["commit"], base, [], "person", by)
+                except Exception:  # noqa: BLE001
+                    pass
+                work._release_quietly(self.root, ref, "merged")
+                _forget(self.root, ref)
+                forget_sessions(self.root, ref)
+            return {"ok": True, "detail": f"merged into {base} at {merged['commit'][:7]}{' and pushed' if merged['pushed'] else ''}; the branch is deleted"}
+        archive = config.coven_dir(self.root) / "archive"
+        archive.mkdir(parents=True, exist_ok=True)
+        tip = work._git(self.root, "rev-parse", "--short", branch, check=False).strip()
+        bundle = archive / f"{branch.removeprefix('coven/')}-{tip}.bundle"
+        made = subprocess.run(["git", "bundle", "create", str(bundle), branch], cwd=self.root, capture_output=True, text=True, check=False)
+        if made.returncode != 0:
+            return {"ok": False, "detail": f"could not keep a bundle of {branch}: {short_text(made.stderr, 160)}"}
+        for path in _worktrees(self.root).get(branch, []):
+            remove_worktree(self.root, path)
+        drop_branch(self.root, branch, remote)
+        if ref:
+            work._release_quietly(self.root, ref, "discarded")
+            _forget(self.root, ref)
+        return {"ok": True, "detail": f"discarded; a copy is kept on {board.member(self.root)} in .coven/archive/{bundle.name}"}
+
     def _unmerged_here(self, branch: str) -> bool:
         """Whether `branch` is a local coven/ branch with commits not in the base."""
         if not branch.startswith("coven/") or not work._git(self.root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False):
@@ -3481,6 +3583,7 @@ class Host:
         self._in_base(view)  # before a merged branch is forgotten below
         self._merged_already(view)
         self._cleanup(view)  # no model either: finished branches go, unmerged work is listed for people
+        self._branch_actions(view)  # a person's Merge or Discard of one branch, from the board
         if self.paused():
             # Kiro is down: start nothing that needs a model. Messages and tasks wait; the pause ends by itself.
             finished = self._release_finished(tasks, view)

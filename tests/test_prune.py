@@ -43,7 +43,9 @@ def test_finished_merged_branches_go_unmerged_work_is_listed_and_open_ones_stay(
 
     done = host.prune_branches(repo, view, {"shop#3"})
     assert sorted(done["deleted"]) == ["coven/shop-1", "coven/stale-x"]
-    assert [(u["branch"], u["task"], u["ahead"]) for u in done["unmerged"]] == [("coven/shop-2", "shop#2", 1)]
+    # the closed task's work, and the failed (open, idle) task's work: both listed for the board, both kept here
+    assert [(u["branch"], u["task"], u["ahead"], u.get("open", False)) for u in done["unmerged"]] == [
+        ("coven/shop-2", "shop#2", 1, False), ("coven/shop-4", "shop#4", 1, True)]
     assert len(done["unmerged"][0]["tip"]) == 40
     assert {"coven/shop-2", "coven/shop-3", "coven/shop-4", "feature", "main"} <= _branches(repo)
     assert "coven/shop-1" not in _branches(repo) and "coven/stale-x" not in _branches(repo)
@@ -194,3 +196,67 @@ def test_sync_sends_a_spec_only_when_it_changed(repo, monkeypatch):  # noqa: F81
     assert board.sync(repo, force=True) == ["shop"], "a person's coven board sync always sends"
     monkeypatch.setattr(board, "SYNC_AGAIN", 0)
     assert board.sync(repo) == ["shop"], "and an unchanged spec is sent again after SYNC_AGAIN"
+
+
+def _act(branch, action, rid="evt_ba1"):
+    return {"branch": branch, "host_id": config.host_id(_act.repo), "action": action, "by": "duy", "state": "requested", "request_id": rid}
+
+
+def test_a_branch_no_task_owns_is_merged_from_the_board_by_its_name(repo, origin, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    monkeypatch.setenv("COVEN_MERGE_CHECK", "true")
+    sent = []
+    monkeypatch.setattr(board, "_member_event", lambda root, type_, payload: sent.append((type_, payload)) or payload)
+    monkeypatch.setattr(board, "branch_report", lambda root, branches: {})
+    _act.repo = repo
+    _branch(repo, "coven/prepare-verify-all")
+    h = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)
+    (done,) = h._branch_actions({"specs": [], "branch_actions": [_act("coven/prepare-verify-all", "merge")]})
+    assert done["ok"] and "merged into main" in done["detail"]
+    assert "coven/prepare-verify-all" not in _branches(repo)
+    assert "work on coven/prepare-verify-all" in git(origin, "log", "--format=%s", "main")
+    assert [p for t, p in sent if t == "branch_action_done"][0]["ok"] is True
+    assert h._branch_actions({"specs": [], "branch_actions": [_act("coven/prepare-verify-all", "merge")]}) == [], "once per request"
+
+
+def test_an_open_tasks_branch_is_listed_and_can_be_discarded_from_the_board(repo, origin, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    monkeypatch.setattr(board, "_member_event", lambda root, type_, payload: payload)
+    monkeypatch.setattr(board, "branch_report", lambda root, branches: {})
+    _act.repo = repo
+    _branch(repo, "coven/shop-4")
+    git(repo, "push", "-q", "origin", "coven/shop-4")
+    host._update(repo, "shop#4", task="shop#4", state="failed", branch="coven/shop-4")
+    view = _view(t4={"doer_state": "failed"})
+    listed = host.prune_branches(repo, view, set())["unmerged"]
+    assert [(u["branch"], u.get("open")) for u in listed] == [("coven/shop-4", True)], "a failed task's work is listed, and kept"
+    h = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)
+    (done,) = h._branch_actions({**view, "branch_actions": [_act("coven/shop-4", "discard", "evt_ba2")]})
+    assert done["ok"] and ".coven/archive/" in done["detail"]
+    assert "coven/shop-4" not in _branches(repo) and "coven/shop-4" not in git(origin, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    assert "shop#4" not in host.load(repo)
+
+
+def test_a_branch_action_this_host_cannot_do_says_why(repo, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    sent = []
+    monkeypatch.setattr(board, "_member_event", lambda root, type_, payload: sent.append(payload) or payload)
+    monkeypatch.setattr(board, "branch_report", lambda root, branches: {})
+    _act.repo = repo
+    h = host.Host(repo, slots=1, runner=Runner(), out=lambda *a: None)
+    (done,) = h._branch_actions({"specs": [], "branch_actions": [_act("coven/gone", "merge", "evt_ba3")]})
+    assert not done["ok"] and "not a branch with unmerged work on this host" in done["detail"]
+    assert sent[-1]["ok"] is False
+
+
+def test_a_branch_only_origin_has_is_deleted_there_once_it_is_in_the_base(repo, origin, monkeypatch):  # noqa: F811
+    FakeCloud().install(monkeypatch)
+    _branch(repo, "coven/shop-1", merge=True)
+    _branch(repo, "coven/shop-2")
+    git(repo, "push", "-q", "origin", "main", "coven/shop-1", "coven/shop-2")
+    git(repo, "branch", "-D", "coven/shop-1")
+    git(repo, "branch", "-D", "coven/shop-2")
+    done = host.prune_branches(repo, _view(), set())
+    on_origin = git(origin, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    assert "coven/shop-1" not in on_origin and "origin/coven/shop-1" in done["deleted"]
+    assert "coven/shop-2" in on_origin, "its commits are not in the base: left for a person"

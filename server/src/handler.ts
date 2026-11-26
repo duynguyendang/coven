@@ -462,6 +462,23 @@ export function createHandler(options: HandlerOptions): Handler {
       return json(201, { event_id: event.event_id });
     }
 
+    if (method === "POST" && path === "/v1/board/branch") {
+      // A person merges or discards one unmerged branch by its name, whatever task it belongs to (or none: a Scribe prep
+      // branch, a branch whose task left the board). The host that holds it does it; nobody visits that host.
+      need(request, url, "decide");
+      const body = await readJson(request);
+      if (!isObject(body)) throw validation("", "body must be an object");
+      const projectId = scopedProject(body);
+      const branch = optionalString(body, "branch") ?? "";
+      if (!/^coven\/[A-Za-z0-9._-]{1,100}$/.test(branch)) throw validation("branch", "coven/<name>");
+      const action = optionalString(body, "action") ?? "";
+      if (action !== "merge" && action !== "discard") throw validation("action", "merge or discard");
+      const author = (optionalString(body, "author") ?? "someone").slice(0, 40);
+      const event = await store.postWebBranchAction(projectId, branch, action, author);
+      if (!event) throw new HttpError(409, "no host lists that branch as unmerged work");
+      return json(201, { event_id: event.event_id, branch, host_id: event.payload.host_id, action });
+    }
+
     if (method === "POST" && path === "/v1/board/paths") {
       // A person lets a task touch more files (the Dev asked: NEEDS: paths: …). Only people widen a task's paths.
       need(request, url, "decide");
