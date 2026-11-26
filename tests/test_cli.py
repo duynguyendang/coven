@@ -66,3 +66,31 @@ def test_the_host_log_is_written_wherever_the_host_runs(tmp_path, capsys):
     out("host: two")
     assert (tmp_path / ".coven" / "host.log").read_text() == "host: one\nhost: two\n"
     assert "host: one" in capsys.readouterr().out
+
+
+def _guard(monkeypatch, payload, text=None):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(text if text is not None else json.dumps(payload)))
+    return cli.main(["guard"])
+
+
+def test_guard_denies_secret_with_exit_2_and_logs(root, monkeypatch, capsys):
+    payload = {"tool_name": "fs_read", "cwd": str(root), "tool_input": {"path": ".env"}}
+
+    assert _guard(monkeypatch, payload) == 2
+    assert capsys.readouterr().err.strip()
+    files = list((root / ".coven" / "data").glob("guard-*.jsonl"))
+    assert len(files) == 1
+    line = json.loads(files[0].read_text().splitlines()[0])
+    assert set(line) == {"tool", "reason", "path"}
+    assert line["tool"] == "fs_read"
+
+
+def test_guard_allows_and_survives_bad_input(root, monkeypatch):
+    ok = {"tool_name": "fs_read", "cwd": str(root), "tool_input": {"path": "README.md"}}
+
+    assert _guard(monkeypatch, ok) == 0
+    assert _guard(monkeypatch, None, text="not json") == 0
+    assert _guard(monkeypatch, None, text="") == 0
+    assert not list((root / ".coven" / "data").glob("guard-*.jsonl"))

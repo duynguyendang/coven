@@ -164,6 +164,38 @@ def cmd_emit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_guard(args: argparse.Namespace) -> int:
+    """PreToolUse entry: exit 2 with the reason on stderr to deny; anything else exits 0."""
+    try:
+        from datetime import datetime, timezone
+
+        from . import capture, guard
+
+        raw = sys.stdin.read() if not sys.stdin.isatty() else ""
+        payload = json.loads(raw) if raw.strip() else None
+        if not isinstance(payload, dict):
+            return 0
+        cwd = payload.get("cwd")
+        base = Path(cwd) if isinstance(cwd, str) and cwd else _root()
+        verdict = guard.decide(payload, base)
+        if not verdict or verdict.get("decision") != "deny":
+            return 0
+        reason = str(verdict.get("reason", "denied"))
+        tool_input = payload.get("tool_input")
+        path = guard._paths(tool_input)[:1] if isinstance(tool_input, (dict, list)) else []
+        try:
+            line = {"tool": payload.get("tool_name"), "reason": reason, "path": path[0] if path else None}
+            day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            with open(capture.data_dir(base) / f"guard-{day}.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(line) + "\n")
+        except Exception:  # noqa: BLE001 - the log must not change the verdict
+            pass
+        print(reason, file=sys.stderr)
+        return 2
+    except Exception:  # noqa: BLE001 - no opinion on any error
+        return 0
+
+
 def cmd_logs(args: argparse.Namespace) -> int:
     from . import capture, logs
 
@@ -923,6 +955,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("command", nargs=argparse.REMAINDER)
     run.set_defaults(func=cmd_run)
 
+    guard_parser = sub.add_parser("guard", help="PreToolUse hook: read the hook JSON on stdin, exit 2 to deny")
+    guard_parser.set_defaults(func=cmd_guard)
     doctor = sub.add_parser("doctor", help="check configuration and connectivity")
     doctor.set_defaults(func=cmd_doctor)
     return parser
