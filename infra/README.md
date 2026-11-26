@@ -27,6 +27,25 @@ For a copy on demand: `sudo docker compose exec coven node -e "new (require('nod
 
 ---
 
+# A second host (failover)
+
+One host is a single point of failure: when it sleeps, nobody answers the council chat, no Chair sweeps, no task runs. A
+second host takes the Chair lease when the first goes silent (120 s), and takes over its orphaned tasks (10 minutes). The
+running one is `coven-host-1` on Lightsail (ap-southeast-1, the 1 GB plan, $7 a month, only port 22 open): one slot,
+`make verify` in about 4 minutes and at most 290 MB of memory.
+
+1. Create a Lightsail Ubuntu 24.04 instance with the 1 GB plan and the `coven-key` key pair; open only port 22.
+2. Copy and run the setup (swap, Node 22, make, pytest, httpx, kiro-cli, the repository, the `coven-host` service):
+   `scp infra/lightsail/host-setup.sh ubuntu@<ip>: && ssh ubuntu@<ip> bash host-setup.sh git@github.com:<owner>/<repo>.git <host-name>`
+   (make an SSH key on it first, `ssh-keygen -t ed25519`, and add its public key to the repository as a **deploy key with
+   write access**: the host pushes the base after a merge).
+3. A person logs it in to Kiro: `kiro-cli login --use-device-flow` prints a URL and a code to confirm in a browser (the
+   same account as the other hosts; the runs spend its credits).
+4. Give it the cloud login without printing the token: `~/.coven/credentials.json` (`{"cloud_url", "token"}`, mode 600),
+   then `coven project link <project>` and `coven host join <host-name>` in the clone.
+5. `sudo systemctl enable --now coven-host`; it logs to `~/coven/.coven/host.log` (`journalctl -u coven-host` for the
+   service itself). Check the board: the host is listed with its slots.
+
 # Deploying Coven Cloud on AWS (App Runner and DynamoDB)
 
 Target shape:
