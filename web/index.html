@@ -1988,7 +1988,10 @@
     // same branch again fails the same check (the cloud refuses it): the way on is a rework, and Accept comes back with it.
     if (isAccept && !(t.needs && t.needs.kind === "held")) fact("held", `<span class="badge warn">Held</span> <span class="hint">${esc(short(a.merge_reason || "the host did not say why", 200))}</span>`);
     if (!isAccept && a && a.decision === "changes") out.facts.push(`<span class="hint">Changes asked by ${esc(a.by || "someone")}: “${esc(short(a.reason || "", 80))}”</span>`);
+    // a held merge may be tried again after 30 minutes (the cloud allows it then): its cause may be outside the branch
+    const retryHeld = isAccept && a.merge_state === "held" && Date.now() - Date.parse(a.ts || "") >= 1800 * 1000;
     if (!isAccept) out.buttons.push(`<button class="act good" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("check")}<span>Accept and merge</span></button>`);
+    if (retryHeld) out.buttons.push(`<button class="act" type="button" data-accept="${esc(t.ref)}" data-key="accept-${esc(t.ref)}">${icon("undo")}<span>Try the merge again</span></button>`);
     out.buttons.push(`<button class="act${isAccept ? " good" : " quiet"}" type="button" data-changes="${esc(t.ref)}" data-key="changes-btn-${esc(t.ref)}" aria-expanded="${asking}">${icon("undo")}<span>Request changes</span></button>`);
     return out;
   }

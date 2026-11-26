@@ -189,6 +189,9 @@ def cmd_guard(args: argparse.Namespace) -> int:
         tool_input = payload.get("tool_input")
         path = guard._paths(tool_input)[:1] if isinstance(tool_input, (dict, list)) else []
         try:
+            # only inside a repository: a .coven made in a scratch folder (/tmp) would make every folder below it look like one
+            if not os.environ.get("COVEN_DATA_DIR") and not any((base / mark).exists() for mark in (".coven", ".git", ".kiro")):
+                raise OSError("not a repository")
             line = {"tool": payload.get("tool_name"), "reason": reason, "path": path[0] if path else None}
             day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             with open(capture.data_dir(base) / f"guard-{day}.jsonl", "a", encoding="utf-8") as fh:

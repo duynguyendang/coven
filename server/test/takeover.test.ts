@@ -106,3 +106,32 @@ describe("one job, one process", () => {
     assert.ok(b.mine("shop", "ana", want("p_0000000b"), iso(4)), "its claim is the new process's to renew");
   });
 });
+
+describe("the council list's cap", () => {
+  test("past 200 tasks the oldest finished ones go, never an open one", () => {
+    const b = new Board();
+    b.apply(ev("task_created", iso(0), "ana", { task: "council#open-0", title: "still open", agent: "elf" }));
+    for (let i = 1; i <= 200; i++) {
+      b.apply(ev("task_created", iso(i), "ana", { task: `council#j${i}`, title: `job ${i}`, agent: "elf" }));
+      b.apply(ev("task_status", iso(i), "ana", { task: `council#j${i}`, state: "done" }));
+    }
+    const ids = b.view("shop", iso(300)).specs.find((s: Json) => s.spec === "council").tasks.map((t: Json) => t.task_id);
+    assert.equal(ids.length, 200);
+    assert.ok(ids.includes("open-0"), "the open task stays");
+    assert.ok(!ids.includes("j1"), "the oldest finished one went");
+  });
+});
+
+describe("a held merge is not forever", () => {
+  test("the same branch may be accepted again 30 minutes after its merge was held", () => {
+    const b = board();
+    const hold = (ts: string) => {
+      b.apply({ ...ev("task_accept", ts, "web", { task: "council#7", decision: "accept", branch: "coven/council-7", host_id: "h_0000000a", author: "duy" }), event_id: "evt_acc", source: "web" });
+      b.apply(ev("accept_progress", ts, "ana", { task: "council#7", request_id: "evt_acc", state: "held", reason: "make verify failed" }));
+    };
+    hold(new Date(Date.now() - 60 * 1000).toISOString());
+    assert.match(String(b.acceptHeld("shop", "council#7")), /make verify failed/, "a minute later: the same check would fail again");
+    hold(new Date(Date.now() - 31 * 60 * 1000).toISOString());
+    assert.equal(b.acceptHeld("shop", "council#7"), null, "half an hour later: try again");
+  });
+});

@@ -26,6 +26,8 @@ export const NOTE_KINDS = new Set(["idea", "question", "answer", "review", "note
 export const CLAIM_KINDS = new Set(["task", "review"]);
 const MAX_NOTES = 500;
 const MAX_TASKS_PER_SPEC = 200;
+/** After a held merge, a person may accept the same branch again once this long has passed. */
+export const HELD_RETRY_SECONDS = 1800;
 const MAX_CHAT = 300;
 /** A listener is online while it reports at least this often (it reports every minute). */
 export const LISTENER_ONLINE_SECONDS = 150;
@@ -226,7 +228,7 @@ export class Board {
         from: typeof p.from === "string" ? p.from.slice(0, 40) : null, expects: typeof p.expects === "string" ? p.expects : null,
         reply_to: typeof p.reply_to === "string" ? p.reply_to.slice(0, 80) : null, depth: Number.isInteger(p.depth) ? p.depth : 0,
       });
-      specs.set(spec, list.slice(-MAX_TASKS_PER_SPEC));
+      specs.set(spec, this.capTasks(project, spec, list));
       this.tasks.set(project, specs);
     } else if (event.type === "task_status" && typeof p.task === "string" && PEOPLE_STATES.has(p.state)) {
       const all = this.statuses.get(project) ?? new Map<string, Json>();
@@ -303,7 +305,7 @@ export class Board {
               plan: false, from_plan: plan.plan, approved_by: plan.decided_by, branch: null, review_of: null,
               task_key: taskKey(project, "plan", plan.plan, t.task_id) });
           }
-          specs.set(spec, keep.slice(-MAX_TASKS_PER_SPEC));
+          specs.set(spec, this.capTasks(project, spec, keep));
           this.tasks.set(project, specs);
         }
       }
@@ -498,6 +500,22 @@ export class Board {
     return null;
   }
 
+  /** A spec's council tasks, at most MAX_TASKS_PER_SPEC: the oldest finished ones go first, never an open one while a finished
+   *  one is left (a dropped open task could not be seen, answered or taken by anyone again). */
+  capTasks(project: string, spec: string, list: Json[]): Json[] {
+    if (list.length <= MAX_TASKS_PER_SPEC) return list;
+    const statuses = this.statuses.get(project);
+    const finished = (t: Json) => t.status === "completed" || ["done", "merged", "replaced", "abandoned"].includes(statuses?.get(`${spec}#${t.task_id}`)?.state);
+    let over = list.length - MAX_TASKS_PER_SPEC;
+    const drop = new Set<Json>();
+    for (const t of list) {
+      if (over <= 0) break;
+      if (finished(t)) { drop.add(t); over--; }
+    }
+    const kept = list.filter((t) => !drop.has(t));
+    return kept.slice(-MAX_TASKS_PER_SPEC); // only when more than the cap are open: then the oldest go, as before
+  }
+
   /** Whether the host process announced itself in the last 3 minutes (the monitor's STALE line). */
   processAlive(projectId: string, process: string, at = new Date().toISOString()): boolean {
     const cutoff = new Date(Date.parse(at) - 3 * MONITOR_EVERY * 1000).toISOString();
@@ -653,6 +671,9 @@ export class Board {
     const acc = this.accepts.get(projectId)?.get(ref);
     if (!acc || !acc.accepted || acc.merge_state !== "held") return null;
     const doing = this.statuses.get(projectId)?.get(ref);
+    // A hold is not forever: its cause may be outside the branch (a stray file on the host, a flaky test). After
+    // HELD_RETRY_SECONDS a person may try the same merge again; before that a repeat would only fail the same check.
+    if (Date.now() - Date.parse(acc.ts || "") >= HELD_RETRY_SECONDS * 1000) return null;
     const tip = this.unmergedOf(projectId).find((b) => b.task === ref && b.host_id === acc.host_id)?.tip ?? null;
     if ((doing && (doing.ts || "") > (acc.ts || "")) || (acc.report_tip && tip && tip !== acc.report_tip)) return null;
     return String(acc.merge_reason || "the last merge was held").slice(0, 200);

@@ -77,3 +77,16 @@ def test_a_returning_host_gives_way_to_the_host_that_took_its_task_over(world, m
     board_of(specs, **{"2": {"doer_state": "working", "doer_host_id": "h_0000aaaa", "takeovers": 0}})
     host.reconcile_start(root)
     assert host.load(root)["s#2"]["state"] == "failed", "its own task, no takeover: handled as task 1 says"
+
+
+def test_a_ticked_task_and_a_council_task_the_board_dropped_are_closed_but_not_on_an_empty_read(world):
+    root, sent, specs = world
+    host._update(root, "s#1", state="needs_clarification")
+    host._update(root, "council#old-1", state="needs_clarification")
+    specs[:] = [{"spec": "s", "tasks": [{"task_id": "1", "status": "completed", "doer_state": "working"}]}, {"spec": "council", "tasks": [{"task_id": "new"}]}]
+    out = host.reconcile_start(root)
+    assert out["closed"] == 2 and "s#1" not in host.load(root) and "council#old-1" not in host.load(root)
+    host._update(root, "council#old-2", state="needs_clarification")
+    specs[:] = []  # a board read that says nothing about the council: nothing is concluded from it
+    host.reconcile_start(root)
+    assert "council#old-2" in host.load(root)

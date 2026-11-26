@@ -3652,7 +3652,10 @@ def reconcile_start(root: Path) -> dict:
             _forget(root, ref)
             result["closed"] += 1
             continue
-        if state in ("done", "merged", "replaced", "abandoned") or task.get("merged"):
+        gone = (not task and ref.startswith(f"{COUNCIL_SPEC}#") and any(sp.get("spec") == COUNCIL_SPEC for sp in view.get("specs") or []))
+        if state in ("done", "merged", "replaced", "abandoned") or task.get("merged") or task.get("status") == "completed" or gone:
+            # closed on the board, ticked in tasks.md, or a council task the board no longer has at all (it dropped off its
+            # list): nobody could see or move it again, so its record goes; its branch is the cleanup's to judge
             work._release_quietly(root, ref, "closed on the board")  # else its claim is renewed forever and holds the task
             remove_worktree(root, record.get("worktree"))
             _drop_unused_branch(root, record)

@@ -177,3 +177,11 @@ def test_a_stopping_host_stops_its_own_runs():
     assert council.stop_runs(grace=2) == 1
     assert proc.poll() is not None
     time.sleep(0)
+
+
+def test_the_guard_never_makes_a_coven_folder_outside_a_repository(tmp_path):
+    src = str(Path(host.__file__).resolve().parent.parent)
+    payload = json.dumps({"tool_name": "fs_read", "tool_input": {"path": ".env"}, "cwd": str(tmp_path)})
+    done = subprocess.run([sys.executable, "-m", "coven.cli", "guard"], input=payload, capture_output=True, text=True,
+                          env={**os.environ, "PYTHONPATH": src}, cwd=tmp_path)
+    assert done.returncode == 2 and not (tmp_path / ".coven").exists()
