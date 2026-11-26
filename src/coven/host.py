@@ -3675,9 +3675,12 @@ def reconcile(root: Path, dry_run: bool = False, view: dict | None = None) -> di
     view = view if view is not None else board.read(root)
     base = work.base_branch(root)
     items: list[tuple[str, str]] = []
+    closed_no_change: list[str] = []  # closed on the board with no merge and not completed: reported only (FR-ST2, R6)
     for spec in view.get("specs") or []:
         for t in spec.get("tasks") or []:
             ref = f"{spec.get('spec')}#{t.get('task_id')}"
+            if t.get("doer_state") == "done" and not t.get("merged") and t.get("status") != "completed":
+                closed_no_change.append(ref)
             if t.get("doer_state") == "done" or t.get("status") == "completed" or t.get("merged"):
                 continue
             if t.get("doer_state") == "answered" and t.get("doer_verdict") != "changes":
@@ -3688,10 +3691,12 @@ def reconcile(root: Path, dry_run: bool = False, view: dict | None = None) -> di
                         ["git", "merge-base", "--is-ancestor", branch, base], cwd=root, capture_output=True, check=False).returncode == 0:
                     items.append((ref, f"autonomous-signoff: reconciled, {branch} is in base {base}"))
     if dry_run or not items:
-        return {"candidates": len(items), "reconciled": 0, "refused": 0, "tasks": [r for r, _ in items], "dry_run": dry_run}
+        return {"candidates": len(items), "reconciled": 0, "refused": 0, "tasks": [r for r, _ in items], "dry_run": dry_run,
+                "closed_no_change": closed_no_change}
     sent = board.signoff(root, items)
     return {"candidates": len(items), "reconciled": sent["accepted"], "refused": len(sent["rejected"]), "tasks": [r for r, _ in items],
-            "problems": sorted({p for r in sent["rejected"] for p in r["problems"]})[:3], "dry_run": False}
+            "problems": sorted({p for r in sent["rejected"] for p in r["problems"]})[:3], "dry_run": False,
+            "closed_no_change": closed_no_change}
 
 
 def recheck(root: Path, ref: str, task: dict) -> dict:
