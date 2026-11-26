@@ -2493,8 +2493,10 @@
         if (same) { same.repeats = (same.repeats || 1) + 1; same.parts = [...same.parts, m]; continue; }
       }
       if (m.role === "council" && m.kind === "answer" && last && last.role === "council" && last.kind === "answer"
-          && last.reply_to === m.reply_to && last.persona === m.persona) last.parts.push(m);
-      else out.push({ ...m, parts: [m] });
+          && last.reply_to === m.reply_to && last.persona === m.persona) {
+        // The cloud's repeat rule (reply_to, persona, kind, message, run_id): an old stored duplicate shows once; another run's repeat stays.
+        if (!last.parts.some((x) => x.message === m.message && x.run_id === m.run_id)) last.parts.push(m);
+      } else out.push({ ...m, parts: [m] });
     }
     return out;
   }
