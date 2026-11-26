@@ -116,6 +116,14 @@ ROLES = {
         "never": ["decide for the person"]},
 }
 
+# Each witch's line in her own voice: static copy shown on her dashboard card, not a rule (her rules are ROLES).
+VOICE = {
+    "grey-witch": "I propose. The guard disposes.", "black-hat": "Prove it, or it didn't happen.", "elf": "What if we tried…?",
+    "white-hat": "Show me the test.", "elder-witch": "Read the spec first.", "green-witch": "Inside the paths, or not at all.",
+    "imp": "Two eyes are good; four are better.", "raven": "I watch. I do not touch.",
+    "scribe": "No task leaves without paths and a verify.", "herald": "Only what the guard said.", "weaver": "You decide at the gate.",
+}
+
 # The council role tags in events, and the words people write, all mean one agent.
 ALIASES = {
     "sa": "elder-witch", "dev": "green-witch", "tester": "white-hat", "red-team": "black-hat", "brainstorm": "elf",
@@ -238,7 +246,7 @@ def web_roles() -> str:
     """The dashboard's copy of ROLES: one JSON object between markers in web/index.html."""
     import json
 
-    return json.dumps({slug: {f: ROLES[slug][f] for f in ROLE_FIELDS} for slug in AGENTS}, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps({slug: {**{f: ROLES[slug][f] for f in ROLE_FIELDS}, "voice": VOICE[slug]} for slug in AGENTS}, ensure_ascii=False, separators=(",", ":"))
 
 
 def sync_web(root: Path, check: bool = False) -> bool:

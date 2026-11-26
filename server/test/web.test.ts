@@ -1124,6 +1124,25 @@ describe("session screen", () => {
     await go("#/");
   });
 
+  test("board: all eleven witch cards show their voice line under the Never line", async () => {
+    await go("#/board/lab", 600);
+    const slugs = ["grey-witch", "green-witch", "white-hat", "black-hat", "elder-witch", "elf", "imp", "raven", "scribe", "herald", "weaver"];
+    const voices = new Set<string>();
+    for (const slug of slugs) {
+      (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click();
+      await wait(50);
+      const card = doc().querySelector(".stage-card .witch")!;
+      const never = card.querySelector(".never")!, motto = card.querySelector(".motto")!;
+      assert.ok(motto, `${slug} has a voice line`);
+      assert.ok(never.compareDocumentPosition(motto) & 4, `${slug}: the voice comes after the Never line`);
+      assert.match(motto.textContent!, /^“.+”$/);
+      voices.add(motto.textContent!);
+    }
+    assert.equal(voices.size, 11, "eleven different lines");
+    assert.ok(!/WITCH_MOTTO/.test(doc().documentElement.innerHTML), "the old table is gone");
+    await go("#/");
+  });
+
   test("board: each witch shows what she is responsible for", async () => {
     await go("#/board/lab", 600);
     const pick = async (slug: string) => { (doc().querySelector(`[data-stage-pick="${slug}"]`) as HTMLButtonElement).click(); await wait(50); };
