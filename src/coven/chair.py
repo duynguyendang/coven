@@ -6,8 +6,8 @@ those facts change (a new key), and an unchanged board yields nothing the second
 """
 from __future__ import annotations
 
-import hashlib
 import json
+import secrets
 import os
 import re
 import time
@@ -235,7 +235,9 @@ class Dispatcher:
         """One model run, or None when the hour's budget is spent."""
         if not self._spend():
             return None
-        job = "ch" + hashlib.sha1(f"{tag}|{ref}|{len(self.rounds.get(ref, []))}".encode()).hexdigest()[:10]
+        # Random, not derived: a derived id came back after a Retry reset the rounds (and on another Chair host), and the
+        # board then held the old job's answer as the new one. 40 bits; the cloud's task_key is derived from it.
+        job = "ch" + secrets.token_hex(5)
         self.create(job, title[:100], agent, detail[:380])
         return job
 

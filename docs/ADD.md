@@ -158,7 +158,10 @@ Elder Witch checks its design. Each review runs in a checkout of the branch and 
 `VERDICT: pass` or `VERDICT: changes — <what>`; the host puts the verdict on the job's `task_status`
 (`verdict`) and the reasons in a note on the task under review. On a host started with `--auto-merge`
 (or `COVEN_AUTO_MERGE=1`), or with `--autonomous` (or `COVEN_AUTONOMOUS=1`, which implies auto-merge), the host
-that holds the branch acts on them:
+that holds the branch acts on them. A spec task is known by its number in `tasks.md`; the host records the title it
+took, and when that number now holds another title (the file was renumbered) it neither merges, reworks nor accepts
+the branch: it holds the task for a person with the reason, once. Chair job ids are random, so a reset round never
+reuses an old job's id:
 
 **Final sign-off on an autonomous host (FR-ST2, with the operator's consent).** When the cloud sets
 `COVEN_AUTONOMOUS_SIGNOFF=1` (or leaves it unset with `COVEN_AUTONOMOUS_PLANS=1`), an autonomous host closes, as

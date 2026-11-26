@@ -1961,7 +1961,7 @@ def execute_triage(root: Path, message: dict, host: str, runner: Runner, notes: 
             raise HostError(error or "the run gave no answer")
         made = []
         for number, job in enumerate(jobs, start=1):
-            task_id = f"r{reply[-6:]}-{number}"
+            task_id = f"r{reply[-10:]}-{number}"  # 10 hex: 6 (16 million) gave a 3% chance of two requests colliding in 1,000
             board.task_create(root, COUNCIL_SPEC, task_id, job["title"], job["agent"], job["detail"], source=reply, plan=job.get("plan", False),
                               key=taskkey.task_key(config.project_id(root), "job", reply, number - 1), sender=CHAIR,
                               expects=job.get("expects") or ("plan" if job.get("plan") else "answer"), reply_to=reply)
@@ -2210,6 +2210,15 @@ def verdict_of(text: str | None) -> tuple[str | None, str]:
 # branch acts on their verdicts: changes go back to the Dev (at most two reworks), three passes go to the Chair (Senior
 # Kiro), and when she decides to merge the host checks it is qualified (no person rejected it, it merges cleanly, the
 # project check passes on the merged tree) and only then pushes the base branch. Any doubt holds it for a person.
+
+
+def renumbered(record: dict, task: dict | None) -> str | None:
+    """A spec task is known by its number in tasks.md; when the file is renumbered, that number is another task. The title
+    the host recorded when it took the task, against the title now at that number: the reason to stop, or None."""
+    then, now = str(record.get("title") or "").strip(), str((task or {}).get("title") or "").strip()
+    if not then or not now or then == now or record.get("plan_task"):
+        return None
+    return f"tasks.md changed: {record.get('task') or 'this task'} is now \"{short_text(now, 80)}\"; its branch was built for \"{short_text(then, 80)}\""
 
 
 def widen(task: dict, view: dict) -> dict:
@@ -2974,6 +2983,8 @@ class Host:
                 break
             if record.get("state") != "submitted" or ref in self.running or ref not in tasks or self.running.busy(record.get("agent") or agents.DEFAULT):
                 continue
+            if renumbered(record, tasks.get(ref)):
+                continue  # _settle holds it with the reason
             said = work.feedback(self.root, record, chat, notes)
             if said:
                 _update(self.root, ref, state="running")
@@ -3197,7 +3208,8 @@ class Host:
                 if ref in known and known[ref].get("state") != "running":
                     _forget(self.root, ref)  # this host's own old record of it: the new attempt replaces it (its branch stays)
                 self.out(f"host: takes over {ref} from {gone.get('doer_host') or 'a host'} (offline since {gone.get('orphaned_since') or 'a while'})")
-            _update(self.root, ref, task=ref, agent=agent, kind=agents.kind(agent), state="running", started_at=events.now_iso())
+            _update(self.root, ref, task=ref, agent=agent, kind=agents.kind(agent), state="running", started_at=events.now_iso(),
+                    title=task.get("title"))
             self.out(f"host: {agents.label(agent)} takes {ref} {task.get('title') or ''}")
             self.running[ref] = self.pool.submit(execute, self.root, task, agent, self.cloud_runner if cloud else self.runner, None, notes, None)
             self.running.agents[ref] = agent
@@ -3256,6 +3268,12 @@ class Host:
         done = []
         for ref, record in load(self.root).items():
             if record.get("state") != "submitted" or record.get("kind") != "build" or ref in self.running or ref not in tasks:
+                continue
+            moved = renumbered(record, tasks.get(ref))
+            if moved:
+                if not record.get("review_hold"):
+                    _hold(self.root, ref, record, moved)  # neither merged nor reworked as the wrong task: a person decides
+                    forget_sessions(self.root, ref)
                 continue
 
             def rework(task_ref: str, said: list[dict], record=record) -> None:
@@ -3347,6 +3365,10 @@ class Host:
                     _note(self.root, f"{ref}: {accept.get('by') or 'a person'} accepted it, but {why}.",
                           CHAIR, ref, kind="question", host_says=True)
                     self._accept_progress(ref, request_id, "held", why)
+                    continue
+                moved = renumbered(record, specmap.load(self.root).get(ref))
+                if moved:
+                    self._accept_progress(ref, request_id, "held", moved)
                     continue
                 if accept.get("branch") and record.get("branch") != accept.get("branch"):
                     why = f"the accepted branch {accept.get('branch')} is not the one this host holds ({record.get('branch')})"
