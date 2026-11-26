@@ -555,6 +555,10 @@ def ready(root: Path, board: dict | None = None) -> list[dict]:
                 if t.get("doer_state") in ("done", "replaced") or t.get("merged"):
                     taken.add((s.get("spec"), str(t.get("task_id"))))
                     finished.add((s.get("spec"), str(t.get("task_id"))))
+                elif t.get("doer_state") in ("needs_clarification", "needs_split", "held"):
+                    # it waits for an answer (any host's witch asked): no host runs it again until a person or the Chair
+                    # queues it (Retry, an answer, Allow these paths); else every other host would ask the same again
+                    taken.add((s.get("spec"), str(t.get("task_id"))))
     out = []
     for spec, items in by_spec.items():
         parents = {t["parent"] for t in items if t.get("parent")}

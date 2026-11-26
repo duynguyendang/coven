@@ -165,3 +165,18 @@ def test_a_needs_paths_outcome_sends_the_paths_and_a_widened_task_builds_with_th
     view = {"specs": [{"spec": "shop", "tasks": [{"task_id": "1", "extra_paths": ["docs/cart.md"]}]}]}
     assert host.widen(specmap_task, view)["paths"] == [*task["paths"], "docs/cart.md"]
     assert host.widen(specmap_task, {"specs": []}) is specmap_task, "nothing allowed: the task as declared"
+
+
+def test_a_task_waiting_for_an_answer_is_not_run_again_by_another_host(repo, monkeypatch):  # noqa: F811
+    """With two hosts, the one without a record re-ran every task the other's witch had asked a question about."""
+    view = {"claims": [], "specs": [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "needs_clarification"},
+                                                               {"task_id": "4", "doer_state": "held"}]}]}
+    ids = [t["task_id"] for t in board.ready(repo, view)]
+    assert "1" not in ids and "4" not in ids
+    queued = {"claims": [], "specs": [{"spec": "shop", "tasks": [{"task_id": "1", "doer_state": "queued"}]}]}
+    assert "1" in [t["task_id"] for t in board.ready(repo, queued)], "queued again (Retry, an answer): it runs"
+    cloud = FakeCloud().install(monkeypatch)
+    cloud.specs = [{"spec": "council", "tasks": [{"task_id": "p-1b1", "title": "Build", "agent": "green-witch", "paths": ["src/"], "verify": "true",
+                                                  "detail": "d", "from_plan": "council#p-1", "approved_by": "duy", "doer_state": "needs_clarification"}]}]
+    h = host.Host(repo, slots=1, runner=Runner(), only=["green-witch"])
+    assert h._jobs({**board.read(repo), "monitor": {"runs": []}}, {"messages": []}, []) == []

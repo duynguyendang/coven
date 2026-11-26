@@ -3116,7 +3116,8 @@ class Host:
                 # `working` with no live claim and no live run anywhere: its host stopped or died; the job is free again.
                 orphaned = (task.get("doer_state") == "working" and not task.get("claimed_by") and ref not in live) or (
                     bool(task.get("orphaned")) and int(task.get("takeovers") or 0) < MAX_TAKEOVERS)
-                if ((task.get("doer_state") in ("answered", "failed", "done", "submitted", "working", "replaced", "held") and not orphaned) or task.get("claimed_by")
+                if ((task.get("doer_state") in ("answered", "failed", "done", "submitted", "working", "replaced", "held",
+                                                 "needs_clarification", "needs_split") and not orphaned) or task.get("claimed_by")
                         or task.get("status") == "completed" or ref in self.running or not agent or agent not in self.can_run
                         or self.running.busy(agent)):  # a witch works one task at a time
                     continue
