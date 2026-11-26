@@ -198,3 +198,30 @@ def test_no_token_means_no_token_warning(drvfs, capsys):
 
     out = capsys.readouterr()
     assert "readable by anyone" not in out.err and "holds a token" not in out.out
+
+
+COMPACT = {"hook_event_name": "PostCompact", "session_id": "run_c1",
+           "summary": "we fixed it with key sk-abcdefghijklmnopqrstuvwxyz123456 " + "x" * 5000}
+
+
+def test_postcompact_summary_goes_to_a_private_redacted_capped_file(root, monkeypatch, capsys):
+    monkeypatch.setenv("COVEN_ROOT", str(root))
+    monkeypatch.delenv("COVEN_RUN_ID", raising=False)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
+    assert cli.main(["emit", "--json", json.dumps(COMPACT)]) == 0
+
+    path = root / ".coven" / "compactions" / "run_c1.jsonl"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    summary = json.loads(path.read_text().splitlines()[0])["summary"]
+    assert len(summary) <= 3000
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in summary
+
+    stored = json.dumps([p.event for p in eventlog.pending(root)])
+    assert "xxxxxxxx" not in stored and "we fixed it" not in stored
+    assert '"summary_chars"' in stored
+
+
+def test_other_hooks_write_no_compaction_file(root):
+    cli.save_compaction_summary({"hook_event_name": "PostToolUse", "session_id": "r", "summary": "hi"}, root)
+
+    assert not (root / ".coven" / "compactions").exists()

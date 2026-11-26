@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__, config, emit, events
@@ -135,6 +137,54 @@ def cmd_relay(args: argparse.Namespace) -> int:
     return 0
 
 
+COMPACTION_SUMMARY_CAP = 3000
+
+
+def save_compaction_summary(payload: dict, root: Path) -> Path | None:
+    """PostCompact: keep the summary in a private local file, never in an event or the cloud.
+
+    The text is cut to 3,000 characters, then redacted. The file is
+    `.coven/compactions/<run_id>.jsonl` (0600), or the private home outside the repo
+    when the repo's drive ignores permissions. Best effort: returns None on any failure.
+    """
+    try:
+        name = str(payload.get("hook_event_name") or payload.get("hookEventName") or "").replace("_", "").lower()
+        if name != "postcompact":
+            return None
+        summary = None
+        for key in ("summary", "compact_summary", "compaction_summary"):
+            if isinstance(payload.get(key), str):
+                summary = payload[key]
+                break
+        if not summary:
+            return None
+        from .redact import redact_text
+
+        text = redact_text(summary[:COMPACTION_SUMMARY_CAP])[:COMPACTION_SUMMARY_CAP]
+        run = re.sub(r"[^A-Za-z0-9_.-]", "_", emit.run_id(payload))[:80].lstrip(".") or "run_unbound"
+        base = config.coven_dir(root)
+        folder = base / "compactions" if config.honours_permissions(base) else config.private_home(root) / "compactions"
+        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            folder.chmod(0o700)
+        except OSError:
+            pass
+        path = folder / f"{run}.jsonl"
+        line = json.dumps({"at": datetime.now(timezone.utc).isoformat(), "summary": text}) + "\n"
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, line.encode("utf-8"))
+        finally:
+            os.close(fd)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+        return path
+    except Exception:
+        return None
+
+
 def cmd_emit(args: argparse.Namespace) -> int:
     root = _root()
     try:
@@ -156,6 +206,8 @@ def cmd_emit(args: argparse.Namespace) -> int:
             if not raw:
                 return 0
             payload = json.loads(raw)
+        if isinstance(payload, dict):
+            save_compaction_summary(payload, root)
         modes = emit.emit(payload, root)
         if any(mode == "failed" for mode in modes):
             print("coven emit: could not write the event (data folder unavailable)", file=sys.stderr)
