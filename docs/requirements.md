@@ -63,7 +63,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | :--- | :--- | :--- | :--- |
 | FR-S1 | `tasks.md` is read in Kiro's own format, plus three annotation bullets: `_Paths:_` (what a task may change), `_Verify:_` (one shell command), `_Agent:_` (the witch that does it). A sub-task inherits its parent's. Two more, written by a person, say a build may finish with no change: `_AllowEmpty: true_` (default true for a parent task and a sweep, false otherwise; an explicit value wins) and `_Delegated:_` (the council tasks that do the task's work). | Must | Built |
 | FR-S2 | A write outside the current task's declared paths raises `spec_deviation` (severity *possible*); a person can dismiss it. Unknown paths raise nothing. | Must | Built |
-| FR-S3 | An opt-in pre-write gate (`PreToolUse`, exit 2) blocks writes outside declared paths and writes in a task a person paused or skipped. Ambiguity always allows. | Could | Planned |
+| FR-S3 | An opt-in pre-write gate (`coven hooks install --guard` adds a `PreToolUse` hook that runs `coven guard`, exit 2) denies secret files and writes outside the repo root. It does not check declared paths or paused tasks, catch `rm -rf` or other destructive shell commands, or check the network. Ambiguity and any error allow. Denials are logged. | Could | Built (opt-in; secret files and writes outside root only) |
 | FR-S4 | People pause, resume or skip a task from the dashboard; relays apply it through a control feed. | Could | Planned |
 
 ### 4.3 Cloud

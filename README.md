@@ -195,6 +195,14 @@ coven hooks install                       # adds the six Coven hooks if the repo
 coven doctor                              # then start a new Kiro session in this repo
 ```
 
+**Try the guard (opt-in).** It blocks secret-file reads and writes outside the repo, nothing more:
+
+```bash
+coven hooks install --guard               # adds the PreToolUse hook; start a new Kiro session
+# ask the agent to read .env: the call is denied with the reason
+cat .coven/data/guard-$(date -u +%F).jsonl   # {"tool": ..., "reason": ..., "path": ...}
+```
+
 The machine relay writes each repo's events to that repo's own `.coven/data`
 and pushes them with that repo's project name and credentials. Only the
 process and the socket (`$XDG_RUNTIME_DIR/coven/relay.sock`) are shared. It

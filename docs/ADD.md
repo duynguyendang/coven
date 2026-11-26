@@ -434,6 +434,17 @@ sequenceDiagram
     H->>C: task_status submitted; a person or the sign-off decides done
 ```
 
+### 4.4a The pre-write guard hook (FR-S3)
+
+`coven hooks install --guard` adds a `PreToolUse` hook that runs `coven guard`. The command reads the hook
+JSON on stdin and asks `guard.decide` (standard library, pure) for a verdict. On a deny it prints the reason on
+stderr and exits 2, so Kiro blocks the tool call; on no opinion, bad input or any error it exits 0 (ambiguity
+allows). It denies secret files (`.env*`, `.coven`, `credentials*`, `*.pem`, `*.key`, and similar) and writes
+outside the root. It does not catch `rm -rf`, does not check the network, and does not read declared
+paths or a paused task. Each denial appends one line (`tool`, `reason`, `path`) to
+`guard-YYYY-MM-DD.jsonl` in the data directory (`.coven/data`, or `COVEN_DATA_DIR`). The log stays local and
+is not an event. It adds no event type or endpoint, so §6 does not change.
+
 ### 4.5 A flow on one task (FR-F1–F4)
 
 A person asks the Weaver; Kiro's workflow engine runs `.kiro/workflows/coven-task-flow.workflow.json`:
