@@ -2305,9 +2305,18 @@ def _hold(root: Path, ref: str, record: dict, why: str) -> dict:
     return {"action": "held", "task": ref, "why": why}
 
 
+REVIEW_UNFINISHED = "a review could not finish"
+REVIEW_FAIL_WAIT = 3600  # seconds a failed review may take to run again (the Chair requeues a cut-off run) before the hold
+
+
 def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, notes: list[dict], runner: Runner,
                    rework: Callable[[str, list[dict]], None]) -> dict | None:
     """One look at a submitted build's reviews. Returns what was done, or None while the reviewers still work."""
+    if str(record.get("review_hold") or "").startswith(REVIEW_UNFINISHED):
+        jobs = record.get("review_jobs") or []
+        if jobs and all(r["state"] == "answered" for r in review_state(view, jobs).values()):
+            # the failed reviews ran again (the Chair's requeue or a person's Retry) and finished: the hold is over
+            record = _update(root, ref, review_hold=None, review_failed_at=None)
     if record.get("review_hold"):
         return None
     if plan_waits_for(view, ref):
@@ -2323,7 +2332,16 @@ def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, n
         return _hold(root, ref, record, f"a person said {vetoes[-1].get('kind')}: {short_text(vetoes[-1].get('message'))}")
     failed = [j for j, r in reviews.items() if r["state"] == "failed"]
     if failed:
-        return _hold(root, ref, record, f"a review could not finish ({', '.join(failed)})")
+        # A run cut off (Kiro down, a usage limit, a restart) is queued again by the Chair: wait for it a while, then hold.
+        first = record.get("review_failed_at")
+        if not first:
+            first = time.time()
+            record = _update(root, ref, review_failed_at=first)
+        if time.time() - float(first) < REVIEW_FAIL_WAIT:
+            return None
+        return _hold(root, ref, record, f"{REVIEW_UNFINISHED} ({', '.join(failed)})")
+    if record.get("review_failed_at"):
+        record = _update(root, ref, review_failed_at=None)
     silent = [j for j, r in reviews.items() if r["verdict"] is None]
     if silent:
         return _hold(root, ref, record, f"a reviewer gave no verdict ({', '.join(silent)})")  # never guess one

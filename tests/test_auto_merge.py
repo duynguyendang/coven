@@ -248,3 +248,22 @@ def test_a_new_chat_starts_the_chairs_conversation_from_the_last_marker():
     messages = [said(1), said(2, "answer", "council"), {**said(3, "new"), "message": "New chat"}, said(4), said(5, "answer", "council"), said(6)]
     assert [m["message_id"] for m in council.current_chat(messages)] == ["m4", "m5", "m6"]
     assert [m["message_id"] for m in council.current_chat(messages[:2])] == ["m1", "m2"], "no marker: the whole chat"
+
+
+def test_a_failed_review_is_waited_for_then_held_and_the_hold_lifts_when_it_ran_again(repo, monkeypatch):  # noqa: F811
+    cloud = FakeCloud().install(monkeypatch)
+    record = submitted(repo, cloud)
+    cut_off = board_with(record, ["pass", None, "pass"])
+    cut_off["specs"][0]["tasks"][1]["doer_state"] = "failed"  # the Black Hat's run hit a usage limit
+    assert settle(repo, record, cut_off, Runner())[0] is None, "the Chair queues a cut-off run again: wait for it"
+    record = host.load(repo)["shop#1"]
+    assert record.get("review_failed_at") and not record.get("review_hold")
+    later = host.time.time() + host.REVIEW_FAIL_WAIT + 1
+    monkeypatch.setattr(host.time, "time", lambda: later)
+    assert settle(repo, record, cut_off, Runner())[0]["action"] == "held"
+    record = host.load(repo)["shop#1"]
+    assert record["review_hold"].startswith(host.REVIEW_UNFINISHED)
+    unheld = []
+    monkeypatch.setattr(host, "merge_qualified", lambda *a, **k: unheld.append(a[1]) or {"action": "merged"})
+    settle(repo, record, board_with(record, ["pass", "pass", "pass"]), Runner({"grey-witch": MERGE}))
+    assert unheld == ["shop#1"], "it ran again and passed: the hold is over and the Chair's merge goes on"

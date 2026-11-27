@@ -172,7 +172,7 @@ anyone but its author. Coven is the flight recorder and the council chamber for 
 | FR-AM5 | The host records the merge (`task_merged`: commit, base, reviewers, the Chair) and the board shows the task done with it. | Must | Built |
 | FR-AM7 | Reviewers judge by one rule set: a pre-check (paths, verify, acceptance), findings with an id and a severity (P0, P1, P2), and one verdict rule (any P0 or P1 is `changes`). Their claims list `rules_read`. | Should | Built |
 | FR-AM8 | A rework carries its cause: the guard writes `rework.json` (numbered, worst first) and the host numbers the feedback (R1, R2, …); the Dev names the ids she addressed. A confirmed P2 break never blocks. | Should | Built |
-| FR-AM6 | Anything in doubt holds the task for a person, said once in a note: a failed review, a review with no verdict, no Chair on the host, a hold decision, a conflict, a failed check, a refused push. | Must | Built |
+| FR-AM6 | Anything in doubt holds the task for a person, said once in a note: a review still failed an hour after it first failed (the Chair queues a cut-off run again; when the failed reviews run again and finish, the hold lifts by itself), a review with no verdict, no Chair on the host, a hold decision, a conflict, a failed check, a refused push. | Must | Built |
 
 ### 4.9.2 Final evaluation, Kiro outages, host health
 
