@@ -45,6 +45,21 @@ def test_doctor_reports_a_stopped_relay(root, capsys):
     assert "events: 0 not yet pushed / 0 in the local log" in out
 
 
+def test_doctor_and_recent_rejected_report_refused_events(root, capsys):
+    from coven import logs
+
+    for reason in ("bad type", "bad type", "too long", "x"):
+        eventlog.quarantine({"type": "tool_call", "event_id": "e"}, reason, root)
+    old = eventlog.capture.data_dir(root) / "rejected-2020-01-01.jsonl"
+    old.write_text(json.dumps({"at": "2020-01-01T00:00:00.000Z", "reason": "old", "event": {"type": "t"}}) + "\n")
+
+    items = logs.recent_rejected(root)
+    assert len(items) == 4 and set(items[0]) == {"type", "reason", "time"}
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "refused: 4 event(s) in the last 24h" in out and "bad type (2)" in out and "old" not in out
+
+
 def test_version_flag_prints_version_and_exits_zero(capsys):
     import pytest
 

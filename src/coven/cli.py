@@ -796,8 +796,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"token: {info['token']}")
     print(f"relay: {info['relay']} (pid {info['pid']})" + (f", {info['mode']} mode" if info["mode"] else ""))
     print(f"events: {info['events']['unsent']} not yet pushed / {info['events']['total']} in the local log")
-    from . import capture
+    from . import capture, logs
 
+    refused = logs.recent_rejected(root)
+    if refused:
+        print(logs.refused_line(refused) + "  -> coven logs rejected")
     chosen = capture.mode()
     note = "  (UNREDACTED: local debugging only)" if chosen == "raw" else ""
     print(f"capture: {chosen}{note} -> {capture.data_dir(root)}")

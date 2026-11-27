@@ -81,6 +81,38 @@ def summarise_rejected(record: dict) -> str:
     ])
 
 
+def recent_rejected(root: Path | None, hours: int = 24) -> list[dict]:
+    """Events the cloud refused in the last `hours`: [{type, reason, time}], oldest first."""
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    found: list[dict] = []
+    for path in sorted(capture.data_dir(root).glob("rejected-*.jsonl")):
+        for line in _read(path):
+            try:
+                record = json.loads(line)
+                when = datetime.fromisoformat(str(record.get("at", "")).replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            if not isinstance(record, dict):
+                continue
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            if when >= cutoff:
+                event = record.get("event") if isinstance(record.get("event"), dict) else {}
+                found.append({"type": str(event.get("type", "?")), "reason": str(record.get("reason", "?")),
+                              "time": record.get("at")})
+    return sorted(found, key=lambda item: str(item["time"]))
+
+
+def refused_line(items: list[dict], hours: int = 24) -> str:
+    """One line: how many events were refused and the three most common reasons."""
+    from collections import Counter
+
+    top = Counter(item["reason"][:80] for item in items).most_common(3)
+    return f"refused: {len(items)} event(s) in the last {hours}h; top reasons: " + "; ".join(f"{r} ({n})" for r, n in top)
+
+
 def _read(path: Path) -> Iterator[str]:
     try:
         with path.open(encoding="utf-8") as handle:
