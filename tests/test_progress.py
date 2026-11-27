@@ -27,6 +27,28 @@ def test_tool_step_ignores_other_records():
     assert council.tool_step({"type": "runFinished", "data": {}}) is None
 
 
+def acp(kind: str, path: str = "", title: str = "") -> dict:
+    """A v3 engine (ACP) sessionUpdate tool_call record."""
+    update: dict = {"sessionUpdate": "tool_call", "kind": kind}
+    if path:
+        update["locations"] = [{"path": path}]
+    if title:
+        update["title"] = title
+    return {"type": "sessionUpdate", "data": {"update": update}}
+
+
+def test_tool_step_handles_acp_session_update():
+    assert council.tool_step(acp("edit", path="src/app.py")) == "editing src/app.py"
+    assert council.tool_step(acp("execute")) == "running"
+    assert council.tool_step(acp("read", path="README.md")) == "reading README.md"
+    assert council.tool_step(acp("unknown", title="My Tool")) == "using My Tool"
+
+
+def test_tool_step_ignores_non_tool_call_session_updates():
+    assert council.tool_step({"type": "sessionUpdate", "data": {"update": {"sessionUpdate": "message"}}}) is None
+    assert council.tool_step({"type": "sessionUpdate", "data": {"update": {"sessionUpdate": "tool_call", "kind": "edit"}}}) == "editing"
+
+
 SCRIPT = """
 import json, sys, time
 for name, path in (("fs_read", "a.py"), ("fs_write", "b.py"), ("fs_write", "c.py")):
