@@ -2279,7 +2279,10 @@ def review_state(view: dict, jobs: list[str]) -> dict[str, dict]:
             return t["doer_verdict"]
         found = re.match(r"verdict:\s*(pass|changes)\b", str(t.get("doer_detail") or ""), re.I)
         return found.group(1).lower() if found else None
-    return {j: {"state": (tasks.get(j) or {}).get("doer_state"), "verdict": verdict(tasks.get(j) or {}),
+    def state(t: dict) -> str | None:
+        # closed by a sign-off or by hand: finished, like answered (with its verdict, if one is left; none is a hold, not a wait)
+        return "answered" if t.get("doer_state") == "done" or t.get("status") == "completed" else t.get("doer_state")
+    return {j: {"state": state(tasks.get(j) or {}), "verdict": verdict(tasks.get(j) or {}),
                 "agent": (tasks.get(j) or {}).get("agent"), "detail": (tasks.get(j) or {}).get("doer_detail")} for j in jobs}
 
 
@@ -3827,6 +3830,8 @@ def reconcile(root: Path, dry_run: bool = False, view: dict | None = None) -> di
                 closed_no_change.append(ref)
             if t.get("doer_state") == "done" or t.get("status") == "completed" or t.get("merged"):
                 continue
+            if t.get("review_of"):
+                continue  # a review job: the build it reviews reads its verdict, and a sign-off would replace it (the build waited)
             if t.get("doer_state") == "answered" and t.get("doer_verdict") != "changes":
                 items.append((ref, "autonomous-signoff: reconciled, answered with no changes verdict"))
             elif t.get("doer_state") == "submitted":

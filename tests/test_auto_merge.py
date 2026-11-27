@@ -267,3 +267,12 @@ def test_a_failed_review_is_waited_for_then_held_and_the_hold_lifts_when_it_ran_
     monkeypatch.setattr(host, "merge_qualified", lambda *a, **k: unheld.append(a[1]) or {"action": "merged"})
     settle(repo, record, board_with(record, ["pass", "pass", "pass"]), Runner({"grey-witch": MERGE}))
     assert unheld == ["shop#1"], "it ran again and passed: the hold is over and the Chair's merge goes on"
+
+
+def test_a_review_closed_on_the_board_counts_as_finished_not_as_still_working(repo, monkeypatch):  # noqa: F811
+    cloud = FakeCloud().install(monkeypatch)
+    record = submitted(repo, cloud)
+    view = board_with(record, ["pass", "pass", "pass"])
+    view["specs"][0]["tasks"][0].update(doer_state="done", doer_verdict=None, doer_detail="autonomous-signoff: reconciled")
+    result, _ = settle(repo, record, view, Runner())
+    assert result and result["action"] == "held" and "no verdict" in result["why"], "a hold a person sees, never a wait forever"

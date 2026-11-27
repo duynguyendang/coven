@@ -1797,8 +1797,9 @@ def test_reconcile_closes_answered_tasks_without_changes_and_branches_already_in
         {"task_id": "1", "doer_state": "submitted"}, {"task_id": "2", "doer_state": "answered", "doer_verdict": None},
         {"task_id": "3", "doer_state": "answered", "doer_verdict": "changes"}, {"task_id": "4", "doer_state": "done"},
         {"task_id": "5", "doer_state": "submitted"}]},
-        {"spec": "council", "tasks": [{"task_id": "r1-t", "doer_state": "answered", "doer_verdict": "pass"}]}]}
-    dry = host.reconcile(repo, dry_run=True, view=view)
+        {"spec": "council", "tasks": [{"task_id": "r1-t", "doer_state": "answered", "doer_verdict": "pass"},
+                                      {"task_id": "r2-1b1-t", "doer_state": "answered", "doer_verdict": "pass", "review_of": "council#r2-1b1"}]}]}
+    dry = host.reconcile(repo, dry_run=True, view=view)  # a review job is left to its build: a sign-off would erase its verdict
     assert dry["tasks"] == ["shop#1", "shop#2", "council#r1-t"] and cloud.signoffs == [], "a dry run sends nothing"
     done = host.reconcile(repo, view=view)
     assert done["reconciled"] == 3 and done["refused"] == 0 and done["dry_run"] is False

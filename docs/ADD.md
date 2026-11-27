@@ -170,7 +170,7 @@ reuses an old job's id:
 `done` signed by the Elder Witch, what needs no person: a verified no-op (FR-H20), its own answered Q&A jobs, and,
 after one read-only SA check that ends `VERDICT: pass`, another task a witch answered. Her `changes` holds the task
 for a person, said once. `coven host reconcile` (and an autonomous host at start) closes the backlog the same way:
-tasks answered with no `changes` verdict, and submitted tasks whose `coven/<spec>-<task>` branch is already in the
+tasks answered with no `changes` verdict (never a review job: the build it reviews reads its verdict), and submitted tasks whose `coven/<spec>-<task>` branch is already in the
 base. A branch that still waits to be merged is never closed by a sign-off. Its result also lists `closed_no_change`:
 refs the board shows `done`, not merged and not `completed`. They are reported only; reconcile signs off and changes nothing for them. Without the switch the cloud refuses the
 `done`, the host says so once, and the tasks wait for a person.
