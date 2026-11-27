@@ -3726,6 +3726,14 @@ class Host:
             self.out(f"host: stopped {stopped} kiro-cli run(s) an earlier host process of this working copy left running")
         self.presence(force=True)
         try:
+            from . import logs
+
+            refused = logs.recent_rejected(self.root)
+            if refused:
+                self.out("host: " + logs.refused_line(refused))
+        except Exception as exc:  # noqa: BLE001 - a diagnostic line; the host runs
+            self.out(f"host: refused-event check skipped ({str(exc)[:160]})")
+        try:
             start = reconcile_start(self.root)
             self.out(f"host: reconcile: closed {start['closed']}, resent {start['resent']}, failed {start['failed']}"
                      + (f"; undecided: {', '.join(start['undecided'])}" if start["undecided"] else ""))
