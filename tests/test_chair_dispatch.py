@@ -183,18 +183,49 @@ def test_a_question_goes_scribe_then_elder_then_back_to_the_queue_with_both_answ
     assert fx.notes and "src/cart.py" in fx.notes[0][1] and "READY" in fx.notes[0][1], "her next prompt sees both answers"
 
 
-def test_the_same_question_again_is_a_new_round_then_held():
+def _round(fx, asked):
+    """One full round: the Scribe answers, the Elder Witch checks, the task goes back to the queue."""
+    fx.d.act(board(asked), NOW)
+    scribe = fx.jobs[-1][0]
+    fx.d.act(council(board(asked), scribe, doer_state="answered"), NOW)
+    elder = fx.jobs[-1][0]
+    fx.d.act(council(council(board(asked), scribe, doer_state="answered"), elder, doer_state="answered"), NOW)
+
+
+def test_the_same_question_after_an_answer_is_held_at_once():
     fx = Live()
     asked = {"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "which file?"}
-    for _ in range(2):  # two full rounds, each ending in the queue
-        fx.d.act(board(asked), NOW)
-        scribe = fx.jobs[-1][0]
-        fx.d.act(council(board(asked), scribe, doer_state="answered"), NOW)
-        elder = fx.jobs[-1][0]
-        fx.d.act(council(council(board(asked), scribe, doer_state="answered"), elder, doer_state="answered"), NOW)
+    _round(fx, asked)
+    assert fx.queued == ["s#1"]
+    n = len(fx.jobs)
+    fx.d.act(board(asked), NOW)  # the Dev asks the same thing again: the answer did not help
+    assert ("s#1", "held") in [(r, s) for r, s, _ in fx.sent] and len(fx.jobs) == n, "no second round for the same question"
+
+
+def test_a_new_question_gets_a_second_round_then_max_rounds_holds_it():
+    fx = Live()
+    for i in range(2):
+        _round(fx, {"task_id": "1", "doer_state": "needs_clarification", "doer_detail": f"question {i}"})
     assert fx.queued == ["s#1", "s#1"]
-    fx.d.act(board(asked), NOW)  # the Dev asks the same thing a third time
+    fx.d.act(board({"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "question 3"}), NOW)
     assert ("s#1", "held") in [(r, s) for r, s, _ in fx.sent], "MAX_ROUNDS is reached, not skipped by the seen-memory"
+
+
+def test_rounds_another_chair_ran_count_here():
+    fx = Live()  # this Chair just took the lease: its memory is empty, the board shows two rounds by the last holder
+    view = board({"task_id": "1", "doer_state": "needs_clarification", "doer_detail": "which file?"})
+    for job in ("chaaaaaaaaaa", "chbbbbbbbbbb"):
+        council(view, job, title="Prepare s#1", doer_state="done", created_at="2026-01-01T11:00:00Z")
+    fx.d.act(view, NOW)
+    assert ("s#1", "held") in [(r, s) for r, s, _ in fx.sent] and fx.jobs == []
+
+
+def test_board_rounds_older_than_the_window_do_not_count():
+    old = {"council#chaaaaaaaaaa": {"title": "Prepare s#1", "created_at": "2025-12-30T00:00:00Z"},
+           "council#chbbbbbbbbbb": {"title": "Prepare s#1", "created_at": "2026-01-01T11:00:00Z"},
+           "council#r1-1": {"title": "Prepare s#1", "created_at": "2026-01-01T11:00:00Z"}}
+    assert chair.board_rounds(old, "s#1", chair._time("2025-12-31T12:00:00Z")) == 1
+    assert chair.board_rounds(old, "s#1", None) == 2, "only the Chair's own jobs (ch…) count"
 
 
 def test_a_transient_failure_is_queued_again_twice_then_a_person_is_asked():

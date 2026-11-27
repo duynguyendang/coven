@@ -393,8 +393,10 @@ hosts. The cloud computes the roll-up (`3 of 5 done, 1 failed`). The cloud never
   against `review_limit`, so one held merge no longer stops the Dev.
 - **No task without a next step.** Every stopped task ends in `queued`, `held` or a question to a person, never in nothing:
   - a question (`NEEDS`): Scribe, then the Elder Witch's check, then a note on the task with both answers (the Dev's next
-    prompt shows it as untrusted text) and `task_status queued`; the same question again is a new round; after
-    `MAX_ROUNDS` (2) the task is `held`. A split (`SPLIT`): the Scribe's proposed subtasks go to a person, who adds them to
+    prompt shows it as untrusted text) and `task_status queued`; the same question again after an answered round is
+    `held` at once (the next answer would be the same); a new question is a new round; after `MAX_ROUNDS` (2) the task is
+    `held`. The rounds are counted on the board too (the Chair's `Prepare <ref>` jobs of the last 24 hours, or since a
+    person's Retry), so a Chair lease that moves between hosts does not restart the count. A split (`SPLIT`): the Scribe's proposed subtasks go to a person, who adds them to
     `tasks.md` (no witch here writes it);
   - a transient failure (cause `timeout`, `kiro_error`, `cloud`, `no_answer` or `error`): `queued` again, at most
     `MAX_REQUEUES` (2) times, then a question; a failure about the work (`verify_failed`, `outside_paths`) is a question;
