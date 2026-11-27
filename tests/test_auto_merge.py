@@ -276,3 +276,7 @@ def test_a_review_closed_on_the_board_counts_as_finished_not_as_still_working(re
     view["specs"][0]["tasks"][0].update(doer_state="done", doer_verdict=None, doer_detail="autonomous-signoff: reconciled")
     result, _ = settle(repo, record, view, Runner())
     assert result and result["action"] == "held" and "no verdict" in result["why"], "a hold a person sees, never a wait forever"
+    unheld = []
+    monkeypatch.setattr(host, "merge_qualified", lambda *a, **k: unheld.append(a[1]) or {"action": "merged"})
+    settle(repo, host.load(repo)["shop#1"], board_with(record, ["pass", "pass", "pass"]), Runner({"grey-witch": MERGE}))
+    assert unheld == ["shop#1"], "a person retried the silent review and it gave a verdict: the hold lifts"

@@ -162,7 +162,7 @@ that holds the branch acts on them. A spec task is known by its number in `tasks
 took, and when that number now holds another title (the file was renumbered) it neither merges, reworks nor accepts
 the branch: it holds the task for a person with the reason, once. A review job that failed (a cut-off run: Kiro down, a usage limit) is
 waited for up to an hour while the Chair queues it again; after that the task is held, and the hold lifts by itself
-when the failed reviews run again and finish. Chair job ids are random, so a reset round never
+when the reviews run again and each gives a verdict (the same for a review that gave none). Chair job ids are random, so a reset round never
 reuses an old job's id:
 
 **Final sign-off on an autonomous host (FR-ST2, with the operator's consent).** When the cloud sets

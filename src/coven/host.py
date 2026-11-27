@@ -2309,16 +2309,17 @@ def _hold(root: Path, ref: str, record: dict, why: str) -> dict:
 
 
 REVIEW_UNFINISHED = "a review could not finish"
+NO_VERDICT = "a reviewer gave no verdict"
 REVIEW_FAIL_WAIT = 3600  # seconds a failed review may take to run again (the Chair requeues a cut-off run) before the hold
 
 
 def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, notes: list[dict], runner: Runner,
                    rework: Callable[[str, list[dict]], None]) -> dict | None:
     """One look at a submitted build's reviews. Returns what was done, or None while the reviewers still work."""
-    if str(record.get("review_hold") or "").startswith(REVIEW_UNFINISHED):
+    if str(record.get("review_hold") or "").startswith((REVIEW_UNFINISHED, NO_VERDICT)):
         jobs = record.get("review_jobs") or []
-        if jobs and all(r["state"] == "answered" for r in review_state(view, jobs).values()):
-            # the failed reviews ran again (the Chair's requeue or a person's Retry) and finished: the hold is over
+        if jobs and all(r["state"] == "answered" and r["verdict"] for r in review_state(view, jobs).values()):
+            # the reviews ran again (the Chair's requeue or a person's Retry) and each has a verdict now: the hold is over
             record = _update(root, ref, review_hold=None, review_failed_at=None)
     if record.get("review_hold"):
         return None
@@ -2347,7 +2348,7 @@ def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, n
         record = _update(root, ref, review_failed_at=None)
     silent = [j for j, r in reviews.items() if r["verdict"] is None]
     if silent:
-        return _hold(root, ref, record, f"a reviewer gave no verdict ({', '.join(silent)})")  # never guess one
+        return _hold(root, ref, record, f"{NO_VERDICT} ({', '.join(silent)})")  # never guess one
     changes = [r for r in reviews.values() if r["verdict"] == "changes"]
     if changes:
         if (record.get("review_round") or 1) >= MAX_REVIEW_ROUNDS:
