@@ -84,7 +84,10 @@ def test_run_agent_sends_a_redacted_working_step(tmp_path, monkeypatch):
     secret = "AKIA" + "A" * 16
     records = [call("execute_bash", command=f"echo {secret} " + "x" * 300), {"type": "runFinished", "data": {"status": "success", "finalText": "ok"}}]
 
+    windows: list[float] = []
+
     def fake_stream(command, cwd, env, timeout, on_step, every, stderr=None):
+        windows.append(every)
         for r in records:
             step = council.tool_step(r)
             if step:
@@ -95,5 +98,6 @@ def test_run_agent_sends_a_redacted_working_step(tmp_path, monkeypatch):
     text, error = host.run_agent(tmp_path, "green-witch", "go", {"COVEN_ROOT": str(tmp_path), "COVEN_TASK": "s#1"})
 
     assert (text, error) == ("ok", None)
+    assert host.PROGRESS_EVERY == 20 and windows == [20]
     assert len(sent) == 1 and sent[0]["state"] == "working" and sent[0]["ref"] == "s#1"
     assert len(sent[0]["step"]) <= 160 and secret not in sent[0]["step"]
