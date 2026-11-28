@@ -122,7 +122,10 @@ def test_the_cli_runs_init_from_a_subfolder_at_the_git_top(app, checkout, monkey
     assert cli.main(["init", "--from", str(checkout), "--merge-check", "true"]) == 0
     assert (app / ".coven" / "config.json").exists() and not (app / "src" / ".coven").exists()
     out = capsys.readouterr().out
-    assert "linked to project 'atlas-api'" in out and "start a new Kiro session" in out
+    assert "linked to project 'atlas-api'" in out and "hooks check:" in out
+    assert out.index("hooks check:") < out.index("next:")
+    steps = out[out.index("next:"):]
+    assert steps.index("restart kiro-cli") < steps.index("coven relay up") < steps.index("coven doctor") < steps.index("./run-host.sh --root")
     assert cli.main(["init", str(app / "src"), "--telemetry-only", "--project", "bad name"]) == 2
 
 
@@ -218,3 +221,17 @@ def test_dependency_folders_named_in_the_config_are_used_as_written_and_unsafe_n
     config.save_config({"dependency_dirs": ["vendor_libs", "../outside", "/etc", "node_modules/"]}, app)
     assert host.dependency_dirs(app) == ["vendor_libs", "node_modules"]
     assert host.link_dependencies(app, app) == ["vendor_libs"], "only folders that exist are linked"
+
+
+def test_the_cli_init_second_run_and_telemetry_only_still_check_hooks_and_print_next_steps(app, checkout, monkeypatch, capsys):
+    monkeypatch.chdir(app)
+    assert cli.main(["init", "--from", str(checkout)]) == 0
+    capsys.readouterr()
+    before = sorted(p.relative_to(app) for p in app.rglob("*") if ".git" not in p.parts and p.is_file())
+    assert cli.main(["init", "--from", str(checkout)]) == 0
+    second = capsys.readouterr().out
+    assert "wrote (review" not in second and "hooks check:" in second and "./run-host.sh --root" in second
+    assert before == sorted(p.relative_to(app) for p in app.rglob("*") if ".git" not in p.parts and p.is_file())
+    assert cli.main(["init", "--telemetry-only"]) == 0
+    only = capsys.readouterr().out
+    assert "hooks check:" in only and "restart kiro-cli" in only and "coven doctor" in only
