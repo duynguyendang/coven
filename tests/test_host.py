@@ -2050,3 +2050,81 @@ def test_a_persons_accept_counts_only_passes_on_the_current_tip(repo, monkeypatc
     h._accept_progress = lambda *a, **k: None
     h._accepts(view)
     assert seen == [[]], "no pass on the current tip counts"
+
+
+# ------------------------------------------- the host merges the base into a conflicting branch; the Dev resolves the files
+
+def _diverged(repo, main_file="src/cart/total.py"):
+    """Shop#1's branch holds a first round; main then changes `main_file` too."""
+    task = specmap.load(repo)["shop#1"]
+    path, branch = host.prepare_worktree(repo, task, "main")
+    (path / "src" / "cart").mkdir(parents=True)
+    (path / "src" / "cart" / "total.py").write_text("def total(xs):\n    return sum(xs)\n")
+    git(path, "add", "-A")
+    git(path, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "round one")
+    (repo / Path(main_file)).parent.mkdir(parents=True, exist_ok=True)
+    (repo / main_file).write_text("def total(xs):\n    return len(xs)\n" if main_file.endswith("total.py") else "main\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "main moves")
+    host._update(repo, "shop#1", commits=["abc"], state="submitted")
+    return task, path, branch
+
+
+def resolves(cwd, prompt):
+    (cwd / "src" / "cart" / "total.py").write_text("def total(xs):\n    return sum(xs) or len(xs)\n")
+    return "resolved", None
+
+
+def test_the_host_merges_the_base_and_the_dev_resolves_only_the_conflicted_files(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    task, path, branch = _diverged(repo)
+    seen = []
+    runner = Runner({"green-witch": lambda cwd, prompt: (seen.append(git(cwd, "status", "--porcelain")), resolves(cwd, prompt))[1]})
+    done = host._build(repo, task, "green-witch", "wsl-1", "main", runner, None, [])
+    assert done["action"] == "submitted" and done["merged_base"] == "main"
+    assert "AA src/cart/total.py" in seen[0], "the merge was started by the host, in the worktree"
+    prompt = runner.calls[0]["prompt"]
+    assert "conflicts in: src/cart/total.py" in prompt and "never merge" in prompt and "never touch any other branch" in prompt
+    parents = git(repo, "log", "-1", "--format=%P", branch).split()
+    assert len(parents) == 2 and git(repo, "rev-parse", "main") in parents, "a merge commit made by the host, no rebase"
+    assert git(repo, "merge-base", "--is-ancestor", "main", branch) == ""
+    assert host.load(repo)["shop#1"]["state"] == "submitted" and len(host.load(repo)["shop#1"]["commits"]) == 2
+    assert cloud.notes[-1]["kind"] == "review-wanted"
+
+
+def test_markers_left_in_a_resolution_are_refused_and_a_failure_aborts_the_merge(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    task, path, branch = _diverged(repo)
+    runner = Runner({"green-witch": lambda cwd, prompt: ("done", None)})  # leaves the markers
+    done = host._build(repo, task, "green-witch", "wsl-1", "main", runner, None, [])
+    assert done["action"] == "failed" and len(runner.calls) == 2 and "conflict markers remain" in runner.calls[1]["prompt"]
+    assert git(path, "status", "--porcelain") == "", "the merge is aborted, the branch is as it was"
+    assert git(repo, "rev-list", "--count", branch) == "2"
+
+
+def test_a_conflict_outside_the_paths_goes_to_a_person(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    task, path, branch = _diverged(repo)
+    # the branch and main both change docs/x.md: outside src/cart/
+    (path / "docs").mkdir()
+    (path / "docs" / "x.md").write_text("branch\n")
+    git(path, "add", "-A")
+    git(path, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "docs")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "x.md").write_text("main\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "main docs")
+    runner = Runner()
+    done = host._build(repo, task, "green-witch", "wsl-1", "main", runner, None, [])
+    assert done["action"] == "held" and done["conflicts"] == ["docs/x.md", "src/cart/total.py"] and not runner.calls
+    assert git(path, "status", "--porcelain") == "" and host.load(repo)["shop#1"]["state"] == "held"
+    assert cloud.notes[-1]["kind"] == "question" and "outside the task's paths" in cloud.notes[-1]["note"]
+
+
+def test_a_clean_merge_is_committed_by_the_host_and_a_current_branch_is_left_alone(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    task, path, branch = _diverged(repo, main_file="README.md")
+    assert host.merge_base(path, task, "main") == ("merged", [])
+    assert len(git(path, "log", "-1", "--format=%P").split()) == 2
+    assert host.merge_base(path, task, "main") == ("current", [])
+    assert "conflicts in" not in host.prompt_for(task, "green-witch", "wsl-1")
