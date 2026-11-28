@@ -136,7 +136,7 @@ growing at 50 MB (`COVEN_CAPTURE_MAX_MB`). Unknown triggers appear in `coven log
 | `coven logs [hooks\|events\|path]` | Read the local capture: raw hook payloads, normalised events, file locations |
 | `coven hooks check` / `install [--portable]` | Run the Kiro hooks like Kiro does and say what fails; write PATH-independent hook commands |
 | `coven --version` | Print `coven ` and the installed version |
-| `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting and cloud reachability |
+| `coven doctor` | Check config, relay, socket, hooks, capture mode, Kiro's workflows setting, host readiness (`kiro-cli` on PATH, git base branch and remote, `.coven/host.json` id, installed witches; each failing check names its fix) and cloud reachability |
 | `coven host join <name>` | Name this host on the coven board (`member join` still works); publishes its task list |
 | `coven member [join <name>]` | The older name of `coven host join`: print or set this working copy's name |
 | `./run-host.sh [--no-dev] [--keep-branches] [--agents a,b] [...]` | The short way to run a host: names it, starts the machine relay, runs every installed witch, the Dev included (`--no-dev`: all but the Dev). `--root PATH` hosts another repository. Logs in to `COVEN_CLOUD_URL` (token `COVEN_TOKEN`, default `dev`) when it differs from the saved login; with no `COVEN_CLOUD_URL` it keeps a saved login, and only with none at all uses the default test cloud |

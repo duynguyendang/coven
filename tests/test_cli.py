@@ -60,6 +60,43 @@ def test_doctor_and_recent_rejected_report_refused_events(root, capsys):
     assert "refused: 4 event(s) in the last 24h" in out and "bad type (2)" in out and "old" not in out
 
 
+def test_doctor_reports_host_readiness_with_fixes(root, capsys, monkeypatch):
+    import shutil
+    import subprocess
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"], cwd=root, check=True)
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "kiro-cli: not on PATH -> install" in out
+    assert "base branch: main" in out
+    assert "remote: 'origin' is not set -> run: git remote add origin" in out
+    assert "host id: none yet -> " in out and not (root / ".coven" / "host.json").exists()
+    assert "witches: 0 of 11 installed, missing green-witch" in out and "coven init --from" in out
+
+
+def test_doctor_host_readiness_when_ready(root, capsys, monkeypatch):
+    import shutil
+    import subprocess
+
+    from coven import agents, config
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/bin/kiro-cli" if name == "kiro-cli" else None)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"], cwd=root, check=True)
+    subprocess.run(["git", "remote", "add", "origin", "http://example.invalid/r.git"], cwd=root, check=True)
+    host = config.host_id(root)
+    for slug in agents.AGENTS:
+        path = root / ".kiro" / "agents" / f"{slug}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}")
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "kiro-cli: /bin/kiro-cli" in out and "remote: origin" in out
+    assert f"host id: {host}" in out and f"witches: all {len(agents.AGENTS)} installed" in out
+
+
 def test_version_flag_prints_version_and_exits_zero(capsys):
     import pytest
 
