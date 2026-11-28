@@ -73,7 +73,19 @@ def test_doctor_reports_host_readiness_with_fixes(root, capsys, monkeypatch):
     assert "base branch: main" in out
     assert "remote: 'origin' is not set -> run: git remote add origin" in out
     assert "host id: none yet -> " in out and not (root / ".coven" / "host.json").exists()
-    assert "witches: 0 of 11 installed, missing green-witch" in out and "coven init --from" in out
+    assert "witches:" not in out and "missing files:" not in out  # no witch files: a telemetry-only repo stays silent
+
+
+def test_doctor_lists_missing_witch_recipe_and_skill_when_some_witches_exist(root, capsys):
+    path = root / ".kiro" / "agents" / "green-witch.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}")
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "witches: 1 of 11 installed, missing " in out
+    assert "missing files: " in out and ".kiro/agents/white-hat.json" in out and ".kiro/agents/green-witch.json" not in out
+    assert ".kiro/workflows/coven-task-flow.workflow.json" in out and ".kiro/skills/coven/SKILL.md" in out
+    assert "coven init --from" in out
 
 
 def test_doctor_host_readiness_when_ready(root, capsys, monkeypatch):
