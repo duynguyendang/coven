@@ -784,6 +784,46 @@ def _kiro_workflows_setting() -> bool | None:
     return done.returncode == 0 and done.stdout.strip().lower() == "true"
 
 
+def _host_readiness(root: Path) -> list[str]:
+    """One line per host check (kiro-cli, git base branch and remote, host id, witches), each with a fix when it fails."""
+    import shutil
+
+    from . import agents, work
+
+    lines: list[str] = []
+    found = shutil.which("kiro-cli")
+    lines.append(f"kiro-cli: {found}" if found else "kiro-cli: not on PATH -> install Kiro CLI and make sure `kiro-cli` runs from this shell")
+    try:
+        base = work.base_branch(root)
+        lines.append(f"base branch: {base}")
+    except work.WorkError as exc:
+        lines.append(f"base branch: {exc} -> check out a branch, or run: coven init --base-branch <branch>")
+    except OSError:
+        lines.append("base branch: git not found -> install git")
+    name = config.remote(root)
+    try:
+        url = subprocess.run(["git", "remote", "get-url", name], cwd=root, capture_output=True, text=True, timeout=10)
+        ok = url.returncode == 0 and bool(url.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        ok = False
+    lines.append(f"remote: {name}" if ok else f"remote: {name!r} is not set -> run: git remote add {name} <url>  (or coven init --remote <name>)")
+    try:
+        known = json.loads((config.coven_dir(root) / config.HOST_FILE).read_text(encoding="utf-8")).get("host_id")
+    except (OSError, ValueError, AttributeError):
+        known = None
+    if isinstance(known, str) and config.HOST_ID.match(known):
+        lines.append(f"host id: {known}")
+    else:
+        lines.append("host id: none yet -> it is made the first time you run: coven host run")
+    have = agents.installed(root)
+    missing = [slug for slug in agents.AGENTS if slug not in have]
+    if not missing:
+        lines.append(f"witches: all {len(have)} installed")
+    else:
+        lines.append(f"witches: {len(have)} of {len(agents.AGENTS)} installed, missing {', '.join(missing)} -> run: coven init --from <coven checkout>")
+    return lines
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     from . import relay
 
@@ -826,6 +866,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     workflows = _kiro_workflows_setting()
     if workflows is not None:
         print("kiro workflows: " + ("on" if workflows else "off -> flows need it: kiro-cli settings chat.enableWorkflows true"))
+    for line in _host_readiness(root):
+        print(line)
     if cloud:
         try:
             import httpx
