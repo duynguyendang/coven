@@ -1977,3 +1977,76 @@ def test_model_and_effort_pins_come_before_agent_and_prompt_stays_last(monkeypat
     assert host.agent_command("green-witch", "go", "read")[host.agent_command("green-witch", "go", "read").index("--model") + 1] == "special"
     other = host.agent_command("elf", "go", "read")
     assert other[other.index("--model") + 1] == "base-model" and "--effort" not in other
+
+
+def _reviewed_branch(repo, monkeypatch):
+    """A submitted record with three passing reviews, made when the branch was at its first tip."""
+    git(repo, "branch", "coven/shop-1")
+    monkeypatch.setattr(host.board, "task_create", lambda *a, **k: {})
+    monkeypatch.setattr(host, "_note", lambda *a, **k: None)
+    record = {"branch": "coven/shop-1", "base": "main", "agent": "green-witch", "state": "submitted", "kind": "build"}
+    host._update(repo, "shop#1", **record)
+    jobs = host.ask_reviews(repo, {"spec": "shop", "task_id": "1", "title": "t"}, "coven/shop-1")
+    view = {"specs": [{"spec": s, "tasks": [{"task_id": j.split("#")[1], "agent": "white-hat", "doer_state": "answered", "doer_verdict": "pass"}]}
+                      for s, j in ((j.split("#")[0], j) for j in jobs)]}
+    view = {"specs": [{"spec": "council", "tasks": [t for sp in view["specs"] for t in sp["tasks"]]}]}
+    return host.load(repo)["shop#1"], view
+
+
+def test_review_passes_record_the_tip_they_cover(repo, monkeypatch):
+    record, _ = _reviewed_branch(repo, monkeypatch)
+    tip = git(repo, "rev-parse", "coven/shop-1").strip()
+    assert set(record["review_tips"].values()) == {tip} and len(record["review_tips"]) == 3
+    assert host.stale_reviews(repo, record, record["review_jobs"]) == []
+
+
+def test_a_pass_on_an_old_tip_does_not_count(repo, monkeypatch):
+    record, view = _reviewed_branch(repo, monkeypatch)
+    git(repo, "checkout", "-q", "coven/shop-1")
+    (repo / "more.txt").write_text("x\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "after review")
+    git(repo, "checkout", "-q", "main")
+    assert host.stale_reviews(repo, record, record["review_jobs"]) == record["review_jobs"]
+
+    def no_chair(*a, **k):
+        raise AssertionError("the Chair must not be asked about a branch whose reviews are stale")
+    result = host.settle_reviews(repo, "shop#1", record, view, {}, [], no_chair, lambda *a: None)
+    assert result["action"] == "held" and "changed after its reviews" in result["why"]
+
+
+def test_a_stale_pass_is_asked_again_as_a_new_round_on_the_current_tip(repo, monkeypatch):
+    record, view = _reviewed_branch(repo, monkeypatch)
+    git(repo, "checkout", "-q", "coven/shop-1")
+    (repo / "more.txt").write_text("x\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "after review")
+    git(repo, "checkout", "-q", "main")
+    asked = []
+
+    def reask(round_):
+        asked.append(round_)
+        return host.ask_reviews(repo, {"spec": "shop", "task_id": "1", "title": "t"}, record["branch"], round_)
+    result = host.settle_reviews(repo, "shop#1", record, view, {}, [], None, lambda *a: None, reask)
+    assert result == {"action": "re-review", "task": "shop#1", "round": 2} and asked == [2]
+    fresh = host.load(repo)["shop#1"]
+    assert host.stale_reviews(repo, fresh, fresh["review_jobs"]) == [] and fresh["review_round"] == 2
+
+
+def test_a_persons_accept_counts_only_passes_on_the_current_tip(repo, monkeypatch):
+    from coven import config
+    record, view = _reviewed_branch(repo, monkeypatch)
+    git(repo, "checkout", "-q", "coven/shop-1")
+    (repo / "more.txt").write_text("x\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "after review")
+    git(repo, "checkout", "-q", "main")
+    view["specs"].append({"spec": "shop", "tasks": [{"task_id": "1", "accept": {
+        "decision": "accept", "state": "requested", "branch": "coven/shop-1", "host_id": config.host_id(repo), "by": "duy", "request_id": "evt_acc9"}}]})
+    seen = []
+    monkeypatch.setattr(host, "merge_qualified", lambda root, ref, rec, passed, **k: seen.append(passed) or {"action": "merged"})
+    monkeypatch.setattr(host.specmap, "load", lambda root: {"shop#1": {"spec": "shop", "task_id": "1"}})
+    h = host.Host(repo, slots=1, runner=lambda *a, **k: ("", None), out=lambda *a: None)
+    h._accept_progress = lambda *a, **k: None
+    h._accepts(view)
+    assert seen == [[]], "no pass on the current tip counts"
