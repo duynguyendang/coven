@@ -98,6 +98,6 @@ def test_run_agent_sends_a_redacted_working_step(tmp_path, monkeypatch):
     text, error = host.run_agent(tmp_path, "green-witch", "go", {"COVEN_ROOT": str(tmp_path), "COVEN_TASK": "s#1"})
 
     assert (text, error) == ("ok", None)
-    assert windows == [host.PROGRESS_EVERY == 20 and 20]
+    assert host.PROGRESS_EVERY == 20 and windows == [20]
     assert len(sent) == 1 and sent[0]["state"] == "working" and sent[0]["ref"] == "s#1"
     assert len(sent[0]["step"]) <= 160 and secret not in sent[0]["step"]
