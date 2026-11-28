@@ -2121,6 +2121,27 @@ def test_a_conflict_outside_the_paths_goes_to_a_person(repo, monkeypatch):
     assert cloud.notes[-1]["kind"] == "question" and "outside the task's paths" in cloud.notes[-1]["note"]
 
 
+def test_a_third_conflict_update_opens_no_task_and_holds_the_branch(repo, monkeypatch):
+    cloud = FakeCloud().install(monkeypatch)
+    task, path, branch = _diverged(repo)
+    host._update(repo, "shop#1", conflict_updates=host.MAX_CONFLICT_UPDATES)
+    runner = Runner()
+    done = host._build(repo, task, "green-witch", "wsl-1", "main", runner, None, [])
+    assert done["action"] == "held" and not runner.calls and "update attempts" in done["why"]
+    assert git(path, "status", "--porcelain") == "" and host.load(repo)["shop#1"]["state"] == "held"
+    assert cloud.notes[-1]["kind"] == "question" and "a person resolves it" in cloud.notes[-1]["note"]
+    count = len(cloud.notes)
+    host._build(repo, task, "green-witch", "wsl-1", "main", runner, None, [])
+    assert len(cloud.notes) == count, "said once"
+
+
+def test_conflict_updates_are_counted_per_branch_ref(repo, monkeypatch):
+    FakeCloud().install(monkeypatch)
+    task, path, branch = _diverged(repo)
+    host._build(repo, task, "green-witch", "wsl-1", "main", Runner({"green-witch": lambda cwd, prompt: resolves(cwd, prompt)}), None, [])
+    assert host.load(repo)["shop#1"]["conflict_updates"] == 1
+
+
 def test_a_clean_merge_is_committed_by_the_host_and_a_current_branch_is_left_alone(repo, monkeypatch):
     FakeCloud().install(monkeypatch)
     task, path, branch = _diverged(repo, main_file="README.md")

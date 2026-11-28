@@ -1055,6 +1055,12 @@ def _build(root: Path, task: dict, agent: str, host: str, base: str, runner: Run
         state, conflicts = merge_base(path, task, base)
         if state == "outside":
             return _hold_conflict(root, ref, agent, host, base, conflicts)
+        if state == "conflict":
+            tried = (load(root).get(ref) or {}).get("conflict_updates") or 0
+            if tried >= MAX_CONFLICT_UPDATES:  # the third conflict opens no task: a person resolves it
+                _abort_merge(path, conflicts)
+                return _hold_conflict_cap(root, ref, agent, host, base, conflicts, tried)
+            _update(root, ref, conflict_updates=tried + 1)
     for attempt in range(ATTEMPTS):
         text, error = runner(path, agent, prompt_for(task, agent, host, notes, feedback, problem, conflicts=conflicts),
                              _build_env(root, host, agent, ref, task), RUN_TIMEOUT)
@@ -1114,6 +1120,21 @@ def _hold_conflict(root: Path, ref: str, agent: str, host: str, base: str, files
     _update(root, ref, state="held", error=None, finished_at=events.now_iso())
     _send_outcome(root, ref, "held", agent, detail=why[:200])
     _note(root, f"{agents.label(agent)} on {host}: {ref} {why}", agent, ref, kind="question", host_says=True)
+    return {"action": "held", "task": ref, "agent": agent, "why": why, "conflicts": files}
+
+
+MAX_CONFLICT_UPDATES = 2  # conflict-update attempts per branch ref; then the branch waits for a person
+
+
+def _hold_conflict_cap(root: Path, ref: str, agent: str, host: str, base: str, files: list[str], tried: int) -> dict:
+    """The base conflicted with this branch after `tried` update attempts: hold the branch for a person, say so once."""
+    work._release_quietly(root, ref, "conflict-update attempts used up")
+    why = short_text(f"merging {base} conflicted again after {tried} update attempts (in {', '.join(files[:8])}); a person resolves it", 400)
+    first = (load(root).get(ref) or {}).get("conflict_hold") != why
+    _update(root, ref, state="held", error=None, conflict_hold=why, finished_at=events.now_iso())
+    if first:
+        _send_outcome(root, ref, "held", agent, detail=why[:200])
+        _note(root, f"{agents.label(agent)} on {host}: {ref} {why}", agent, ref, kind="question", host_says=True)
     return {"action": "held", "task": ref, "agent": agent, "why": why, "conflicts": files}
 
 
@@ -2272,6 +2293,10 @@ def ask_reviews(root: Path, task: dict, branch: str, round_: int = 1) -> list[st
     made = []
     tip = work._git(root, "rev-parse", branch, check=False).strip()  # the tip these reviews cover
     tips: dict[str, str] = {}
+    record = load(root).get(ref) or {}
+    pending = record.get("review_jobs") or []
+    if pending and tip and record.get("review_round") == round_ and all((record.get("review_tips") or {}).get(j) == tip for j in pending):
+        return pending  # these reviews of this tip are already queued: no second set
     for agent, suffix, verb in REVIEWERS:
         job_id = review_job_id(task, suffix, round_, project)
         try:

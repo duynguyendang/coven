@@ -696,6 +696,7 @@ Decisions go in the table above once made. The ids the brief uses are listed, as
   credential. No admin scope yet (NFR-SEC7).
 - **Redaction is a floor.** Patterns miss some vendor keys; free-text answers written by models are
   the riskiest field and are capped and redacted.
+- **Conflict-update cap.** When the base conflicts with a Dev's branch, the host counts the attempts per task ref (`conflict_updates`). After 2 it starts no run, holds the branch and posts one board note for a person. `ask_reviews` queues no second set of reviews for a tip whose reviews are already queued.
 - **Merge conflicts on ticks.** Two branches ticking neighbouring `tasks.md` lines can conflict.
 - **Unproven end to end.** Hosts are tested with a fake `kiro-cli` and live against the hosted
   cloud; a full real model run through every path, and a real flow with both gates, are not yet
