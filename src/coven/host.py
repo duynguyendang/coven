@@ -2179,6 +2179,8 @@ def ask_reviews(root: Path, task: dict, branch: str, round_: int = 1) -> list[st
     ref = f"{task['spec']}#{task['task_id']}"
     project = config.project_id(root)
     made = []
+    tip = work._git(root, "rev-parse", branch, check=False).strip()  # the tip these reviews cover
+    tips: dict[str, str] = {}
     for agent, suffix, verb in REVIEWERS:
         job_id = review_job_id(task, suffix, round_, project)
         try:
@@ -2189,9 +2191,11 @@ def ask_reviews(root: Path, task: dict, branch: str, round_: int = 1) -> list[st
                               source=task.get("source"), branch=branch, review_of=ref,
                               key=taskkey.task_key(project, "job", ref, f"{suffix}{round_}"), sender=agents.DEFAULT, expects="review")
             made.append(f"{COUNCIL_SPEC}#{job_id}")
+            if tip:
+                tips[f"{COUNCIL_SPEC}#{job_id}"] = tip
         except Exception:  # noqa: BLE001 - a review job is a courtesy; people can still ask for one
             pass
-    _update(root, ref, review_round=round_, review_jobs=made, review_hold=None)
+    _update(root, ref, review_round=round_, review_jobs=made, review_tips=tips, review_hold=None)
     return made
 
 
@@ -2286,6 +2290,13 @@ def review_state(view: dict, jobs: list[str]) -> dict[str, dict]:
                 "agent": (tasks.get(j) or {}).get("agent"), "detail": (tasks.get(j) or {}).get("doer_detail")} for j in jobs}
 
 
+def stale_reviews(root: Path, record: dict, jobs: list[str]) -> list[str]:
+    """Review jobs whose pass covers a tip other than the branch's current one (or a tip nobody recorded): those passes do not count."""
+    tip = work._git(root, "rev-parse", record.get("branch") or "", check=False).strip() if record.get("branch") else ""
+    tips = record.get("review_tips") or {}
+    return [j for j in jobs if not tip or tips.get(j) != tip]
+
+
 def chair_prompt(ref: str, record: dict, files: list[str], reviews: dict[str, dict]) -> str:
     lines = [f"You are {agents.label(CHAIR)}, the senior of this coven. The Dev's branch {record.get('branch')} for {ref} was reviewed,",
              f"and every reviewer passed it. Decide whether it is merged into {record.get('base')} and pushed now.",
@@ -2356,6 +2367,9 @@ def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, n
         said = [{"from": agents.label(r.get("agent") or ""), "role": "member", "kind": "review", "message": r.get("detail") or "no verdict given"} for r in changes]
         rework(ref, said)
         return {"action": "rework", "task": ref, "round": (record.get("review_round") or 1) + 1}
+    stale = stale_reviews(root, record, list(reviews))
+    if stale:
+        return _hold(root, ref, record, f"the branch changed after its reviews passed ({', '.join(stale)}); they must run again")
     # Every reviewer passed: the senior decides.
     if CHAIR not in agents.installed(root):
         return _hold(root, ref, record, f"every reviewer passed, but no {agents.label(CHAIR)} runs on this host to decide the merge")
@@ -3397,7 +3411,8 @@ class Host:
                     self._accept_progress(ref, request_id, "held", why)
                     continue
                 reviews = review_state(view, record.get("review_jobs") or [])
-                passed = [r.get("agent") or "" for r in reviews.values() if r.get("verdict") == "pass" and r.get("agent")]
+                old = set(stale_reviews(self.root, record, list(reviews)))  # a pass on an earlier tip does not count
+                passed = [r.get("agent") or "" for j, r in reviews.items() if r.get("verdict") == "pass" and r.get("agent") and j not in old]
                 self.out(f"host: {accept.get('by') or 'a person'} accepted {ref}: merging {record['branch']}")
                 self._accept_progress(ref, request_id, "merging")
                 try:
