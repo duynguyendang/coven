@@ -2325,7 +2325,7 @@ REVIEW_FAIL_WAIT = 3600  # seconds a failed review may take to run again (the Ch
 
 
 def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, notes: list[dict], runner: Runner,
-                   rework: Callable[[str, list[dict]], None]) -> dict | None:
+                   rework: Callable[[str, list[dict]], None], reask: Callable[[int], list[str]] | None = None) -> dict | None:
     """One look at a submitted build's reviews. Returns what was done, or None while the reviewers still work."""
     if str(record.get("review_hold") or "").startswith((REVIEW_UNFINISHED, NO_VERDICT)):
         jobs = record.get("review_jobs") or []
@@ -2369,7 +2369,12 @@ def settle_reviews(root: Path, ref: str, record: dict, view: dict, chat: dict, n
         return {"action": "rework", "task": ref, "round": (record.get("review_round") or 1) + 1}
     stale = stale_reviews(root, record, list(reviews))
     if stale:
-        return _hold(root, ref, record, f"the branch changed after its reviews passed ({', '.join(stale)}); they must run again")
+        # The branch moved (or the reviews recorded no tip): their passes are void. Ask for a new round on the current tip.
+        round_ = (record.get("review_round") or 1) + 1
+        if reask is None or round_ > MAX_REVIEW_ROUNDS:
+            return _hold(root, ref, record, f"the branch changed after its reviews passed ({', '.join(stale)}); they must run again")
+        reask(round_)
+        return {"action": "re-review", "task": ref, "round": round_}
     # Every reviewer passed: the senior decides.
     if CHAIR not in agents.installed(root):
         return _hold(root, ref, record, f"every reviewer passed, but no {agents.label(CHAIR)} runs on this host to decide the merge")
@@ -3320,7 +3325,8 @@ class Host:
                                                           self.cloud_runner if record.get("via") == "kiro-web" and self.cloud_runner else self.runner,
                                                           said, notes, record.get("base"))
             try:
-                result = settle_reviews(self.root, ref, record, view, chat, notes, self.runner, rework)
+                result = settle_reviews(self.root, ref, record, view, chat, notes, self.runner, rework,
+                                        lambda round_, record=record, ref=ref: ask_reviews(self.root, tasks[ref], record["branch"], round_))
             except (work.WorkError, HostError, OSError) as exc:
                 result = _hold(self.root, ref, record, str(exc)[:200])
             if result:
