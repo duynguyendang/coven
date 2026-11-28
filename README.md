@@ -166,6 +166,7 @@ coven init --merge-check 'pytest -q'            # project name = folder name; --
 coven doctor                                    # then start a new Kiro session in this repo
 ```
 
+After writing, `coven init` runs the hooks check and prints the next steps: restart kiro-cli, start the relay (`coven relay up --machine`), `coven doctor`, `./run-host.sh --root`.
 `coven init` lists every file it wrote (`.kiro/hooks/telemetry.json`, `.kiro/agents/*.json`, the flow recipe,
 `.kiro/skills/coven`); review and commit them, except the hook commands unless you used `--portable`.
 It copies from a Coven checkout (the one it runs from, `--from PATH`, or `COVEN_TEMPLATES`). `--telemetry-only` skips the witches.

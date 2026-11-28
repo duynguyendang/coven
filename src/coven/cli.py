@@ -80,9 +80,31 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"hooks: {done['hooks']} command(s) written" if done["hooks"] else "hooks: already up to date")
     for note in done["notes"]:
         print(f"note: {note}")
+    failures = _init_hooks_check(root)
     print("next:")
-    print("\n".join(f"  {line}" for line in done["next"]))
+    if failures:
+        print("  coven hooks install                (a hook command above failed; fix it first)")
+    print("  restart kiro-cli in this repository (Kiro reads hooks only when a session starts)")
+    print("  coven relay up --machine           (start the relay, once per machine)")
+    print("  coven doctor")
+    print("  ./run-host.sh --root               (run this machine as a host)")
     return 0
+
+
+def _init_hooks_check(root: Path) -> int:
+    """Run each Coven hook command the way `coven hooks check` does; print one line each. Returns the failure count."""
+    from . import hooks
+
+    items = hooks.commands(root, only_ours=True)
+    if not items:
+        print("hooks check: no Coven hooks found under .kiro/hooks")
+        return 1
+    failures = 0
+    for item in items:
+        result = {"ok": False, "why": item.get("error")} if item["command"] is None else hooks.check_command(item["command"], item["trigger"])
+        failures += 0 if result["ok"] else 1
+        print(f"hooks check: {'OK  ' if result['ok'] else 'FAIL'} {item['trigger']}: {result['why']}")
+    return failures
 
 
 def _spawn_relay(*, machine: bool, root: Path) -> int:
