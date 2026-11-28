@@ -49,7 +49,10 @@ assert args[args.index("--output-format") + 1] == "stream-json", args
 for _flag in ("--model", "--effort"):  # pins, when set, sit before --agent and the prompt stays last
     assert _flag not in args or args.index(_flag) < args.index("--agent") < len(args) - 1, args
 prompt = args[-1]
-if agent == "green-witch" and (os.environ.get("COVEN_TASK") or "").endswith("-1b2"):
+if agent == "green-witch" and "conflicts in:" in prompt:  # the host started a merge of main: resolve the file it names
+    open("src/cart/total.py", "w").write("def total(items):\n    return sum(items) or len(items)\n")
+    text = "Resolved src/cart/total.py."
+elif agent == "green-witch" and (os.environ.get("COVEN_TASK") or "").endswith("-1b2"):
     os.makedirs("src/cart", exist_ok=True)
     open("src/cart/tax.py", "w").write("def tax(total):\n    return total // 5\n")
     text = "Added src/cart/tax.py."
@@ -321,6 +324,69 @@ def test_a_branch_merged_by_hand_resolves_in_one_poll_and_unblocks_the_next_step
     assert git(root, "merge-base", "--is-ancestor", tip, "coven/council-pm-1b2") == ""
     assert "src/cart/tax.py" in git(root, "show", "--name-only", "--format=", "coven/council-pm-1b2")
     assert council()[1]["pm-1b2"]["doer_state"] == "submitted"
+
+
+def _main_moves(root, n):
+    (root / "src" / "cart").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "cart" / "total.py").write_text(f"def total(items):\n    return len(items) + {n}\n")
+    git(root, "add", "-A")
+    git(root, "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-qm", f"main moves {n}")
+
+
+def test_a_conflicting_branch_gets_main_merged_in_the_witch_resolves_and_old_passes_are_void(world, cloud):
+    """A branch conflicts with main: the host merges main into it, the witch resolves, the old review passes no longer count."""
+    root, project, push = world["root"], world["project"], world["push"]
+    from coven import specmap
+    host.Host(root, slots=1, only=["green-witch"], out=lambda line: None).run(once=True)
+    branch = "coven/shop-1"
+    reviewed = git(root, "rev-parse", branch)
+    ref = "shop#1"
+    host._update(root, ref, review_tips={"white-hat": reviewed, "black-hat": reviewed})
+    assert host.stale_reviews(root, host.load(root)[ref], ["white-hat", "black-hat"]) == [], "passes cover the branch tip"
+    before = len(world["calls"]())
+    _main_moves(root, 1)
+
+    done = host._build(root, specmap.load(root)[ref], "green-witch", "wsl-e2e", "main", host.run_agent, None, [])
+    push()
+    assert done["action"] == "submitted" and done["merged_base"] == "main", done
+    calls = world["calls"]()[before:]
+    assert [c["agent"] for c in calls] == ["green-witch"] and "worktrees" in calls[0]["cwd"]
+    parents = git(root, "log", "-1", "--format=%P", branch).split()
+    assert len(parents) == 2 and git(root, "rev-parse", "main") in parents, "the host made the merge commit"
+    assert "return sum(items) or len(items)" in git(root, "show", f"{branch}:src/cart/total.py")
+    assert "<<<<<<<" not in git(root, "show", f"{branch}:src/cart/total.py")
+    assert git(root, "rev-parse", branch) != reviewed
+    assert host.stale_reviews(root, host.load(root)[ref], ["white-hat", "black-hat"]) == ["white-hat", "black-hat"], "old passes are void"
+    assert host.load(root)[ref]["conflict_updates"] == 1
+
+
+def test_main_moving_again_stops_after_the_cap_with_a_hold(world, cloud):
+    root, project, push = world["root"], world["project"], world["push"]
+    from coven import specmap
+    host.Host(root, slots=1, only=["green-witch"], out=lambda line: None).run(once=True)
+    ref, branch = "shop#1", "coven/shop-1"
+    for n in range(1, host.MAX_CONFLICT_UPDATES + 1):
+        _main_moves(root, n)
+        done = host._build(root, specmap.load(root)[ref], "green-witch", "wsl-e2e", "main", host.run_agent, None, [])
+        assert done["action"] == "submitted", done
+    assert host.load(root)[ref]["conflict_updates"] == host.MAX_CONFLICT_UPDATES
+    before, tip = len(world["calls"]()), git(root, "rev-parse", branch)
+
+    _main_moves(root, 99)
+    held = host._build(root, specmap.load(root)[ref], "green-witch", "wsl-e2e", "main", host.run_agent, None, [])
+    push()
+    assert held["action"] == "held" and "update attempts" in held["why"] and "a person resolves it" in held["why"]
+    assert len(world["calls"]()) == before, "no witch ran after the cap"
+    assert git(root, "rev-parse", branch) == tip, "the branch is as it was"
+    record = host.load(root)[ref]
+    assert record["state"] == "held" and record["conflict_updates"] == host.MAX_CONFLICT_UPDATES
+    assert git(Path(record["worktree"]), "status", "--porcelain") == "", "the open merge was aborted"
+    view = api(cloud, f"/v1/board?project_id={project}")
+    notes = [n["note"] for n in view["notes"] if n.get("task") == ref and "a person resolves it" in n["note"]]
+    assert len(notes) == 1, notes
+    host._build(root, specmap.load(root)[ref], "green-witch", "wsl-e2e", "main", host.run_agent, None, [])
+    push()
+    assert len([n for n in api(cloud, f"/v1/board?project_id={project}")["notes"] if "a person resolves it" in n["note"]]) == 1, "said once"
 
 
 def test_resume_id_goes_before_the_prompt_and_only_when_given(monkeypatch):
