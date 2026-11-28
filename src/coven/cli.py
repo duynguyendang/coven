@@ -838,11 +838,18 @@ def _host_readiness(root: Path) -> list[str]:
     else:
         lines.append("host id: none yet -> it is made the first time you run: coven host run")
     have = agents.installed(root)
-    missing = [slug for slug in agents.AGENTS if slug not in have]
-    if not missing:
+    if not have:  # a --telemetry-only repository has no witch files on purpose: nothing to report
+        return lines
+    absent = [slug for slug in agents.AGENTS if slug not in have]
+    if not absent:
         lines.append(f"witches: all {len(have)} installed")
     else:
-        lines.append(f"witches: {len(have)} of {len(agents.AGENTS)} installed, missing {', '.join(missing)} -> run: coven init --from <coven checkout>")
+        lines.append(f"witches: {len(have)} of {len(agents.AGENTS)} installed, missing {', '.join(absent)}")
+    recipe = ".kiro/workflows/coven-task-flow.workflow.json"
+    skill = ".kiro/skills/coven/SKILL.md"
+    lost = [rel for rel in (recipe, skill) if not (root / rel).is_file()]
+    if absent or lost:
+        lines.append(f"missing files: {', '.join([f'.kiro/agents/{s}.json' for s in absent] + lost)} -> run: coven init --from <coven checkout>")
     return lines
 
 
